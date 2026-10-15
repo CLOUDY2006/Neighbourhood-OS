@@ -1,0 +1,53 @@
+import { DEMO, reduce, seed, emptyDoc, matchVolunteers } from "../src/logic";
+import { actionPlan, docAsOf, priorityScore, statusAt } from "../src/plan";
+import { simulate } from "../src/sim";
+import { understand } from "../src/agent";
+
+const fail = (m: string, f: () => unknown) => { try { f(); console.log("FAIL", m); } catch (e) { console.log("ok", m, "->", (e as Error).message); } };
+const b = { lat: 28.5663, lng: 77.2115, r: 700, name: "Test" };
+const R = { role: "resident" as const, name: "Res #1" }, R2 = { role: "resident" as const, name: "Res #2" }, V = { role: "volunteer" as const, name: "Vol #1" };
+const A = { role: "admin" as const, name: "Adm #1" }, A2 = { role: "admin" as const, name: "Adm #2" }, M = { role: "moderator" as const, name: "Mod #1" };
+
+let d = emptyDoc();
+d = reduce(d, R, { t: "report", title: "Fallen tree blocks Park Lane", desc: "tree fell, road blocked", cat: "blocked", priority: "high", lat: 28.567, lng: 77.212 }, b).doc;
+const id = d.issues[0].id;
+console.log("blocked category understood:", understand("सड़क बंद है, पेड़ गिरा है").cat, "| english:", understand("a fallen tree has blocked the road").cat);
+d = reduce(d, A, { t: "advance", id }, b).doc; d = reduce(d, A, { t: "actionPlanApprove", id }, b).doc;
+fail("plan cannot be approved twice", () => reduce(d, A, { t: "actionPlanApprove", id }, b));
+d = reduce(d, V, { t: "join", mid: d.missions[0].id }, b).doc;
+console.log("assignment history:", d.issues[0].assignments!.map(a => a.text).join(" | "));
+d = reduce(d, A, { t: "advance", id }, b).doc;
+fail("cannot go to review without proof", () => reduce(d, A, { t: "advance", id }, b));
+d = reduce(d, V, { t: "proof", id, text: "cleared" }, b).doc;
+fail("advance cannot resolve", () => reduce(reduce(d, A, { t: "advance", id }, b).doc, A, { t: "advance", id }, b));
+d = reduce(d, A, { t: "advance", id }, b).doc;
+console.log("status now:", d.issues[0].status, "pendingBy:", d.issues[0].pendingBy);
+fail("requester cannot approve own review", () => reduce(d, A, { t: "approveResolution", id }, b));
+fail("resident cannot approve", () => reduce(d, R2, { t: "approveResolution", id }, b));
+d = reduce(d, R2, { t: "feedback", id, ok: false, note: "still blocked" }, b).doc; d = reduce(d, R, { t: "feedback", id, ok: false }, b).doc;
+fail("negative feedback blocks approval", () => reduce(d, M, { t: "approveResolution", id }, b));
+d = reduce(d, M, { t: "rejectResolution", id, reason: "More clearing needed" }, b).doc; console.log("rejected back to:", d.issues[0].status, d.issues[0].verif, "rejections", d.issues[0].rejections);
+console.log("targeted events for author:", d.events.filter(e => e.to === R.name).length, "| shown to others:", d.events.filter(e => e.to === R2.name).length);
+d = reduce(d, V, { t: "proof", id, text: "cleared again" }, b).doc; d = reduce(d, A, { t: "advance", id }, b).doc;
+d = reduce(d, R2, { t: "feedback", id, ok: true }, b).doc; d = reduce(d, R, { t: "feedback", id, ok: true }, b).doc; d = reduce(d, R, { t: "feedback", id, ok: true }, b).doc;
+d = reduce(d, A2, { t: "approveResolution", id, note: "checked" }, b).doc;
+console.log("approved by a second coordinator:", d.issues[0].status, d.issues[0].reviewedBy);
+fail("update needs content", () => reduce(d, R, { t: "update", id, text: "" }, b));
+d = reduce(d, R, { t: "update", id, text: "Thanks!" }, b).doc; console.log("updates:", d.issues[0].updates!.length);
+fail("moderator cannot assign", () => reduce(d, M, { t: "assign", mid: d.missions[0].id, name: "x" }, b));
+
+let s = seed(); const i4 = s.issues.find(i => i.id === "i4")!;
+const ps = priorityScore(s, i4); console.log("priority i4:", ps.score, ps.level, "|", ps.reasons.map(r => `${r.label} +${r.pts}`).join("; "));
+console.log("resolved score:", priorityScore(s, s.issues.find(i => i.id === "i8")!).score, "| plan steps:", actionPlan(s, i4).steps.length, actionPlan(s, i4).timeline);
+fail("volunteer area needs consent", () => reduce(s, V, { t: "volunteerArea", lat: 28.5663, lng: 77.2115, consent: false }, b));
+s = reduce(s, V, { t: "volunteerArea", lat: 28.566321, lng: 77.211567, consent: true }, b).doc; const vv = s.volunteers.find(v => v.name === V.name)!; console.log("rounded area:", vv.lat, vv.lng);
+console.log("match uses distance:", matchVolunteers(s, i4)[0].why);
+for (let i = 0; i < DEMO.length; i++) s = reduce(s, R, { t: "demo" }, { lat: 28.5663, lng: 77.2115, r: 1e7, name: "Maple Nagar" }).doc;
+const t = Date.now(), f4 = s.issues.find(i => i.id === "i4")!;
+console.log("statusAt: before report", statusAt(f4, f4.created - 1), "| early:", statusAt(f4, f4.created + 1), "| now:", statusAt(f4, t + 1000), "| asOf open:", docAsOf(s, f4.created + 1000).issues.filter(i => i.status !== "resolved").length, "now open:", s.issues.filter(i => i.status !== "resolved").length);
+
+const base = { volunteers: 3, teamSize: 3, hoursPerDay: 2, rule: "oldest" as const, days: 14, authorityDelay: 5 };
+const seed2 = seed(), a = simulate(seed2, base), b2 = simulate(seed2, { ...base, volunteers: 15, rule: "score" });
+console.log("sim open issues:", a.issues.length, "| baseline done:", a.issues.length - a.backlog, "| 15 volunteers done:", b2.issues.length - b2.backlog, "| teams", a.teams, b2.teams, "| monotonic:", b2.byDay.every((v, i, arr) => i === 0 || v >= arr[i - 1]));
+console.log("sim zero volunteers backlog:", simulate(seed2, { ...base, volunteers: 0 }).backlog === a.issues.length);
+console.log("sim does not change data:", JSON.stringify(seed2.issues.map(i => i.status)) === JSON.stringify(seed().issues.map(i => i.status)));

@@ -1,0 +1,766 @@
+import { draftComplaint, proposeMission } from "./agent";
+import { routeFor } from "./routes";
+
+export type Role = "resident" | "volunteer" | "moderator" | "admin";
+export type Status = "reported" | "review" | "assigned" | "progress" | "pending" | "resolved";
+export type Verif = "unverified" | "review" | "verified" | "disputed" | "resolved";
+export type Cat = "pothole" | "garbage" | "streetlight" | "water" | "unsafe" | "blocked" | "other";
+export type Priority = "low" | "medium" | "high" | "critical";
+export type Kind = "shelter" | "water" | "aid" | "donation" | "assembly" | "equipment";
+
+export const STATUSES: Status[] = ["reported", "review", "assigned", "progress", "pending", "resolved"];
+export const STATUS_LABEL: Record<Status, string> = { reported: "Reported", review: "Under review", assigned: "Assigned", progress: "In progress", pending: "Resolution pending review", resolved: "Resolved" };
+export const CATS: Cat[] = ["pothole", "garbage", "streetlight", "water", "unsafe", "blocked", "other"];
+export const PRIORITIES: Priority[] = ["low", "medium", "high", "critical"];
+export const KINDS: Kind[] = ["shelter", "water", "aid", "donation", "assembly", "equipment"];
+export const ABILITIES = ["first_aid", "medical", "driving", "boat", "tools", "cooking", "translation", "counseling"];
+export const SHARE_CATS = ["supplies", "tools", "ride", "food", "other"];
+export const CARE_NEEDS = ["mobility", "medical", "elderly_alone", "other"];
+
+export interface Proof { t: number; by: string; text: string; photo?: string }
+export interface Issue {
+  id: string; title: string; cat: Cat; desc: string; lat: number; lng: number;
+  priority: Priority; status: Status; verif: Verif; reports: number; proof: Proof[];
+  log: { t: number; by: string; text: string }[]; missionId?: string; photo?: string; created: number; resolvedAt?: number; handoff?: Handoff; agent?: AgentRecord;
+  pendingBy?: string; reviewedBy?: string; rejections?: number; feedback?: Record<string, { ok: boolean; note: string; t: number }>; updates?: Proof[]; assignments?: { t: number; by: string; text: string }[]; actionPlan?: { approvedBy: string; approvedAt: number };
+  author: string; confirmedBy: string[]; flags: string[]; hidden?: boolean;
+}
+export interface AgentDraft { level: number; to: string; lang: "en" | "hi"; subject: string; body: string; edited?: boolean; approvedBy?: string; approvedAt?: number; sentAt?: number; via?: "copied" | "emailed" | "simulated" }
+export interface AgentRecord { lang: "hi" | "en" | "other"; original: string; summaryEn: string; source: "ai" | "rules" | "scripted"; draft: AgentDraft; history: { level: number; to: string; sentAt: number; ref?: string }[]; escalateAt?: number; created: number }
+export interface Handoff { to: string; email?: string; ref: string; sentAt: number; by: string; status: "sent" | "acknowledged" | "resolved" | "no_response" }
+export interface Authority { id: string; name: string; email: string; phone: string }
+export interface Checkin { id: string; title: string; started: number; by: string; closed?: boolean; replies: Record<string, { ok: boolean; t: number; note: string }> }
+export interface Care { name: string; need: string; note: string; t: number }
+export interface Plan { routes: string; notes: string; contacts: string; updated: number; by: string }
+export interface Share { id: string; kind: "offer" | "request"; cat: string; title: string; note: string; author: string; created: number; expires: number; status: "open" | "matched" | "done"; with?: string; thread: { by: string; text: string; t: number }[] }
+export interface Notice { id: string; title: string; body: string; author: string; created: number; pinned: boolean; urgent: boolean }
+export interface Mission { id: string; title: string; issueId?: string; need: number; joined: string[]; hours: number; done: boolean }
+export interface Resource { id: string; name: string; kind: Kind; lat: number; lng: number; note: string; low?: boolean }
+export interface Volunteer { id: string; name: string; skills: Cat[]; available: boolean; lat?: number; lng?: number; abilities?: string[] }
+export interface Ev { t: number; text: string; tone: string; to?: string }
+export type SosNeed = "medical" | "rescue" | "shelter" | "food_water" | "other";
+export type SosStatus = "open" | "acknowledged" | "assigned" | "helped" | "closed";
+export const SOS_NEEDS: SosNeed[] = ["medical", "rescue", "shelter", "food_water", "other"];
+export interface Sos {
+  id: string; author: string; lat: number | null; lng: number | null; need: SosNeed; people: number; note: string;
+  status: SosStatus; assigned: string[]; contact?: string; created: number; expires: number; closedAt?: number; log: { t: number; by: string; text: string }[];
+}
+export interface Doc { issues: Issue[]; missions: Mission[]; resources: Resource[]; volunteers: Volunteer[]; events: Ev[]; demo: number; sos?: Sos[]; sosActive?: number; checkin?: Checkin; care?: Care[]; plan?: Plan; shares?: Share[]; notices?: Notice[]; authorities?: Authority[]; digestAt?: number; memberCount?: number }
+export interface Who { role: Role; name: string }
+export interface Insights { source: "rules" | "ai"; summary: string; bullets: { title: string; detail: string }[] }
+export interface SuggestInput { title: string; desc: string; cat?: Cat; lat: number; lng: number }
+
+export type Action =
+  | { t: "report"; title: string; desc: string; cat: Cat; priority: Priority; lat: number; lng: number; photo?: string; agent?: { lang: string; original: string; summaryEn: string; source: string } }
+  | { t: "merge"; id: string }
+  | { t: "verify"; id: string; v: Verif }
+  | { t: "advance"; id: string }
+  | { t: "mission"; title: string; need: number; issueId?: string }
+  | { t: "join"; mid: string }
+  | { t: "assign"; mid: string; name: string }
+  | { t: "proof"; id: string; text: string; photo?: string }
+  | { t: "flag"; id: string }
+  | { t: "availability"; available: boolean }
+  | { t: "skills"; skills: Cat[] }
+  | { t: "delivery"; id: string; note: string }
+  | { t: "shortage"; id: string }
+  | { t: "addResource"; name: string; kind: Kind; lat: number; lng: number; note: string }
+  | { t: "withdraw"; id: string }
+  | { t: "spam"; id: string }
+  | { t: "hide"; id: string }
+  | { t: "restore"; id: string }
+  | { t: "sos"; need: SosNeed; people: number; note: string; lat: number; lng: number; consent: boolean; contact?: string }
+  | { t: "sosAck"; id: string }
+  | { t: "sosAssign"; id: string; name: string }
+  | { t: "sosStatus"; id: string; status: "helped" | "closed" }
+  | { t: "sosCancel"; id: string }
+  | { t: "checkinStart"; title: string }
+  | { t: "checkinReply"; ok: boolean; note?: string }
+  | { t: "checkinClose" }
+  | { t: "careSet"; need: string; note: string; consent: boolean }
+  | { t: "careRemove" }
+  | { t: "planSet"; routes: string; notes: string; contacts: string }
+  | { t: "abilities"; abilities: string[] }
+  | { t: "shareAdd"; kind: "offer" | "request"; cat: string; title: string; note: string }
+  | { t: "shareClaim"; id: string }
+  | { t: "shareMsg"; id: string; text: string }
+  | { t: "shareDone"; id: string }
+  | { t: "shareRemove"; id: string }
+  | { t: "noticeAdd"; title: string; body: string; urgent: boolean; pinned: boolean }
+  | { t: "noticeRemove"; id: string }
+  | { t: "authoritySet"; name: string; email: string; phone: string }
+  | { t: "authorityRemove"; id: string }
+  | { t: "handoff"; id: string; authorityId: string; ref: string }
+  | { t: "handoffStatus"; id: string; status: Handoff["status"]; ref?: string }
+  | { t: "agentStart"; id: string; lang: string; original: string; summaryEn: string; source: string }
+  | { t: "agentDraft"; id: string; lang?: "en" | "hi"; subject?: string; body?: string }
+  | { t: "agentApprove"; id: string }
+  | { t: "agentSend"; id: string; via: "copied" | "emailed" | "simulated"; ref?: string }
+  | { t: "agentRef"; id: string; ref: string }
+  | { t: "agentEscalate"; id: string }
+  | { t: "approveResolution"; id: string; note?: string }
+  | { t: "rejectResolution"; id: string; reason: string }
+  | { t: "feedback"; id: string; ok: boolean; note?: string }
+  | { t: "update"; id: string; text: string; photo?: string }
+  | { t: "actionPlanApprove"; id: string }
+  | { t: "volunteerArea"; lat: number; lng: number; consent: boolean }
+  | { t: "volunteerAreaClear" }
+  | { t: "demo" }
+  | { t: "reset" };
+
+const ALL: Role[] = ["resident", "volunteer", "admin"];
+export const CAN: Record<Action["t"], readonly Role[]> = {
+  report: ALL, merge: ALL, verify: ["admin", "moderator"], advance: ["admin"], mission: ["admin"], join: ["volunteer"],
+  assign: ["admin"], proof: ["volunteer", "admin"], flag: ["resident"], availability: ["volunteer"], skills: ["volunteer"],
+  sos: ALL, sosCancel: ALL, sosAck: ["admin"], sosAssign: ["admin"], sosStatus: ["volunteer", "admin"],
+  checkinStart: ["admin"], checkinReply: ALL, checkinClose: ["admin"], careSet: ALL, careRemove: ALL, planSet: ["admin"], abilities: ["volunteer"],
+  shareAdd: ALL, shareClaim: ALL, shareMsg: ALL, shareDone: ALL, shareRemove: ALL, noticeAdd: ["admin"], noticeRemove: ["admin"],
+  authoritySet: ["admin"], authorityRemove: ["admin"], handoff: ["admin"], handoffStatus: ["admin"],
+  agentStart: ALL, agentDraft: ALL, agentApprove: ALL, agentSend: ALL, agentRef: ALL, agentEscalate: ["admin"],
+  withdraw: ALL, spam: ALL, hide: ["admin", "moderator"], restore: ["admin", "moderator"],
+  approveResolution: ["admin", "moderator"], rejectResolution: ["admin", "moderator"], feedback: ALL, update: ALL, actionPlanApprove: ["admin"], volunteerArea: ["volunteer"], volunteerAreaClear: ["volunteer"],
+  delivery: ["admin"], shortage: ["admin"], addResource: ["admin"], demo: ALL, reset: ALL,
+};
+export const can = (r: Role, t: Action["t"]) => !!CAN[t]?.includes(r);
+
+const ago = (m: number) => Date.now() - m * 60000;
+const svg = (body: string) => "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200"><rect width="320" height="200" fill="#10192e"/><rect y="120" width="320" height="80" fill="#1b2540"/><rect y="150" width="320" height="4" fill="#2a3658"/>${body}</svg>`);
+export const DEMO_BEFORE = svg('<g fill="#6b5a3a"><circle cx="70" cy="140" r="18"/><circle cx="110" cy="152" r="14"/><circle cx="150" cy="138" r="20"/><circle cx="210" cy="148" r="16"/><circle cx="250" cy="142" r="19"/></g><g fill="#3f7a4a"><rect x="60" y="128" width="14" height="10"/><rect x="140" y="126" width="12" height="9"/><rect x="240" y="130" width="14" height="9"/></g><text x="10" y="20" fill="#ff7683" font-family="sans-serif" font-size="12">BEFORE (simulated illustration)</text>');
+export const DEMO_AFTER = svg('<g fill="#2dff9a" opacity=".6"><circle cx="40" cy="132" r="7"/><circle cx="280" cy="130" r="8"/></g><rect x="20" y="168" width="280" height="3" fill="#3de8ff" opacity=".4"/><text x="10" y="20" fill="#2dff9a" font-family="sans-serif" font-size="12">AFTER (simulated illustration)</text>');
+
+export function seed(): Doc {
+  const mk = (id: string, title: string, cat: Cat, lat: number, lng: number, priority: Priority, status: Status, verif: Verif, reports: number, mins: number, proofText?: string): Issue => ({
+    id, title, cat, desc: "Simulated demo report.", lat, lng, priority, status, verif, reports, photo: id === "i4" ? DEMO_BEFORE : undefined, author: "Demo resident", confirmedBy: [], flags: [], created: ago(mins),
+    proof: proofText ? [{ t: ago(mins * 0.8), by: "Demo volunteer", text: proofText }] : [],
+    resolvedAt: status === "resolved" ? ago(mins * 0.8) : undefined,
+    log: [{ t: ago(mins), by: "Demo resident", text: "Issue reported" }],
+  });
+  const vol = (id: string, name: string, skills: Cat[], available: boolean, lat: number, lng: number, abilities: string[] = []): Volunteer => ({ id, name, skills, available, lat, lng, abilities });
+  return {
+    demo: 0, sos: [],
+    issues: [
+      mk("i1", "Deep pothole near Bus Stop 4", "pothole", 28.5692, 77.2078, "high", "review", "review", 3, 300),
+      mk("i2", "Streetlights out on Park Lane", "streetlight", 28.564, 77.207, "medium", "progress", "verified", 2, 900),
+      mk("i3", "Water leak outside Block C", "water", 28.5668, 77.2152, "high", "assigned", "verified", 4, 600),
+      mk("i4", "Garbage piled on Lakeview Road", "garbage", 28.5655, 77.2125, "medium", "reported", "unverified", 1, 120),
+      mk("i5", "Overflowing bins near market", "garbage", 28.566, 77.2133, "medium", "reported", "unverified", 2, 90),
+      mk("i6", "Dumped waste at park gate", "garbage", 28.5649, 77.2117, "high", "review", "review", 1, 60),
+      mk("i7", "Open manhole on Elm Street", "unsafe", 28.57, 77.211, "critical", "reported", "unverified", 1, 20),
+      mk("i8", "Pothole on Main Street", "pothole", 28.563, 77.214, "medium", "resolved", "resolved", 2, 4000, "Simulated after-photo: road patched"),
+      mk("i9", "Broken bench at playground", "other", 28.5675, 77.2065, "low", "resolved", "resolved", 1, 3000, "Simulated after-photo: bench replaced"),
+      mk("i10", "Fallen tree blocking Park Lane", "blocked", 28.5648, 77.2082, "high", "reported", "unverified", 2, 45),
+    ],
+    missions: [
+      { id: "m1", title: "Block C leak support crew", issueId: "i3", need: 3, joined: ["Demo volunteer A"], hours: 2, done: false },
+      { id: "m2", title: "Weekend tree planting", need: 10, joined: ["Demo volunteer B", "Demo volunteer C", "Demo volunteer D", "Demo volunteer E"], hours: 8, done: false },
+    ],
+    resources: [
+      { id: "r1", name: "Community Hall shelter (demo)", kind: "shelter", lat: 28.5675, lng: 77.2095, note: "Simulated: 48 of 120 beds free" },
+      { id: "r2", name: "Water tanker point (demo)", kind: "water", lat: 28.5662, lng: 77.2145, note: "Simulated shortage: 2 tankers left", low: true },
+      { id: "r3", name: "First-aid post (demo)", kind: "aid", lat: 28.5645, lng: 77.2105, note: "Simulated: stocked" },
+      { id: "r4", name: "Donation drop (demo)", kind: "donation", lat: 28.568, lng: 77.2125, note: "Simulated: accepts food and blankets" },
+    ],
+    volunteers: [
+      vol("v1", "Asha K. (demo)", ["garbage", "other"], true, 28.5657, 77.2121, ["first_aid", "translation"]),
+      vol("v2", "Ravi S. (demo)", ["pothole", "water"], true, 28.5681, 77.2088, ["driving", "tools"]),
+      vol("v3", "Meera T. (demo)", ["streetlight", "unsafe"], false, 28.5641, 77.2075),
+      vol("v4", "Dev P. (demo)", ["water", "unsafe"], true, 28.567, 77.2148, ["boat", "first_aid"]),
+      vol("v5", "Kiran L. (demo)", ["garbage", "pothole"], true, 28.5652, 77.2136),
+    ],
+    events: [{ t: Date.now(), text: "Demo neighborhood loaded (simulated data)", tone: "info" }],
+    plan: { routes: "Simulated plan. If told to leave, walk to the Community Hall via Main Street, away from the river. Avoid Elm Street (open manhole).", notes: "Keep a bag with water, torch, documents and medicines. Check on elderly neighbors.", contacts: "Coordinators: use the SOS tab. Simulated contact list.", updated: ago(2000), by: "Coordinator (demo)" },
+    notices: [{ id: "n1", title: "Cleanup this Sunday", body: "Simulated notice. Join the Weekend tree planting mission from the Missions tab.", author: "Coordinator (demo)", created: ago(600), pinned: true, urgent: false }],
+    shares: [
+      { id: "sh1", kind: "offer", cat: "tools", title: "Ladder and toolbox to lend", note: "Simulated offer. Pick up near Park Lane.", author: "Neighbor A (demo)", created: ago(300), expires: Date.now() + 10 * 86400000, status: "open", thread: [] },
+      { id: "sh2", kind: "request", cat: "food", title: "Need dry rations for 2 days", note: "Simulated request.", author: "Neighbor B (demo)", created: ago(120), expires: Date.now() + 10 * 86400000, status: "open", thread: [] },
+    ],
+    authorities: [{ id: "au1", name: "Municipal ward office (demo)", email: "", phone: "" }],
+  };
+}
+
+export const dist = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
+  const R = 6371000, r = Math.PI / 180, dl = (b.lat - a.lat) * r, dn = (b.lng - a.lng) * r;
+  const x = Math.sin(dl / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dn / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+};
+
+const KW: Record<Cat, string[]> = {
+  pothole: ["pothole", "crater", "road"], garbage: ["garbage", "trash", "waste", "bin", "litter", "dump"],
+  streetlight: ["light", "lamp", "dark"], water: ["water", "leak", "pipe", "flood", "tanker"],
+  unsafe: ["unsafe", "manhole", "wire", "crime", "stray"], blocked: ["blocked", "fallen tree", "tree fell", "road closed", "barricade", "obstruction"], other: [],
+};
+const STOP = new Set(["the", "and", "for", "with", "near", "from", "this", "that", "are", "was", "has", "have", "not", "all", "over", "out", "its", "into", "there", "very"]);
+const tok = (t: string) => new Set(t.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 2 && !STOP.has(w)));
+const jac = (a: Set<string>, b: Set<string>) => { let n = 0; a.forEach(x => { if (b.has(x)) n++; }); return n / (a.size + b.size - n || 1); };
+export function suggest(d: Doc, i: SuggestInput) {
+  const t = (i.title + " " + i.desc).toLowerCase();
+  let cat: Cat = i.cat ?? "other", best = 0;
+  CATS.forEach(c => { const n = KW[c].filter(k => t.includes(k)).length; if (n > best) { best = n; cat = c; } });
+  const words = tok(i.title + " " + i.desc);
+  const candidates = d.issues.filter(x => x.status !== "resolved" && !x.hidden && dist(x, i) < 300)
+    .map(x => ({ issue: x, score: jac(words, tok(x.title + " " + x.desc)) * 0.6 + (x.cat === cat ? 0.25 : 0) + (1 - dist(x, i) / 300) * 0.15 }))
+    .filter(c => c.score >= 0.3).sort((a, b) => b.score - a.score).slice(0, 3);
+  const dup = candidates[0] && candidates[0].score >= 0.4 ? candidates[0].issue : undefined;
+  return { cat, dup, candidates };
+}
+
+export function crisisZones(d: Doc) {
+  const zones: { cat: Cat; lat: number; lng: number; count: number }[] = [];
+  CATS.forEach(c => {
+    const list = d.issues.filter(i => i.cat === c && i.status !== "resolved"), used = new Set<string>();
+    list.forEach(i => {
+      if (used.has(i.id)) return;
+      const nb = list.filter(j => dist(i, j) < 250);
+      if (nb.length >= 3) {
+        nb.forEach(j => used.add(j.id));
+        zones.push({ cat: c, count: nb.reduce((a, j) => a + j.reports, 0), lat: nb.reduce((a, j) => a + j.lat, 0) / nb.length, lng: nb.reduce((a, j) => a + j.lng, 0) / nb.length });
+      }
+    });
+  });
+  return zones;
+}
+
+export function matchVolunteers(d: Doc, i: Issue) {
+  return d.volunteers.map(v => {
+    const skill = v.skills.includes(i.cat), m = v.lat != null && v.lng != null ? dist({ lat: v.lat, lng: v.lng }, i) : null;
+    const score = (skill ? 50 : 0) + (v.available ? 30 : 0) + (m == null ? 0 : Math.max(0, 20 - m / 50));
+    return { v, score, why: `${skill ? `has ${i.cat} skills` : "no matching skill"}, ${v.available ? "available" : "unavailable"}${m == null ? "" : `, ${Math.round(m)} m away`}` };
+  }).sort((x, y) => y.score - x.score).slice(0, 3);
+}
+
+export const emptyDoc = (): Doc => ({
+  demo: 0, sos: [], issues: [], missions: [], resources: [], volunteers: [],
+  events: [{ t: Date.now(), text: "Neighborhood created. Be the first to report an issue or offer help", tone: "info" }],
+});
+
+export function insights(d: Doc): Insights {
+  const open = d.issues.filter(i => i.status !== "resolved");
+  const byCat = CATS.map(c => [c, open.filter(i => i.cat === c).length] as const).filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]);
+  const zones = crisisZones(d), low = d.resources.filter(r => r.low);
+  const crit = open.filter(i => i.priority === "critical" && i.verif === "unverified");
+  const free = d.volunteers.filter(v => v.available).length;
+  const bullets: Insights["bullets"] = [];
+  if (byCat.length) bullets.push({ title: "Recurring problems", detail: byCat.slice(0, 3).map(([c, n]) => `${n} open ${c} report${n > 1 ? "s" : ""}`).join(", ") });
+  zones.forEach(z => bullets.push({ title: "Area needing attention", detail: `${z.count} reports of ${z.cat} within one area. A coordinator should review them together` }));
+  if (crit.length) bullets.push({ title: "Unreviewed critical reports", detail: crit.map(i => i.title).join("; ") });
+  if (low.length) bullets.push({ title: "Resource shortages", detail: low.map(r => r.name).join("; ") });
+  hotspots(d).forEach(h => bullets.push({ title: "Recurring problem area", detail: `${h.n} reports of mostly ${h.cat} within about 150 m in 90 days. This is a pattern in past reports, not a prediction` }));
+  bullets.push({ title: "Volunteer capacity", detail: `${free} of ${d.volunteers.length} volunteers are marked available for ${open.length} open issues` });
+  return { source: "rules", summary: `${open.length} open issues, ${zones.length} crisis cluster(s), ${low.length} resource shortage(s).`, bullets };
+}
+
+function purgeOld(d: Doc) {
+  const now = Date.now();
+  if (d.shares) d.shares = d.shares.filter(x => now < x.expires + 7 * 86400000);
+  if (d.notices) d.notices = d.notices.filter(n => n.pinned || now - n.created < 90 * 86400000).slice(0, 50);
+}
+const ACTIVE: SosStatus[] = ["open", "acknowledged", "assigned"];
+const SOS_TTL = 24 * 3600000;
+export function purgeSos(d: Doc, now = Date.now()) {
+  if (!d.sos) return false;
+  let ch = false;
+  for (const x of d.sos) {
+    if (ACTIVE.includes(x.status) && now > x.expires) { x.status = "closed"; x.closedAt = now; x.log.push({ t: now, by: "System", text: "Expired after 24 hours" }); ch = true; }
+    if (!ACTIVE.includes(x.status) && (x.lat != null || x.lng != null || x.note || x.contact)) { x.lat = null; x.lng = null; x.note = ""; x.contact = undefined; ch = true; }
+  }
+  const keep = d.sos.filter(x => ACTIVE.includes(x.status) || now - (x.closedAt ?? x.created) < 30 * 86400000);
+  if (keep.length !== d.sos.length) { d.sos = keep; ch = true; }
+  return ch;
+}
+export const visibleSos = (d: Doc, role: Role, name: string) => (d.sos ?? []).filter(x => role === "admin" || x.author === name || x.assigned.includes(name));
+export const sosActiveCount = (d: Doc) => (d.sos ?? []).filter(x => ACTIVE.includes(x.status)).length;
+export function nearestResource(d: Doc, p: { lat: number; lng: number }, kinds: Kind[]) {
+  let best: { r: Resource; m: number } | null = null;
+  for (const r of d.resources) if (kinds.includes(r.kind)) { const m = dist(r, p); if (!best || m < best.m) best = { r, m }; }
+  return best;
+}
+
+export const DEMO = [
+  "A resident speaks a report in Hindi. The agent understands it, merges it with the existing garbage report, picks the complaint route and drafts the complaint",
+  "The coordinator reviews and verifies the report",
+  "The coordinator approves the complaint draft and it is sent (simulated). A reference number comes back",
+  "Three days pass with no reply (fast-forward). The agent prepares an escalation draft and waits for approval",
+  "The coordinator reviews the AI action plan and approves it. A cleanup mission is created",
+  "Three volunteers join the mission",
+  "A volunteer uploads the after photo as proof",
+  "The coordinator asks for review, and a neighbor confirms it looks fixed",
+  "A different person, the moderator, approves the resolution. The map turns green and the escalation is cancelled",
+];
+export const DEMO_HINDI = "हमारी गली में बहुत कचरा जमा हो गया है, बदबू आ रही है और बच्चे बीमार हो सकते हैं।";
+
+const uid = (p: string) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+const str = (v: unknown, max: number, label: string) => {
+  if (typeof v !== "string" || !v.trim()) throw new Error(`${label} is required`);
+  return v.trim().slice(0, max);
+};
+const num = (v: unknown, label: string) => {
+  if (typeof v !== "number" || !isFinite(v)) throw new Error(`${label} must be a number`);
+  return v;
+};
+const img = (p: unknown) => (typeof p === "string" && (p === DEMO_BEFORE || p === DEMO_AFTER || /^data:image\/(jpeg|png|webp);base64,/.test(p) ? p.length < 300000 : /^[0-9a-f-]{36}$/.test(p)) ? p : undefined);
+
+export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; lng: number; r: number; name?: string }): { doc: Doc; result?: string } {
+  if (!a || !can(who.role, a.t)) throw new Error(`The ${who.role} role is not allowed to do this`);
+  let d = structuredClone(doc), result: string | undefined;
+  purgeSos(d); purgeOld(d); dueEscalations(d, Date.now(), bounds?.name);
+  const ev = (text: string, tone = "info", to?: string) => { d.events.unshift({ t: Date.now(), text, tone, to }); d.events = d.events.slice(0, 60); };
+  const tell = (i: Issue, text: string) => { if (i.author !== who.name) ev(text, "info", i.author); };
+  const assigned = (i: Issue | undefined, text: string) => { if (i) (i.assignments ??= []).push({ t: Date.now(), by: who.name, text }); };
+  const issue = (id: string) => { const i = d.issues.find(x => x.id === id); if (!i) throw new Error("Issue not found"); return i; };
+  const log = (i: Issue, text: string, tone = "info") => { i.log.push({ t: Date.now(), by: who.name, text }); ev(`${i.title}: ${text}`, tone); };
+  const inBounds = (lat: number, lng: number) => {
+    if (Math.abs(lat) > 90 || Math.abs(lng) > 180) throw new Error("Invalid location");
+    if (bounds && dist(bounds, { lat, lng }) > bounds.r * 1.15) throw new Error("That spot is outside this neighborhood");
+  };
+  const txt = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+  const nbhd = bounds?.name ?? "our neighborhood";
+  const owns = (i: Issue) => who.role === "admin" || i.author === who.name;
+  const makeAgent = (i: Issue, info: { lang: string; original: string; summaryEn: string; source: string }): AgentRecord => {
+    const lang = info.lang === "hi" || info.lang === "en" ? info.lang : "other", dl: "en" | "hi" = lang === "hi" ? "hi" : "en", route = routeFor(i.cat);
+    const summaryEn = str(info.summaryEn, 300, "Summary"), original = txt(info.original, 600);
+    const dft = draftComplaint({ lang: dl, level: 0, to: route.authority, nbhd, cat: i.cat, summaryEn, original, lat: i.lat, lng: i.lng, reports: i.reports, created: i.created, hasPhoto: !!i.photo, verified: i.verif === "verified" || i.verif === "resolved" });
+    return { lang, original, summaryEn, source: info.source === "ai" || info.source === "scripted" ? info.source : "rules", draft: { level: 0, to: route.authority, lang: dl, ...dft }, history: [], created: Date.now() };
+  };
+  const sosOf = (id: string) => { const x = (d.sos ??= []).find(y => y.id === id); if (!x) throw new Error("Request not found"); return x; };
+  const closeSos = (x: Sos, status: SosStatus, text: string) => { x.status = status; x.closedAt = Date.now(); x.lat = null; x.lng = null; x.note = ""; x.contact = undefined; x.log.push({ t: Date.now(), by: who.name, text }); };
+  const res = (id: string) => { const r = d.resources.find(x => x.id === id); if (!r) throw new Error("Resource not found"); return r; };
+  const vol = () => {
+    let v = d.volunteers.find(x => x.name === who.name);
+    if (!v) { v = { id: uid("v"), name: who.name, skills: [], available: true }; d.volunteers.push(v); }
+    return v;
+  };
+
+  switch (a.t) {
+    case "report": {
+      if (!CATS.includes(a.cat) || !PRIORITIES.includes(a.priority)) throw new Error("Invalid category or priority");
+      const lat = num(a.lat, "Latitude"), lng = num(a.lng, "Longitude");
+      inBounds(lat, lng);
+      if (d.issues.length >= 2000) throw new Error("This neighborhood has reached its report limit");
+      if (d.issues.filter(i => i.author === who.name && i.status !== "resolved" && !i.hidden).length >= 15) throw new Error("You already have 15 open reports. Wait for some to be resolved");
+      const n: Issue = {
+        id: uid("i"), title: str(a.title, 120, "Title"), desc: (typeof a.desc === "string" ? a.desc : "").trim().slice(0, 1000),
+        cat: a.cat, priority: a.priority, lat, lng, status: "reported", verif: "unverified", reports: 1, proof: [], log: [],
+        created: Date.now(), photo: img(a.photo), author: who.name, confirmedBy: [], flags: [],
+      };
+      if (a.agent) n.agent = makeAgent(n, a.agent);
+      d.issues.push(n); log(n, "Reported. Unverified until a coordinator reviews it", "alert"); result = n.id; break;
+    }
+    case "merge": {
+      const i = issue(a.id);
+      if (i.hidden) throw new Error("Issue not found");
+      if (i.author === who.name) throw new Error("You reported this one already");
+      if (i.confirmedBy.includes(who.name)) throw new Error("You already confirmed this issue");
+      i.confirmedBy.push(who.name); i.reports += 1; log(i, "Another resident confirmed this issue (+1 report)"); break;
+    }
+    case "withdraw": {
+      const i = issue(a.id);
+      if (i.author !== who.name) throw new Error("Only the author can withdraw a report");
+      if (i.status !== "reported") throw new Error("A coordinator already started on this report");
+      i.hidden = true; ev("A report was withdrawn by its author"); break;
+    }
+    case "spam": {
+      const i = issue(a.id);
+      if (i.author === who.name) throw new Error("You cannot flag your own report");
+      if (i.flags.includes(who.name)) throw new Error("You already flagged this report");
+      i.flags.push(who.name);
+      if (i.flags.length >= 3 && !i.hidden) { i.hidden = true; ev("A report was hidden after several flags and is waiting for a coordinator", "alert"); }
+      break;
+    }
+    case "hide": { const i = issue(a.id); i.hidden = true; ev("A coordinator hid a report", "info"); break; }
+    case "restore": { const i = issue(a.id); i.hidden = false; i.flags = []; ev("A coordinator restored a report", "info"); break; }
+    case "verify": {
+      const i = issue(a.id);
+      if (!["verified", "disputed", "review"].includes(a.v)) throw new Error("Invalid verification state");
+      i.verif = a.v; log(i, `Marked ${a.v} by a coordinator`, a.v === "verified" ? "ok" : "info"); break;
+    }
+    case "advance": {
+      const i = issue(a.id), next = STATUSES[STATUSES.indexOf(i.status) + 1];
+      if (!next) throw new Error("Already resolved");
+      if (next === "resolved") throw new Error("A moderator must review and approve the fix");
+      if (next === "pending" && !i.proof.length) throw new Error("Add proof of fix before asking for review");
+      i.status = next;
+      if (next === "review") i.verif = "review";
+      if (next === "pending") i.pendingBy = who.name;
+      tell(i, `Your report "${i.title}" is now: ${STATUS_LABEL[next]}`);
+      log(i, `Status moved to ${next}`, "info"); break;
+    }
+    case "approveResolution": {
+      const i = issue(a.id);
+      if (i.status !== "pending") throw new Error("This fix is not waiting for review");
+      if (i.pendingBy === who.name) throw new Error("A different reviewer must approve this fix");
+      const fb = Object.values(i.feedback ?? {});
+      if (fb.filter(f => !f.ok).length > fb.filter(f => f.ok).length) throw new Error("Neighbors say it is not fully fixed. Review the feedback or request more work");
+      i.status = "resolved"; i.verif = "resolved"; i.resolvedAt = Date.now(); i.reviewedBy = who.name;
+      if (i.agent) i.agent.escalateAt = undefined;
+      const m = d.missions.find(x => x.id === i.missionId); if (m) m.done = true;
+      tell(i, `Your report "${i.title}" was verified as resolved`);
+      log(i, `Resolution approved${txt(a.note, 200) ? `: ${txt(a.note, 200)}` : ""}`, "ok"); break;
+    }
+    case "rejectResolution": {
+      const i = issue(a.id);
+      if (i.status !== "pending") throw new Error("This fix is not waiting for review");
+      i.status = "progress"; i.verif = "disputed"; i.rejections = (i.rejections ?? 0) + 1; i.pendingBy = undefined;
+      tell(i, `The fix for "${i.title}" needs more work`);
+      log(i, `Fix not approved: ${str(a.reason, 200, "Reason")}`, "alert"); break;
+    }
+    case "feedback": {
+      const i = issue(a.id);
+      if (i.hidden || (i.status !== "pending" && i.status !== "resolved")) throw new Error("Feedback opens when a fix is waiting for review");
+      (i.feedback ??= {})[who.name] = { ok: !!a.ok, note: txt(a.note, 200), t: Date.now() };
+      log(i, a.ok ? "A neighbor says it looks fixed" : "A neighbor says it is not fully fixed", a.ok ? "info" : "alert"); break;
+    }
+    case "update": {
+      const i = issue(a.id);
+      if (i.hidden) throw new Error("Issue not found");
+      const text = txt(a.text, 500), photo = img(a.photo);
+      if (!text && !photo) throw new Error("Add a note or a photo");
+      if ((i.updates ??= []).length >= 40) throw new Error("This issue already has many updates");
+      i.updates.push({ t: Date.now(), by: who.name, text, photo }); log(i, "Update added", "info"); break;
+    }
+    case "actionPlanApprove": {
+      const i = issue(a.id);
+      if (i.missionId) throw new Error("A mission already exists for this issue");
+      if (i.status === "resolved") throw new Error("This issue is already resolved");
+      const pm = proposeMission(i), m: Mission = { id: uid("m"), title: pm.title, issueId: i.id, need: pm.need, joined: [], hours: 0, done: false };
+      d.missions.push(m); i.missionId = m.id;
+      if (i.status === "reported" || i.status === "review") i.status = "assigned";
+      i.actionPlan = { approvedBy: who.name, approvedAt: Date.now() }; assigned(i, `Action plan approved. Mission created: ${m.title}`);
+      log(i, "Action plan approved and mission created", "ok"); result = m.id; break;
+    }
+    case "volunteerArea": {
+      if (a.consent !== true) throw new Error("Please agree to share your approximate area with coordinators");
+      const lat = Math.round(num(a.lat, "Latitude") * 1000) / 1000, lng = Math.round(num(a.lng, "Longitude") * 1000) / 1000;
+      inBounds(lat, lng); const v = vol(); v.lat = lat; v.lng = lng; break;
+    }
+    case "volunteerAreaClear": { const v = vol(); v.lat = undefined; v.lng = undefined; break; }
+    case "mission": {
+      const title = str(a.title, 100, "Mission title"), need = Math.round(num(a.need, "Volunteers needed"));
+      if (need < 1 || need > 200) throw new Error("Volunteers needed must be between 1 and 200");
+      const m: Mission = { id: uid("m"), title, need, joined: [], hours: 0, done: false };
+      if (a.issueId) {
+        const i = issue(a.issueId); m.issueId = i.id; i.missionId = m.id;
+        if (i.status === "reported" || i.status === "review") i.status = "assigned";
+        assigned(i, `Mission created: ${m.title}`); log(i, "Cleanup mission created and assigned", "ok");
+      } else ev(`New community mission: ${title}`, "ok");
+      d.missions.push(m); result = m.id; break;
+    }
+    case "join": {
+      const m = d.missions.find(x => x.id === a.mid);
+      if (!m) throw new Error("Mission not found");
+      if (m.done) throw new Error("This mission is already complete");
+      if (m.joined.includes(who.name)) throw new Error("Already joined this mission");
+      m.joined.push(who.name); assigned(d.issues.find(x => x.missionId === m.id), `${who.name} joined the mission`); ev(`${who.name} joined "${m.title}"`, "ok"); break;
+    }
+    case "assign": {
+      const m = d.missions.find(x => x.id === a.mid);
+      if (!m) throw new Error("Mission not found");
+      if (!d.volunteers.some(v => v.name === a.name)) throw new Error("Volunteer not found");
+      if (m.joined.includes(a.name)) throw new Error("Already on this mission");
+      m.joined.push(a.name); assigned(d.issues.find(x => x.missionId === m.id), `${a.name} assigned by ${who.name}`); ev(`${a.name} assigned to "${m.title}" by ${who.name}`, "ok"); break;
+    }
+    case "proof": {
+      const i = issue(a.id), text = typeof a.text === "string" ? a.text.trim().slice(0, 500) : "", photo = img(a.photo);
+      if (!text && !photo) throw new Error("Add a note or a photo");
+      i.proof.push({ t: Date.now(), by: who.name, text, photo });
+      if (i.status === "assigned") i.status = "progress";
+      const m = d.missions.find(x => x.id === i.missionId); if (m) m.hours += 2;
+      log(i, "Progress evidence uploaded", "ok"); break;
+    }
+    case "flag": {
+      const i = issue(a.id);
+      if (i.status === "resolved") { i.status = "review"; i.verif = "disputed"; log(i, "Flagged as not fully fixed. Sent back for review", "alert"); }
+      else log(i, "Flagged for coordinator attention", "alert");
+      break;
+    }
+    case "availability": { const v = vol(); v.available = !!a.available; ev(`${who.name} is now ${v.available ? "available" : "unavailable"}`); break; }
+    case "skills": {
+      if (!Array.isArray(a.skills) || !a.skills.every(s => CATS.includes(s))) throw new Error("Invalid skills");
+      vol().skills = a.skills; break;
+    }
+    case "delivery": { const r = res(a.id); r.low = false; r.note = str(a.note, 120, "Delivery note"); ev(`${r.name}: delivery recorded. ${r.note}`, "ok"); break; }
+    case "shortage": { const r = res(a.id); r.low = true; ev(`${r.name}: shortage flagged`, "alert"); break; }
+    case "addResource": {
+      if (!KINDS.includes(a.kind)) throw new Error("Invalid resource type");
+      inBounds(num(a.lat, "Latitude"), num(a.lng, "Longitude"));
+      const r: Resource = { id: uid("r"), name: str(a.name, 80, "Name"), kind: a.kind, lat: num(a.lat, "Latitude"), lng: num(a.lng, "Longitude"), note: str(a.note, 120, "Note") };
+      d.resources.push(r); ev(`Resource added: ${r.name}`, "ok"); break;
+    }
+    case "sos": {
+      if (a.consent !== true) throw new Error("Please agree to share your location with coordinators first");
+      if (!SOS_NEEDS.includes(a.need)) throw new Error("Choose what you need");
+      const lat = num(a.lat, "Latitude"), lng = num(a.lng, "Longitude"), people = Math.round(num(a.people, "Number of people"));
+      inBounds(lat, lng);
+      if (people < 1 || people > 50) throw new Error("Number of people must be between 1 and 50");
+      d.sos ??= [];
+      if (d.sos.some(x => x.author === who.name && ACTIVE.includes(x.status))) throw new Error("You already have an active SOS request");
+      const x: Sos = { id: uid("s"), author: who.name, lat, lng, need: a.need, people, note: (typeof a.note === "string" ? a.note : "").trim().slice(0, 300), contact: typeof a.contact === "string" ? a.contact.slice(0, 30) : undefined, status: "open", assigned: [], created: Date.now(), expires: Date.now() + SOS_TTL, log: [{ t: Date.now(), by: who.name, text: "SOS request sent" }] };
+      d.sos.push(x); ev("A new SOS request is waiting for a coordinator", "alert"); result = x.id; break;
+    }
+    case "sosAck": {
+      const x = sosOf(a.id);
+      if (x.status === "open") { x.status = "acknowledged"; x.log.push({ t: Date.now(), by: who.name, text: "Seen by a coordinator" }); ev("An SOS request was acknowledged by a coordinator", "info"); }
+      break;
+    }
+    case "sosAssign": {
+      const x = sosOf(a.id);
+      if (!ACTIVE.includes(x.status)) throw new Error("This request is already closed");
+      if (!d.volunteers.some(v => v.name === a.name)) throw new Error("Volunteer not found");
+      if (!x.assigned.includes(a.name)) x.assigned.push(a.name);
+      x.status = "assigned"; x.log.push({ t: Date.now(), by: who.name, text: `${a.name} assigned` }); ev("A volunteer was assigned to an SOS request", "ok"); break;
+    }
+    case "sosStatus": {
+      const x = sosOf(a.id);
+      if (who.role !== "admin" && !x.assigned.includes(who.name)) throw new Error("Only a coordinator or an assigned volunteer can update this request");
+      if (a.status !== "helped" && a.status !== "closed") throw new Error("Invalid status");
+      closeSos(x, a.status, `Marked ${a.status}. Location and note deleted`); ev(`An SOS request was marked ${a.status}`, "ok"); break;
+    }
+    case "sosCancel": {
+      const x = sosOf(a.id);
+      if (x.author !== who.name) throw new Error("Only the author can cancel this request");
+      closeSos(x, "closed", "Cancelled by the author. Location and note deleted"); break;
+    }
+    case "agentStart": {
+      const i = issue(a.id);
+      if (i.agent) throw new Error("The agent already started on this issue");
+      if (!owns(i) && !i.confirmedBy.includes(who.name)) throw new Error("Only the author, someone who confirmed it, or a coordinator can start the agent");
+      i.agent = makeAgent(i, a); log(i, "AI agent prepared a complaint draft", "ok"); break;
+    }
+    case "agentDraft": {
+      const i = issue(a.id), A = i.agent;
+      if (!A) throw new Error("Start the agent first");
+      if (!owns(i)) throw new Error("Only the author or a coordinator can change the draft");
+      if (A.draft.sentAt) throw new Error("This complaint was already sent");
+      if (typeof a.subject === "string" || typeof a.body === "string") {
+        A.draft.subject = str(a.subject ?? A.draft.subject, 200, "Subject"); A.draft.body = str(a.body ?? A.draft.body, 3000, "Complaint text"); A.draft.edited = true;
+      } else {
+        const dl = a.lang === "hi" || a.lang === "en" ? a.lang : A.draft.lang, last = A.history[A.history.length - 1];
+        const g = draftComplaint({ lang: dl, level: A.draft.level, to: A.draft.to, nbhd, cat: i.cat, summaryEn: A.summaryEn, original: A.original, lat: i.lat, lng: i.lng, reports: i.reports, created: i.created, hasPhoto: !!i.photo, verified: i.verif === "verified" || i.verif === "resolved", prev: A.draft.level > 0 && last ? { to: last.to, sentAt: last.sentAt, ref: last.ref } : undefined });
+        A.draft = { level: A.draft.level, to: A.draft.to, lang: dl, ...g };
+      }
+      A.draft.approvedAt = undefined; A.draft.approvedBy = undefined; break;
+    }
+    case "agentApprove": {
+      const i = issue(a.id), A = i.agent;
+      if (!A) throw new Error("Start the agent first");
+      if (!owns(i)) throw new Error("Only the author or a coordinator can approve");
+      if (A.draft.sentAt) throw new Error("This complaint was already sent");
+      A.draft.approvedAt = Date.now(); A.draft.approvedBy = who.name; log(i, "Complaint approved by a person", "ok"); break;
+    }
+    case "agentSend": {
+      const i = issue(a.id), A = i.agent;
+      if (!A) throw new Error("Start the agent first");
+      if (!owns(i)) throw new Error("Only the author or a coordinator can mark this as sent");
+      if (!A.draft.approvedAt) throw new Error("Approve the complaint before sending it");
+      if (A.draft.sentAt) throw new Error("This complaint was already sent");
+      if (!["copied", "emailed", "simulated"].includes(a.via)) throw new Error("Invalid way of sending");
+      const now = Date.now(), ref = txt(a.ref, 60), wait = routeFor(i.cat).ladder[A.draft.level]?.waitDays;
+      A.draft.sentAt = now; A.draft.via = a.via; A.history.push({ level: A.draft.level, to: A.draft.to, sentAt: now, ref: ref || undefined });
+      i.handoff = { to: A.draft.to, ref, sentAt: now, by: who.name, status: "sent" };
+      A.escalateAt = wait ? now + wait * 86400000 : undefined;
+      log(i, `Complaint sent to ${A.draft.to}${a.via === "simulated" ? " (simulated)" : ""}${ref ? `. Reference ${ref}` : ""}`, "ok"); break;
+    }
+    case "agentRef": {
+      const i = issue(a.id), A = i.agent;
+      if (!A || !i.handoff) throw new Error("Send the complaint first");
+      if (!owns(i)) throw new Error("Only the author or a coordinator can record this");
+      const ref = str(a.ref, 60, "Reference number");
+      i.handoff.ref = ref; const last = A.history[A.history.length - 1]; if (last) last.ref = ref;
+      log(i, `Reference number received: ${ref}`, "ok"); break;
+    }
+    case "agentEscalate": {
+      const i = issue(a.id);
+      if (!i.agent) throw new Error("Start the agent first");
+      if (i.status === "resolved") throw new Error("This issue is already resolved");
+      if (!escalate(i, nbhd)) throw new Error("Nothing to escalate yet, or this is the last level. Consider contacting your elected representative or filing a right-to-information request");
+      log(i, "Escalation draft prepared. Review and approve it to send", "alert"); break;
+    }
+    case "checkinStart": {
+      const title = str(a.title, 100, "Title");
+      d.checkin = { id: uid("c"), title, started: Date.now(), by: who.name, replies: {} };
+      ev(`Check-in started: ${title}. Please say whether you are safe`, "alert"); break;
+    }
+    case "checkinReply": {
+      const c = d.checkin;
+      if (!c || c.closed) throw new Error("No check-in is open right now");
+      c.replies[who.name] = { ok: !!a.ok, t: Date.now(), note: txt(a.note, 200) };
+      if (!a.ok) ev("Someone replied that they need help in the check-in", "alert");
+      break;
+    }
+    case "checkinClose": { if (d.checkin) d.checkin.closed = true; ev("The check-in was closed", "info"); break; }
+    case "careSet": {
+      if (a.consent !== true) throw new Error("Please agree to share this with coordinators first");
+      if (!CARE_NEEDS.includes(a.need)) throw new Error("Choose a type of help");
+      const list = (d.care ??= []).filter(c => c.name !== who.name);
+      if (list.length >= 300) throw new Error("The register is full");
+      list.push({ name: who.name, need: a.need, note: txt(a.note, 200), t: Date.now() }); d.care = list; break;
+    }
+    case "careRemove": { d.care = (d.care ?? []).filter(c => c.name !== who.name); break; }
+    case "planSet": { d.plan = { routes: txt(a.routes, 1500), notes: txt(a.notes, 1500), contacts: txt(a.contacts, 800), updated: Date.now(), by: who.name }; ev("The emergency plan was updated", "info"); break; }
+    case "abilities": {
+      if (!Array.isArray(a.abilities)) throw new Error("Invalid abilities");
+      vol().abilities = a.abilities.filter(x => ABILITIES.includes(x)); break;
+    }
+    case "shareAdd": {
+      if (a.kind !== "offer" && a.kind !== "request") throw new Error("Choose offer or request");
+      if (!SHARE_CATS.includes(a.cat)) throw new Error("Choose a category");
+      const list = (d.shares ??= []);
+      if (list.filter(x => x.author === who.name && x.status !== "done").length >= 10) throw new Error("You already have 10 open posts");
+      const x: Share = { id: uid("sh"), kind: a.kind, cat: a.cat, title: str(a.title, 80, "Title"), note: txt(a.note, 300), author: who.name, created: Date.now(), expires: Date.now() + 14 * 86400000, status: "open", thread: [] };
+      list.push(x); ev(`New ${x.kind} in the exchange: ${x.title}`, "info"); result = x.id; break;
+    }
+    case "shareClaim": {
+      const x = (d.shares ?? []).find(y => y.id === a.id);
+      if (!x || x.status !== "open") throw new Error("This post is no longer open");
+      if (x.author === who.name) throw new Error("This is your own post");
+      x.status = "matched"; x.with = who.name; x.thread.push({ by: "System", text: `${who.name} responded`, t: Date.now() }); break;
+    }
+    case "shareMsg": {
+      const x = (d.shares ?? []).find(y => y.id === a.id);
+      if (!x) throw new Error("Post not found");
+      if (x.thread.length >= 30) throw new Error("This conversation is full");
+      x.thread.push({ by: who.name, text: str(a.text, 300, "Message"), t: Date.now() }); break;
+    }
+    case "shareDone": {
+      const x = (d.shares ?? []).find(y => y.id === a.id);
+      if (!x) throw new Error("Post not found");
+      if (x.author !== who.name && x.with !== who.name) throw new Error("Only the people involved can finish this");
+      x.status = "done"; break;
+    }
+    case "shareRemove": {
+      const x = (d.shares ?? []).find(y => y.id === a.id);
+      if (!x) throw new Error("Post not found");
+      if (x.author !== who.name && who.role !== "admin") throw new Error("Only the author or a coordinator can remove this");
+      d.shares = (d.shares ?? []).filter(y => y.id !== a.id); break;
+    }
+    case "noticeAdd": {
+      const n: Notice = { id: uid("n"), title: str(a.title, 100, "Title"), body: txt(a.body, 1000), author: who.name, created: Date.now(), pinned: !!a.pinned, urgent: !!a.urgent };
+      (d.notices ??= []).unshift(n); d.notices = d.notices.slice(0, 50); ev(`${n.urgent ? "Urgent notice" : "Notice"}: ${n.title}`, n.urgent ? "alert" : "info"); result = n.id; break;
+    }
+    case "noticeRemove": { d.notices = (d.notices ?? []).filter(n => n.id !== a.id); break; }
+    case "authoritySet": {
+      const email = txt(a.email, 120);
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("That email address looks wrong");
+      const list = (d.authorities ??= []);
+      if (list.length >= 20) throw new Error("The directory is full");
+      list.push({ id: uid("au"), name: str(a.name, 60, "Name"), email, phone: txt(a.phone, 30) }); break;
+    }
+    case "authorityRemove": { d.authorities = (d.authorities ?? []).filter(x => x.id !== a.id); break; }
+    case "handoff": {
+      const i = issue(a.id), au = (d.authorities ?? []).find(x => x.id === a.authorityId);
+      if (!au) throw new Error("Choose an authority from the directory");
+      i.handoff = { to: au.name, email: au.email || undefined, ref: txt(a.ref, 60), sentAt: Date.now(), by: who.name, status: "sent" };
+      log(i, `Handed off to ${au.name}`, "ok"); break;
+    }
+    case "handoffStatus": {
+      const i = issue(a.id);
+      if (!i.handoff) throw new Error("This issue has not been handed off");
+      if (!["sent", "acknowledged", "resolved", "no_response"].includes(a.status)) throw new Error("Invalid status");
+      i.handoff.status = a.status; if (typeof a.ref === "string") i.handoff.ref = a.ref.slice(0, 60);
+      log(i, `Authority response: ${a.status.replace("_", " ")}`, "info"); break;
+    }
+    case "demo": {
+      const step = d.demo, t = "i4", R = "Resident (demo)", C = "Coordinator (demo)";
+      if (step >= DEMO.length) throw new Error("Demo finished. Reset to run it again");
+      const as = (role: Role, name: string, x: Action) => { d = reduce(d, { role, name }, x).doc; };
+      const iss = () => d.issues.find(i => i.id === t)!;
+      if (step === 0) {
+        const dup = suggest(d, { title: "Garbage all over Lakeview Road", desc: "Trash dumped near the bins", cat: "garbage", lat: 28.5654, lng: 77.2126 }).dup;
+        if (dup) as("resident", R, { t: "merge", id: dup.id });
+        as("resident", R, { t: "agentStart", id: t, lang: "hi", original: DEMO_HINDI, summaryEn: "Garbage has piled up on the street, causing a bad smell, and children's health may be at risk.", source: "scripted" });
+      }
+      if (step === 1) { as("admin", C, { t: "advance", id: t }); as("admin", C, { t: "verify", id: t, v: "verified" }); as("admin", C, { t: "agentDraft", id: t }); }
+      if (step === 2) { as("admin", C, { t: "agentApprove", id: t }); as("admin", C, { t: "agentSend", id: t, via: "simulated", ref: "DEMO-2043" }); }
+      if (step === 3) { iss().agent!.escalateAt = Date.now() - 1000; dueEscalations(d, Date.now(), nbhd); }
+      if (step === 4) as("admin", C, { t: "actionPlanApprove", id: t });
+      if (step === 5) { const mid = iss().missionId!; ["Asha K. (demo)", "Ravi S. (demo)", "Meera T. (demo)"].forEach(n => as("volunteer", n, { t: "join", mid })); }
+      if (step === 6) as("volunteer", "Asha K. (demo)", { t: "proof", id: t, text: "Simulated after photo: bags collected, the whole road cleared", photo: DEMO_AFTER });
+      if (step === 7) { as("admin", C, { t: "advance", id: t }); as("resident", R, { t: "feedback", id: t, ok: true, note: "The street looks clean now" }); }
+      if (step === 8) as("moderator", "Moderator (demo)", { t: "approveResolution", id: t, note: "Evidence checked against the original photo" });
+      d.demo = step + 1; break;
+    }
+    case "reset": return { doc: seed() };
+    default: throw new Error("Unknown action");
+  }
+  return { doc: d, result };
+}
+
+export interface Stats { reports: number; confirms: number; proofs: number; missions: number; sos: number; shares: number }
+const blank = (): Stats => ({ reports: 0, confirms: 0, proofs: 0, missions: 0, sos: 0, shares: 0 });
+const goodV = (i: Issue) => i.verif === "verified" || i.verif === "resolved";
+export function statsFor(d: Doc) {
+  const m = new Map<string, Stats>(), g = (n: string) => { let x = m.get(n); if (!x) { x = blank(); m.set(n, x); } return x; };
+  d.issues.forEach(i => {
+    if (i.hidden) return;
+    if (goodV(i)) { g(i.author).reports++; i.confirmedBy.forEach(n => { g(n).confirms++; }); }
+    if (i.status === "resolved") i.proof.forEach(p => { g(p.by).proofs++; });
+  });
+  d.missions.forEach(x => x.joined.forEach(n => { g(n).missions++; }));
+  (d.sos ?? []).forEach(x => { if (x.status === "helped") x.assigned.forEach(n => { g(n).sos++; }); });
+  (d.shares ?? []).forEach(x => { if (x.status === "done") { g(x.author).shares++; if (x.with) g(x.with).shares++; } });
+  m.delete("Former member"); m.delete("System");
+  return m;
+}
+export const points = (s: Stats) => s.reports * 3 + s.confirms + s.proofs * 3 + s.missions * 2 + s.sos * 5 + s.shares * 2;
+export const BADGES: { id: string; label: string; test: (s: Stats) => boolean }[] = [
+  { id: "reporter", label: "Verified reporter", test: s => s.reports >= 1 },
+  { id: "watch", label: "Neighborhood watch", test: s => s.confirms >= 5 },
+  { id: "fixer", label: "Fixer", test: s => s.proofs >= 3 },
+  { id: "volunteer", label: "Volunteer", test: s => s.missions >= 3 },
+  { id: "responder", label: "Responder", test: s => s.sos >= 1 },
+  { id: "neighbor", label: "Good neighbor", test: s => s.shares >= 3 },
+];
+export const myStats = (d: Doc, name: string): Stats => statsFor(d).get(name) ?? blank();
+export const leaderboard = (d: Doc) => [...statsFor(d)].map(([name, s]) => ({ name, s, pts: points(s) })).filter(x => x.pts > 0).sort((a, b) => b.pts - a.pts).slice(0, 10);
+
+export function hotspots(d: Doc) {
+  const now = Date.now(), cells = new Map<string, { n: number; lat: number; lng: number; cats: Map<Cat, number> }>();
+  d.issues.forEach(i => {
+    if (i.hidden || now - i.created > 90 * 86400000) return;
+    const k = `${Math.round(i.lat / 0.0015)}:${Math.round(i.lng / 0.0015)}`;
+    let c = cells.get(k); if (!c) { c = { n: 0, lat: 0, lng: 0, cats: new Map() }; cells.set(k, c); }
+    c.n++; c.lat += i.lat; c.lng += i.lng; c.cats.set(i.cat, (c.cats.get(i.cat) ?? 0) + 1);
+  });
+  return [...cells.values()].filter(c => c.n >= 2).sort((a, b) => b.n - a.n).slice(0, 3)
+    .map(c => ({ n: c.n, lat: c.lat / c.n, lng: c.lng / c.n, cat: [...c.cats].sort((a, b) => b[1] - a[1])[0][0] }));
+}
+
+export function publicSummary(d: Doc) {
+  const done = d.issues.filter(i => i.resolvedAt && !i.hidden);
+  const avg = done.length ? done.reduce((a, i) => a + (i.resolvedAt! - i.created), 0) / done.length / 3600000 : 0;
+  return {
+    reports: d.issues.filter(i => !i.hidden).length, resolved: done.length, avgHours: Math.round(avg * 10) / 10,
+    volunteerHours: d.missions.reduce((a, m) => a + m.hours, 0), missionsDone: d.missions.filter(m => m.done).length,
+    sosHelped: (d.sos ?? []).filter(x => x.status === "helped").length, sharesDone: (d.shares ?? []).filter(x => x.status === "done").length,
+  };
+}
+
+export function weeklyDigest(d: Doc) {
+  const now = Date.now(), w = 7 * 86400000, ins = insights(d);
+  const fresh = d.issues.filter(i => !i.hidden && now - i.created < w).length, fixed = d.issues.filter(i => i.resolvedAt && now - i.resolvedAt < w).length;
+  return { title: "Weekly neighborhood summary", body: `This week: ${fresh} new report(s), ${fixed} fixed. ${ins.summary}\n${ins.bullets.map(b => `- ${b.title}: ${b.detail}`).join("\n")}` };
+}
+
+function escalate(i: Issue, nbhd: string) {
+  const A = i.agent;
+  if (!A) return false;
+  const last = A.history[A.history.length - 1];
+  if (!last || A.draft.level !== last.level) return false;
+  const next = routeFor(i.cat).ladder[last.level];
+  if (!next) return false;
+  const g = draftComplaint({ lang: A.draft.lang, level: last.level + 1, to: next.to, nbhd, cat: i.cat, summaryEn: A.summaryEn, original: A.original, lat: i.lat, lng: i.lng, reports: i.reports, created: i.created, hasPhoto: !!i.photo, verified: i.verif === "verified" || i.verif === "resolved", prev: { to: last.to, sentAt: last.sentAt, ref: last.ref } });
+  A.draft = { level: last.level + 1, to: next.to, lang: A.draft.lang, ...g };
+  A.escalateAt = undefined;
+  return true;
+}
+
+export function dueEscalations(d: Doc, now = Date.now(), nbhd = "our neighborhood") {
+  const titles: string[] = [];
+  d.issues.forEach(i => {
+    if (!i.agent?.escalateAt || now < i.agent.escalateAt || i.status === "resolved" || i.hidden) return;
+    if (i.handoff && (i.handoff.status === "acknowledged" || i.handoff.status === "resolved")) { i.agent.escalateAt = undefined; return; }
+    if (escalate(i, nbhd)) { i.log.push({ t: now, by: "AI agent", text: "No resolution by the deadline. Escalation draft prepared. Review and approve it to send" }); titles.push(i.title); }
+    else i.agent.escalateAt = undefined;
+  });
+  if (titles.length) d.events.unshift({ t: now, text: `Escalation draft ready: ${titles.join("; ")}`.slice(0, 200), tone: "alert" });
+  return titles;
+}

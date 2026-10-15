@@ -1,0 +1,53 @@
+{
+  "name": "neighborhood-os",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n web,api \"vite\" \"tsx watch server/index.ts\"",
+    "web": "vite",
+    "api": "tsx server/index.ts",
+    "build": "tsc --noEmit && vite build",
+    "start": "tsx server/index.ts",
+    "preview": "vite preview",
+    "check": "tsc --noEmit && tsc -p tsconfig.server.json",
+    "test": "tsx tests/community.ts && tsx tests/sos.ts && tsx tests/cap.ts && tsx tests/agent.ts && tsx tests/review.ts",
+    "seed": "tsx server/seed.ts",
+    "seed:sql": "tsx server/seed.ts --sql",
+    "test:render": "esbuild tests/render.tsx --bundle --platform=node --format=cjs --define:import.meta.env={} --jsx=automatic --loader:.json=json \"--define:location={\\\"origin\\\":\\\"http://x\\\",\\\"search\\\":\\\"\\\"}\" --log-level=error --outfile=node_modules/.cache/render.cjs && node node_modules/.cache/render.cjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "compression": "^1.7.4",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "fast-xml-parser": "^5.11.2",
+    "framer-motion": "^14.1.0",
+    "lucide-react": "^0.441.0",
+    "nodemailer": "^10.1.0",
+    "pg": "^8.12.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^3.10.1",
+    "topojson-client": "^3.1.0",
+    "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "@types/compression": "^1.8.1",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.5",
+    "@types/nodemailer": "^8.0.2",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@types/topojson-client": "^3.1.5",
+    "@types/web-push": "^3.6.4",
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^9.0.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.0"
+  }
+}
