@@ -55,7 +55,6 @@ export function Prepare({ st, app, act }: { st: S.State; app: S.AppState; act: A
   const counts = S.ABILITIES.map(a => [a, st.volunteers.filter(v => v.available && v.abilities?.includes(a)).length] as const).filter(x => x[1] > 0);
   return (
     <>
-      <h3>{t("Prepare")}</h3>
       <CheckinCard st={st} app={app} act={act} />
 
       <div className="card">

@@ -73,7 +73,6 @@ export function Reports({ st, app, act }: { st: S.State; app: S.AppState; act: A
   ]));
   return (
     <>
-      <h3>{t("Council reports")}</h3>
       <small className="dim">For coordinators, resident associations and local offices. Exports contain no resident names.</small>
       <div className="row wrap">
         <select value={range} onChange={e => setRange(Number(e.target.value))} aria-label="Period"><option value={7}>Last 7 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option><option value={0}>All time</option></select>

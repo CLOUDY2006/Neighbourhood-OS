@@ -2,16 +2,18 @@ import { useMemo, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import * as S from "./store";
 import type { Act } from "./ui";
+import { useTheme } from "./a11y";
+import { palette, tooltipStyle } from "./theme";
 
 const DAY = 86400000;
-const tip = { contentStyle: { background: "#0b1a33", border: "1px solid rgba(110,160,255,.3)", borderRadius: 10, color: "#e8f0ff", fontSize: 12 }, labelStyle: { color: "#8b9bbd" } };
-const axis = { stroke: "#8b9bbd", fontSize: 11, tickLine: false as const };
+const tip = tooltipStyle;
 
 function Box({ title, tag, children }: { title: string; tag: "Actual" | "Estimate"; children: React.ReactNode }) {
   return <div className="card"><div className="row between"><b>{title}</b><span className={`chip ${tag === "Actual" ? "green" : "amber"}`}>{tag}</span></div>{children}</div>;
 }
 
 export function Pulse({ st, app, act, demo }: { st: S.State; app: S.AppState; act: Act; demo: boolean }) {
+  const P = palette(useTheme()), axis = { stroke: P.chart.axis, fontSize: 11, tickLine: false as const };
   const [range, setRange] = useState(30), [ins, setIns] = useState<S.Insights | null>(null), [busy, setBusy] = useState(false);
   const d = useMemo(() => {
     const now = Date.now(), issues = st.issues.filter(i => !i.hidden);
@@ -34,7 +36,6 @@ export function Pulse({ st, app, act, demo }: { st: S.State; app: S.AppState; ac
   }, [st, range]);
   return (
     <>
-      <h3>Neighborhood pulse</h3>
       <div className="row wrap">
         <select value={range} onChange={e => setRange(Number(e.target.value))} aria-label="Date range"><option value={7}>Last 7 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option><option value={0}>All time</option></select>
         <small className="dim">From {new Date(d.start).toLocaleDateString()}</small>
@@ -49,34 +50,34 @@ export function Pulse({ st, app, act, demo }: { st: S.State; app: S.AppState; ac
 
       <Box title="Reported and resolved" tag="Actual">
         <ResponsiveContainer width="100%" height={170}><AreaChart data={d.series} margin={{ left: -20, right: 6, top: 6 }}>
-          <CartesianGrid stroke="rgba(110,160,255,.12)" vertical={false} /><XAxis dataKey="label" {...axis} interval="preserveStartEnd" /><YAxis allowDecimals={false} {...axis} /><Tooltip {...tip} /><Legend wrapperStyle={{ fontSize: 11 }} />
-          <Area type="monotone" dataKey="reported" stroke="#ff3b4e" fill="#ff3b4e" fillOpacity={0.25} /><Area type="monotone" dataKey="resolved" stroke="#2dff9a" fill="#2dff9a" fillOpacity={0.25} />
+          <CartesianGrid stroke={P.chart.grid} vertical={false} /><XAxis dataKey="label" {...axis} interval="preserveStartEnd" /><YAxis allowDecimals={false} {...axis} /><Tooltip {...tip} /><Legend wrapperStyle={{ fontSize: 11 }} />
+          <Area type="monotone" dataKey="reported" stroke={P.red} fill={P.red} fillOpacity={0.25} /><Area type="monotone" dataKey="resolved" stroke={P.green} fill={P.green} fillOpacity={0.25} />
         </AreaChart></ResponsiveContainer>
       </Box>
       <Box title="Open issues over time" tag="Actual">
         <ResponsiveContainer width="100%" height={140}><AreaChart data={d.series} margin={{ left: -20, right: 6, top: 6 }}>
-          <CartesianGrid stroke="rgba(110,160,255,.12)" vertical={false} /><XAxis dataKey="label" {...axis} interval="preserveStartEnd" /><YAxis allowDecimals={false} {...axis} /><Tooltip {...tip} />
-          <Area type="stepAfter" dataKey="open" stroke="#3de8ff" fill="#3de8ff" fillOpacity={0.2} />
+          <CartesianGrid stroke={P.chart.grid} vertical={false} /><XAxis dataKey="label" {...axis} interval="preserveStartEnd" /><YAxis allowDecimals={false} {...axis} /><Tooltip {...tip} />
+          <Area type="stepAfter" dataKey="open" stroke={P.teal} fill={P.teal} fillOpacity={0.2} />
         </AreaChart></ResponsiveContainer>
       </Box>
       <Box title="By category" tag="Actual">
         <ResponsiveContainer width="100%" height={160}><BarChart data={d.cats} margin={{ left: -20, right: 6, top: 6 }}>
-          <CartesianGrid stroke="rgba(110,160,255,.12)" vertical={false} /><XAxis dataKey="cat" {...axis} /><YAxis allowDecimals={false} {...axis} /><Tooltip {...tip} /><Legend wrapperStyle={{ fontSize: 11 }} />
-          <Bar dataKey="open" stackId="a" fill="#ff9a2e" /><Bar dataKey="resolved" stackId="a" fill="#2dff9a" />
+          <CartesianGrid stroke={P.chart.grid} vertical={false} /><XAxis dataKey="cat" {...axis} /><YAxis allowDecimals={false} {...axis} /><Tooltip {...tip} /><Legend wrapperStyle={{ fontSize: 11 }} />
+          <Bar dataKey="open" stackId="a" fill={P.amber} /><Bar dataKey="resolved" stackId="a" fill={P.green} />
         </BarChart></ResponsiveContainer>
       </Box>
       {d.hrs.length > 0 && (
         <Box title="Average hours to resolve" tag="Actual">
           <ResponsiveContainer width="100%" height={140}><BarChart data={d.hrs} margin={{ left: -20, right: 6, top: 6 }}>
-            <CartesianGrid stroke="rgba(110,160,255,.12)" vertical={false} /><XAxis dataKey="cat" {...axis} /><YAxis {...axis} /><Tooltip {...tip} /><Bar dataKey="hours" fill="#3b82ff" />
+            <CartesianGrid stroke={P.chart.grid} vertical={false} /><XAxis dataKey="cat" {...axis} /><YAxis {...axis} /><Tooltip {...tip} /><Bar dataKey="hours" fill={P.accent} />
           </BarChart></ResponsiveContainer>
         </Box>
       )}
       {d.missions.length > 0 && (
         <Box title="Volunteer hours and participation by mission" tag="Actual">
           <ResponsiveContainer width="100%" height={150}><BarChart data={d.missions} margin={{ left: -20, right: 6, top: 6 }}>
-            <CartesianGrid stroke="rgba(110,160,255,.12)" vertical={false} /><XAxis dataKey="name" {...axis} /><YAxis allowDecimals={false} {...axis} /><Tooltip {...tip} /><Legend wrapperStyle={{ fontSize: 11 }} />
-            <Bar dataKey="hours" fill="#3de8ff" /><Bar dataKey="volunteers" fill="#ff5ad1" />
+            <CartesianGrid stroke={P.chart.grid} vertical={false} /><XAxis dataKey="name" {...axis} /><YAxis allowDecimals={false} {...axis} /><Tooltip {...tip} /><Legend wrapperStyle={{ fontSize: 11 }} />
+            <Bar dataKey="hours" fill={P.teal} /><Bar dataKey="volunteers" fill={P.chart.pink} />
           </BarChart></ResponsiveContainer>
         </Box>
       )}

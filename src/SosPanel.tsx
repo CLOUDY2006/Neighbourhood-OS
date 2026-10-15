@@ -21,7 +21,6 @@ export default function SosPanel({ st, app, pick, setPick, act }: { st: S.State;
 
   return (
     <>
-      <h3>{t("SOS")}</h3>
       <div className="card alertcard official">
         <b>{t("Call your local emergency number first")}</b>
         <p>{t("If anyone is in immediate danger, call emergency services (for example 112, 911 or 999) before anything else. Neighbors and volunteers may not see a request in time.")}</p>

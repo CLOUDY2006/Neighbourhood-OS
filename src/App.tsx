@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Bell, Radar, PlusCircle, Users, Package, BarChart3, RotateCcw, Play, ShieldAlert, UserCog, User, Globe, Siren, ShieldCheck, FileText, FlaskConical } from "lucide-react";
+import { Bell, Radar, PlusCircle, Users, Package, BarChart3, RotateCcw, Play, ShieldAlert, UserCog, User, Globe, Siren, ShieldCheck, FileText, FlaskConical, Sun, Moon, Ellipsis, LogOut } from "lucide-react";
 import * as S from "./store";
-import IsoMap, { type MapView } from "./IsoMap";
+import IsoMap, { ViewSwitch, type MapView } from "./IsoMap";
+import { toggleTheme, useTheme } from "./a11y";
 import { Detail, AiPhoto, PhotoPicker } from "./Detail";
 import { Pulse } from "./Pulse";
 import { Simulator } from "./Simulator";
@@ -33,6 +34,47 @@ const ago = (t: number) => {
   const m = Math.round((Date.now() - t) / 60000);
   return m < 1 ? "now" : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`;
 };
+const TAB_INFO: Record<Tab, [string, string]> = {
+  feed: ["Command", "Live overview of the neighborhood: alerts, notices, how much work is in each stage, and every issue. Pick an issue to see its details."],
+  report: ["Report a problem", "Click the map to place a pin, describe what is wrong and submit. A coordinator reviews every report."],
+  missions: ["Missions", "Volunteer work that fixes reported problems. Join a mission, or set your skills and availability."],
+  pulse: ["Pulse", "How fast problems get fixed. Actual numbers are tagged green and estimates amber."],
+  sos: ["SOS", "Ask neighbors for help. If anyone is in danger, call your local emergency number first."],
+  resources: ["Resources", "Shelters, water points and supplies on the map, plus the neighbor exchange."],
+  prepare: ["Prepare", "Safety check-ins, the emergency plan and the optional extra-help register."],
+  world: ["World", "Official hazard feeds. An alert near this neighborhood can switch on Crisis Mode."],
+  sim: ["What-if", "Try different numbers of volunteers and hours. Everything is an estimate and nothing real changes."],
+  reports: ["Council reports", "Summaries for local offices: trends, hotspots and hand-offs, with CSV and PDF export."],
+  people: ["People", "Members and their roles. Every coordinator action is recorded in the log."],
+  account: ["Account", "Your profile, neighborhoods, notifications, display settings and privacy."],
+};
+const PIPE: [S.Status, string, string, string][] = [
+  ["reported", "Reported", "red", "A neighbor reported it. Others can confirm with “I see this too”."],
+  ["review", "Review", "red", "A coordinator is checking the report."],
+  ["assigned", "Assigned", "amber", "A mission or volunteer has been assigned."],
+  ["progress", "Fixing", "amber", "Volunteers are working on it and posting evidence."],
+  ["pending", "Approval", "amber", "A different moderator must approve the fix."],
+  ["resolved", "Fixed", "green", "Approved. The pin turns green on the map."],
+];
+
+function Pipeline({ st }: { st: S.State }) {
+  const vis = st.issues.filter(i => !i.hidden), n = (s: S.Status) => vis.filter(i => i.status === s).length, total = Math.max(1, vis.length);
+  return (
+    <div className="card pipe">
+      <div className="row between"><b>How problems get fixed</b><small className="dim">{vis.length} issue{vis.length === 1 ? "" : "s"}</small></div>
+      <div className="pipebar" aria-hidden="true">{PIPE.map(([s, , c]) => <i key={s} className={c} style={{ flexGrow: n(s) / total }} />)}</div>
+      <ol className="pipesteps">
+        {PIPE.map(([s, label, c, why]) => (
+          <li key={s} className={`${c} ${n(s) ? "has" : ""}`} title={why}>
+            <span className="pnum">{n(s)}</span>
+            <span className="plbl">{label}</span>
+          </li>
+        ))}
+      </ol>
+      <small className="dim">Report → neighbors confirm → coordinator verifies and assigns → volunteers fix → a moderator approves the proof.</small>
+    </div>
+  );
+}
 
 function Feed({ st, app, sel, setSel, act, demo, goReport, alerts, onWorld }: { st: S.State; app: S.AppState; sel: string | null; setSel: (id: string | null) => void; act: Act; demo: boolean; goReport: () => void; alerts: S.Alert[]; onWorld: () => void }) {
   const t = useT();
@@ -41,8 +83,12 @@ function Feed({ st, app, sel, setSel, act, demo, goReport, alerts, onWorld }: { 
   const done = st.issues.filter(i => i.status === "resolved").length;
   const issue = st.issues.find(i => i.id === sel);
   const order = { critical: 0, high: 1, medium: 2, low: 3 };
+  useEffect(() => {
+    if (sel) requestAnimationFrame(() => document.querySelector(".card.detail")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }, [sel]);
   return (
     <>
+      {issue && <Detail i={issue} st={st} act={act} close={() => setSel(null)} />}
       <AlertBanner alerts={alerts} onWorld={onWorld} />
       <CheckinCard st={st} app={app} act={act} compact />
       <NoticeBoard st={st} act={act} />
@@ -54,6 +100,7 @@ function Feed({ st, app, sel, setSel, act, demo, goReport, alerts, onWorld }: { 
         </div>
       )}
       <div className="stats"><div className="red"><b>{open}</b>{t("Open")}</div><div className="amber"><b>{prog}</b>{t("In progress")}</div><div className="green"><b>{done}</b>{t("Fixed")}</div></div>
+      {st.issues.length > 0 && <Pipeline st={st} />}
       {demo && (
         <div className="card demo">
           <b>Guided AI agent demo</b>
@@ -69,7 +116,6 @@ function Feed({ st, app, sel, setSel, act, demo, goReport, alerts, onWorld }: { 
           <button className="go" onClick={goReport}>Report a problem</button>
         </div>
       )}
-      {issue && <Detail i={issue} st={st} act={act} close={() => setSel(null)} />}
       {st.issues.length > 0 && <h3>{t("Live issues")}</h3>}
       {[...st.issues].sort((a, b) => S.priorityScore(st, b).score - S.priorityScore(st, a).score || b.created - a.created).map(i => (
         <button key={i.id} className={`issue ${grp(i.status)}`} onClick={() => setSel(i.id)}>
@@ -100,7 +146,6 @@ function Report({ pick, act, done }: { pick: Pt; act: Act; done: (id: string) =>
   }, "Report submitted. A coordinator will review it");
   return (
     <div className="form">
-      <h3>{t("Report a problem")}</h3>
       <p className="dim">{pick ? `${t("Chosen location")} (${pick.lat.toFixed(4)}, ${pick.lng.toFixed(4)})` : t("Click the map to choose the location.")}</p>
       <div className="row"><input className="grow" placeholder={t("Short title")} maxLength={120} value={f.title} onChange={e => setF({ ...f, title: e.target.value })} /><VoiceButton onText={x => setF({ ...f, title: `${f.title} ${x}`.trim() })} /></div>
       <select value={f.cat} onChange={e => setF({ ...f, cat: e.target.value as S.Cat })} aria-label="Category">{S.CATS.map(c => <option key={c}>{c}</option>)}</select>
@@ -137,7 +182,6 @@ function Missions({ st, act, pick }: { st: S.State; act: Act; pick: Pt }) {
   const me = st.volunteers.find(v => v.name === S.myName());
   return (
     <>
-      <h3>Community missions</h3>
       {S.can(st.role, "mission") && (
         <div className="card form">
           <b>New community mission</b>
@@ -212,7 +256,6 @@ function People({ act }: { act: Act }) {
   useEffect(load, []);
   return (
     <>
-      <h3>People in this neighborhood</h3>
       {ms.map(m => (
         <div key={m.userId} className="card">
           <div className="row between"><b>{m.name}</b>{m.requested && m.role !== "admin" && <span className="chip amber">Wants to coordinate</span>}</div>
@@ -234,7 +277,6 @@ function Account({ st, app, act }: { st: S.State; app: S.AppState; act: Act }) {
   const invite = `${location.origin}/?n=${encodeURIComponent(n.id)}`;
   return (
     <>
-      <h3>Account</h3>
       {live ? (
         <div className="card">
           <b>{app.me?.handle}</b>
@@ -312,20 +354,34 @@ function Main({ app }: { app: S.AppState }) {
   if (st.role === "admin") MORE.push(["sim", "What-if", FlaskConical], ["reports", "Reports", FileText]);
   if (!demo && st.role === "admin") MORE.push(["people", "People", UserCog]);
   const tabNow: Tab = (tab === "people" || tab === "reports" || tab === "sim") && st.role !== "admin" ? "feed" : tab;
-  const navBtn = ([k, l, Ic]: [Tab, string, typeof Radar]) => <button key={k} className={`${tabNow === k ? "on" : ""} ${k === "sos" ? "sostab" : ""}`} onClick={() => setTab(k)} aria-label={t(l)} title={t(l)}><Ic size={20} /><span>{t(l)}</span></button>;
+  const [more, setMore] = useState(false);
+  const theme = useTheme();
+  const ALL: [Tab, string, typeof Radar][] = [...NAV, ...MORE, ["account", "Account", User]];
+  const TabIcon = ALL.find(x => x[0] === tabNow)?.[2] ?? Radar;
+  const navBtn = ([k, l, Ic]: [Tab, string, typeof Radar]) => <button key={k} className={`${tabNow === k ? "on" : ""} ${k === "sos" ? "sostab" : ""}`} onClick={() => { setTab(k); setMore(false); }} aria-label={t(l)} aria-current={tabNow === k ? "page" : undefined} title={t(l)}><Ic size={20} /><span>{t(l)}</span></button>;
+  useEffect(() => {
+    if (!more) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMore(false); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [more]);
 
   return (
-    <div className="app">
+    <div className={`app ${zones.length > 0 || official ? "in-crisis" : ""}`}>
       <a className="skip" href="#panel">{t("Skip to the list")}</a>
-      <nav className="side glass">
-        <div className="logo">N</div>
+      <nav className={`side ${more ? "more-open" : ""}`} aria-label="Main">
+        <div className="logo" aria-hidden="true">N</div>
         {NAV.map(navBtn)}
-        <hr className="sep" />
-        {MORE.map(navBtn)}
-        <hr className="sep" />
-        {navBtn(["account", "Account", User])}
+        <button className={`morebtn ${!NAV.some(x => x[0] === tabNow) ? "on" : ""}`} aria-expanded={more} onClick={() => setMore(!more)}><Ellipsis size={20} /><span>More</span></button>
+        <div className="moreset">
+          <hr className="sep" />
+          {MORE.map(navBtn)}
+          <hr className="sep" />
+          {navBtn(["account", "Account", User])}
+        </div>
       </nav>
-      <header className="top glass">
+      {more && <div className="scrim" onClick={() => setMore(false)} />}
+      <header className="top">
         <div className="brand">NEIGHBORHOOD OS<small>{demo ? "Simulated demo" : `${n.kind === "named" ? "Named neighborhood" : "Area neighborhood"}`} · {n.name}</small></div>
         <span className={`mode ${demo ? "" : "live"}`}>{demo ? t("Demo mode") : `${t("Live")} · ${t(RL[st.role])}`}</span>
         {!demo && (!app.online || app.stale) && <span className="mode off">{t("Offline")}</span>}
@@ -333,11 +389,12 @@ function Main({ app }: { app: S.AppState }) {
         {(zones.length > 0 || official) && <span className="crisis"><ShieldAlert size={14} /> {official ? "Crisis mode: official alert" : `Crisis mode: ${zones.length} cluster${zones.length > 1 ? "s" : ""}`}</span>}
         <div className="grow" />
         <select className="langsel" aria-label={t("Language")} value={lang} onChange={e => setLang(e.target.value)}>{LANGS.map(l => <option key={l.code} value={l.code}>{l.label}</option>)}</select>
+        <button className="iconbtn" onClick={toggleTheme} aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"} data-tip={theme === "dark" ? "Light theme" : "Dark theme"}>{theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}</button>
         <div className="bellwrap">
-          <button aria-label="Notifications" onClick={() => { setBell(!bell); const t = Date.now(); setSeen(t); localStorage.setItem("nos-seen", String(t)); }}><Bell size={16} />{unread > 0 && <b className="badge">{unread}</b>}</button>
+          <button className="iconbtn" aria-label="Notifications" data-tip="Notifications" onClick={() => { setBell(!bell); const t = Date.now(); setSeen(t); localStorage.setItem("nos-seen", String(t)); }}><Bell size={17} />{unread > 0 && <b className="badge">{unread}</b>}</button>
           {bell && (
             <div className="bell-pop" role="dialog" aria-label={t("Notifications")}>
-              <div className="bell-head"><b>{t("Notifications")}</b><button onClick={() => setBell(false)} aria-label={t("Close")}>✕</button></div>
+              <div className="bell-head"><b>{t("Notifications")}</b><button className="x" onClick={() => setBell(false)} aria-label={t("Close")}>✕</button></div>
               {myEvents.length === 0 ? <div className="dim">No notifications yet.</div> : myEvents.slice(0, 8).map((e, i) => <div key={i} className={`ev ${e.tone}`}><span className="mono">{ago(e.t)}</span>{e.text}</div>)}
             </div>
           )}
@@ -350,7 +407,7 @@ function Main({ app }: { app: S.AppState }) {
               </select>
             </label>
             <button onClick={() => act(async () => { await S.reset(); setSel(null); setPick(null); }, "Demo reset")}><RotateCcw size={14} /> {t("Reset demo")}</button>
-            <button onClick={() => S.leave()}>{t("Exit demo")}</button>
+            <button className="ghost" onClick={() => S.leave()}><LogOut size={14} /> {t("Exit demo")}</button>
           </>
         ) : <button onClick={() => S.leave()}>{t("Switch neighborhood")}</button>}
       </header>
@@ -362,7 +419,7 @@ function Main({ app }: { app: S.AppState }) {
             view={view} setView={setView} heat={heat} setHeat={setHeat} showVol={showVol} setShowVol={setShowVol} canSeeVol={st.role === "admin" || st.role === "moderator"}
             sim={simMap} timeOn={tt.on} onTime={() => setTt(o => (o.on ? { on: false, days: 0 } : { on: true, days: 14 }))} />
         </div>
-        {view === "list" && tabNow !== "world" && <div className="layer scroll"><ListView st={stView} filter={filter} sel={sel} onSel={id => { setSel(id); setTab("feed"); }} /><div className="hud hud-view glass" role="group" aria-label="Map view">{(["iso", "flat", "list"] as MapView[]).map(m => <button key={m} className={`tabb ${view === m ? "on" : ""}`} onClick={() => setView(m)}>{m === "iso" ? "Isometric" : m === "flat" ? "Flat" : "List"}</button>)}</div></div>}
+        {view === "list" && tabNow !== "world" && <div className="layer scroll"><ListView st={stView} filter={filter} sel={sel} onSel={id => { setSel(id); setTab("feed"); }} /><ViewSwitch view={view} setView={setView} /></div>}
         {tt.on && tabNow !== "world" && view !== "list" && (
           <div className="hud timebar glass">
             <b>Then vs now</b>
@@ -373,8 +430,12 @@ function Main({ app }: { app: S.AppState }) {
         )}
         {tabNow === "world" && <div className="layer"><WorldMap events={app.world ?? []} mine={{ lat: n.lat, lng: n.lng, name: n.name }} sel={selEv} onSel={setSelEv} alerts={app.alerts} /></div>}
       </main>
-      <aside id="panel" tabIndex={-1} className="panel glass">
-        <AnimatePresence mode="wait"><motion.div key={tabNow} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.14 }}>
+      <aside id="panel" tabIndex={-1} className="panel" aria-labelledby="panel-title">
+        <div className={`phead ${tabNow === "sos" ? "red" : ""}`}>
+          <span className="picon" aria-hidden="true"><TabIcon size={18} /></span>
+          <div><h2 id="panel-title">{t(TAB_INFO[tabNow][0])}</h2><p>{TAB_INFO[tabNow][1]}</p></div>
+        </div>
+        <AnimatePresence mode="wait"><motion.div className="pbody" key={tabNow} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.14 }}>
         {tabNow === "feed" && <Feed st={st} app={app} sel={sel} setSel={setSel} act={act} demo={demo} goReport={() => setTab("report")} alerts={app.alerts} onWorld={() => setTab("world")} />}
         {tabNow === "sos" && <SosPanel st={st} app={app} pick={pick} setPick={setPick} act={act} />}
         {tabNow === "world" && <WorldPanel app={app} sel={selEv} onSel={setSelEv} />}

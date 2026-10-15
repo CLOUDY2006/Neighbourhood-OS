@@ -16,7 +16,17 @@ const LAND_D = (() => {
   const fc = feature(topo as never, topo.objects.land) as unknown as { type: string; features?: { geometry: { type: string; coordinates: number[][][] | number[][][][] } }[]; geometry?: { type: string; coordinates: number[][][] | number[][][][] } };
   const feats = fc.features ?? [fc as { geometry: { type: string; coordinates: number[][][] | number[][][][] } }];
   let d = "";
-  const ring = (r: number[][]) => { r.forEach((c, i) => { d += `${i ? "L" : "M"}${px(c[0]).toFixed(1)},${py(c[1]).toFixed(1)}`; }); d += "Z"; };
+  // unwrap rings that cross the antimeridian, then draw them again shifted by 360° so no band spans the whole map
+  const ring = (r: number[][]) => {
+    let off = 0, lo = Infinity, hi = -Infinity;
+    const pts = r.map((c, i) => {
+      if (i) { const dl = c[0] - r[i - 1][0]; if (dl > 180) off -= 360; else if (dl < -180) off += 360; }
+      const x = c[0] + off; lo = Math.min(lo, x); hi = Math.max(hi, x);
+      return [x, c[1]];
+    });
+    const shifts = [0, ...(lo < -180 ? [360] : []), ...(hi > 180 ? [-360] : [])];
+    for (const s of shifts) { pts.forEach((c, i) => { d += `${i ? "L" : "M"}${px(c[0] + s).toFixed(1)},${py(c[1]).toFixed(1)}`; }); d += "Z"; }
+  };
   for (const f of feats) {
     const g = f.geometry;
     if (g.type === "Polygon") (g.coordinates as number[][][]).forEach(ring);
@@ -31,9 +41,10 @@ const Land = memo(function Land() {
   for (let lat = -60; lat <= 90; lat += 30) grid.push(<line key={"y" + lat} x1={0} y1={py(lat)} x2={W} y2={py(lat)} />);
   return (
     <g>
-      <rect x="0" y="0" width={W} height={H} fill="#050a16" />
-      <g stroke="#16315e" strokeWidth=".4" opacity=".6">{grid}</g>
-      <path d={LAND_D} fill="#0c1a38" stroke="#3de8ff" strokeOpacity=".5" strokeWidth=".5" strokeLinejoin="round" />
+      <clipPath id="wm-clip"><rect x="0" y="0" width={W} height={H} /></clipPath>
+      <rect className="wm-ocean" x="0" y="0" width={W} height={H} />
+      <g className="wm-grid" strokeWidth=".4">{grid}</g>
+      <path className="wm-land" clipPath="url(#wm-clip)" d={LAND_D} strokeWidth=".5" strokeLinejoin="round" />
     </g>
   );
 });
@@ -76,16 +87,16 @@ export function WorldMap({ events, mine, sel, onSel, alerts }: { events: S.World
           return (
             <g key={e.id} style={{ cursor: "pointer" }} onPointerDown={ev => ev.stopPropagation()} onClick={() => onSel(e.id)}>
               {S.SEV_RANK[e.sev] >= 2 && <circle cx={px(e.lng)} cy={py(e.lat)} r={r * 2.4} fill={col} className="ring" />}
-              <circle cx={px(e.lng)} cy={py(e.lat)} r={r} fill={col} fillOpacity=".75" stroke={on ? "#fff" : col} strokeWidth={(on ? 1.6 : 0.8) / Math.sqrt(v.k)} style={{ filter: `drop-shadow(0 0 ${3 / Math.sqrt(v.k)}px ${col})` }} />
+              <circle cx={px(e.lng)} cy={py(e.lat)} r={r} fill={col} fillOpacity=".8" strokeWidth={(on ? 1.6 : 0.8) / Math.sqrt(v.k)} style={{ stroke: on ? "var(--ink)" : col, filter: `drop-shadow(0 0 ${3 / Math.sqrt(v.k)}px ${col})` }} />
             </g>
           );
         })}
         <g>
-          <circle cx={px(mine.lng)} cy={py(mine.lat)} r={6 / Math.sqrt(v.k)} fill="none" stroke="#3de8ff" strokeWidth={1.4 / Math.sqrt(v.k)} />
-          <circle cx={px(mine.lng)} cy={py(mine.lat)} r={1.8 / Math.sqrt(v.k)} fill="#3de8ff" />
-          <text x={px(mine.lng) + 8 / Math.sqrt(v.k)} y={py(mine.lat) - 6 / Math.sqrt(v.k)} fontSize={9 / Math.sqrt(v.k)} fill="#3de8ff">{mine.name}</text>
+          <circle cx={px(mine.lng)} cy={py(mine.lat)} r={6 / Math.sqrt(v.k)} className="wm-me" fill="none" strokeWidth={1.4 / Math.sqrt(v.k)} />
+          <circle cx={px(mine.lng)} cy={py(mine.lat)} r={1.8 / Math.sqrt(v.k)} className="wm-me-dot" />
+          <text x={px(mine.lng) + 8 / Math.sqrt(v.k)} y={py(mine.lat) - 6 / Math.sqrt(v.k)} fontSize={9 / Math.sqrt(v.k)} className="wm-me-text">{mine.name}</text>
         </g>
-        {selected && <text x={px(selected.lng)} y={py(selected.lat) - 10 / Math.sqrt(v.k)} textAnchor="middle" fontSize={9 / Math.sqrt(v.k)} fill="#e8f0ff" stroke="#04060c" strokeWidth={2.5 / Math.sqrt(v.k)} paintOrder="stroke">{selected.title}</text>}
+        {selected && <text x={px(selected.lng)} y={py(selected.lat) - 10 / Math.sqrt(v.k)} textAnchor="middle" fontSize={9 / Math.sqrt(v.k)} className="wm-label" strokeWidth={2.5 / Math.sqrt(v.k)} paintOrder="stroke">{selected.title}</text>}
       </g>
     </svg>
   );
@@ -99,7 +110,6 @@ export function WorldPanel({ app, sel, onSel }: { app: S.AppState; sel: string |
   const km = (e: S.WorldEvent) => Math.round(S.dist({ lat: n.lat, lng: n.lng }, e) / 1000);
   return (
     <>
-      <h3>World layer</h3>
       <small className="dim">Official public hazard feeds, shown as published. This layer only informs; it never starts a rescue by itself.</small>
       <div className="skills">{TYPES.map(t => <button key={t} className={`chip btn ${on.includes(t) ? "sel" : ""}`} style={on.includes(t) ? { color: S.HAZARD_COLOR[t], borderColor: S.HAZARD_COLOR[t] } : undefined} onClick={() => setOn(on.includes(t) ? on.filter(x => x !== t) : [...on, t])}>{t}</button>)}</div>
       {app.worldInfo && <small className="dim">{app.worldInfo.sources.map(s => `${s.name}: ${s.ok ? `${s.n} events` : "unavailable"}`).join(" · ")}{app.worldInfo.updated ? ` · updated ${ago(app.worldInfo.updated)}` : ""}</small>}

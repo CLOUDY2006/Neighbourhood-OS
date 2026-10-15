@@ -6,7 +6,7 @@ export interface WorldEvent { id: string; src: "USGS" | "NASA EONET" | "GDACS" |
 export interface Alert extends WorldEvent { km: number; radiusKm: number }
 
 export const SEV_RANK: Record<Sev, number> = { info: 0, watch: 1, warning: 2, severe: 3 };
-export const HAZARD_COLOR: Record<HazardType, string> = { earthquake: "#ff3b4e", wildfire: "#ff9a2e", flood: "#3b82ff", storm: "#3de8ff", volcano: "#ff5ad1", other: "#8b9bbd" };
+export const HAZARD_COLOR: Record<HazardType, string> = { earthquake: "#ef4444", wildfire: "#f97316", flood: "#3b82f6", storm: "#0ea5c6", volcano: "#d946ef", other: "#64748b" };
 
 export function radiusKm(e: WorldEvent) {
   switch (e.type) {

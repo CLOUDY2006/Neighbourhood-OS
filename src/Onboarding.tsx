@@ -2,11 +2,13 @@ import { useState } from "react";
 import * as S from "./store";
 import { cellOf, type LL } from "./geo";
 import { LANGS, setLang, useLang, useT } from "./i18n";
+import { BadgeCheck, CircleCheck, MapPin, Moon, Sun, Users, Wrench } from "lucide-react";
+import { toggleTheme, useTheme } from "./a11y";
 
 type Spot = (LL & { label: string }) | null;
 
 export default function Onboarding() {
-  const app = S.useApp(), t = useT(), lang = useLang();
+  const app = S.useApp(), t = useT(), lang = useLang(), theme = useTheme();
   const [mode, setMode] = useState<"in" | "up" | "reset">("in");
   const [f, setF] = useState({ email: "", password: "", name: "" });
   const [msg, setMsg] = useState(""), [bad, setBad] = useState(false), [busy, setBusy] = useState(false);
@@ -32,8 +34,21 @@ export default function Onboarding() {
   return (
     <div className="gate">
       <div className="gcard glass">
-        <div className="row between"><h1 className="brand">NEIGHBORHOOD OS</h1><select className="langsel" aria-label={t("Language")} value={lang} onChange={e => setLang(e.target.value)}>{LANGS.map(l => <option key={l.code} value={l.code}>{l.label}</option>)}</select></div>
-        <p className="dim">See your neighborhood's problems on a live map, fix them together, and prove they are fixed.</p>
+        <div className="row between">
+          <div className="row"><span className="logo" aria-hidden="true">N</span><h1 className="brand">NEIGHBORHOOD OS</h1></div>
+          <div className="row">
+            <select className="langsel" aria-label={t("Language")} value={lang} onChange={e => setLang(e.target.value)}>{LANGS.map(l => <option key={l.code} value={l.code}>{l.label}</option>)}</select>
+            <button className="iconbtn" onClick={toggleTheme} aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}>{theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}</button>
+          </div>
+        </div>
+        <p className="lead">See your neighborhood's problems on a live map, fix them together, and prove they are fixed.</p>
+        <ol className="loop" aria-label="How it works">
+          <li><MapPin size={16} /><b>Report</b><small>Drop a pin and describe it</small></li>
+          <li><Users size={16} /><b>Confirm</b><small>Neighbors say “I see this too”</small></li>
+          <li><BadgeCheck size={16} /><b>Verify</b><small>A coordinator checks and assigns</small></li>
+          <li><Wrench size={16} /><b>Fix</b><small>Volunteers fix it and post proof</small></li>
+          <li><CircleCheck size={16} /><b>Prove</b><small>The pin turns green on the map</small></li>
+        </ol>
 
         <button className="go" onClick={S.enterDemo}>{t("Try the simulated demo (no account)")}</button>
 

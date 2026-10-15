@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import * as S from "./store";
 import { LANGS, setLang, useLang, useT } from "./i18n";
-import { setA11y, useA11y } from "./a11y";
+import { setA11y, useA11y, type ThemePref } from "./a11y";
 import type { Act } from "./ui";
 
 export function AccessSettings() {
@@ -10,6 +10,7 @@ export function AccessSettings() {
     <div className="card">
       <b>{t("Settings")}</b>
       <label className="role">{t("Language")} <select value={lang} onChange={e => setLang(e.target.value)}>{LANGS.map(l => <option key={l.code} value={l.code}>{l.label}</option>)}</select></label>
+      <label className="role">Theme <select value={a.theme} onChange={e => setA11y({ theme: e.target.value as ThemePref })}><option value="system">Match my device</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
       <label className="role">{t("Text size")} <select value={a.size} onChange={e => setA11y({ size: e.target.value as "normal" | "large" | "xl" })}><option value="normal">{t("Normal")}</option><option value="large">{t("Large")}</option><option value="xl">{t("Extra large")}</option></select></label>
       <label className="check"><input type="checkbox" checked={a.contrast} onChange={e => setA11y({ contrast: e.target.checked })} /> {t("High contrast")}</label>
       <label className="check"><input type="checkbox" checked={a.motion} onChange={e => setA11y({ motion: e.target.checked })} /> {t("Reduce motion")}</label>

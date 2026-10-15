@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import * as S from "./store";
+import { useTheme } from "./a11y";
+import { palette, tooltipStyle } from "./theme";
 
-const tip = { contentStyle: { background: "#0b1a33", border: "1px solid rgba(110,160,255,.3)", borderRadius: 10, color: "#e8f0ff", fontSize: 12 }, labelStyle: { color: "#8b9bbd" } };
+const tip = tooltipStyle;
 const RULES: Record<S.Rule, string> = { score: "Highest priority score first", oldest: "Oldest first", quick: "Quick wins first (least effort)", hotspot: "Recurring problem areas first" };
 
 export function Simulator({ st, onOverlay }: { st: S.State; onOverlay: (m: Record<string, number | null> | null) => void }) {
+  const P = palette(useTheme());
   const avail = Math.max(1, st.volunteers.filter(v => v.available).length);
   const [sc, setSc] = useState<S.Scenario>({ volunteers: Math.max(avail, 6), teamSize: 3, hoursPerDay: 2, rule: "score", days: 14, authorityDelay: 5 });
   const [overlay, setOverlay] = useState(false);
@@ -20,7 +23,6 @@ export function Simulator({ st, onOverlay }: { st: S.State; onOverlay: (m: Recor
   );
   return (
     <>
-      <h3>What-if city simulator</h3>
       <div className="card alertcard"><b>SIMULATION</b><small className="dim">Everything here is an estimate from simple assumptions about effort and teamwork. It does not predict real outcomes, and nothing in it changes any report.</small></div>
       <div className="card form">
         {slider("Volunteers available", "volunteers", 1, 40)}
@@ -40,8 +42,8 @@ export function Simulator({ st, onOverlay }: { st: S.State; onOverlay: (m: Recor
       <div className="card">
         <div className="row between"><b>Projected issues resolved</b><span className="chip amber">Estimate</span></div>
         <ResponsiveContainer width="100%" height={170}><LineChart data={data} margin={{ left: -20, right: 6, top: 6 }}>
-          <CartesianGrid stroke="rgba(110,160,255,.12)" vertical={false} /><XAxis dataKey="day" stroke="#8b9bbd" fontSize={11} tickLine={false} /><YAxis allowDecimals={false} stroke="#8b9bbd" fontSize={11} tickLine={false} /><Tooltip {...tip} /><Legend wrapperStyle={{ fontSize: 11 }} />
-          <Line type="monotone" dataKey="Current setup" stroke="#8b9bbd" dot={false} strokeDasharray="5 4" /><Line type="monotone" dataKey="This scenario" stroke="#3de8ff" dot={false} strokeWidth={2} />
+          <CartesianGrid stroke={P.chart.grid} vertical={false} /><XAxis dataKey="day" stroke={P.chart.axis} fontSize={11} tickLine={false} /><YAxis allowDecimals={false} stroke={P.chart.axis} fontSize={11} tickLine={false} /><Tooltip {...tip} /><Legend wrapperStyle={{ fontSize: 11 }} />
+          <Line type="monotone" dataKey="Current setup" stroke={P.chart.muted} dot={false} strokeDasharray="5 4" /><Line type="monotone" dataKey="This scenario" stroke={P.teal} dot={false} strokeWidth={2} />
         </LineChart></ResponsiveContainer>
         <small className="dim">The current setup uses today's available volunteers ({avail}), teams of 3, 2 hours a day, oldest issue first.</small>
       </div>
