@@ -309,16 +309,16 @@ function drawTree(ctx: CanvasRenderingContext2D, t: Tree, pr: Proj, pal: City) {
   ctx.fillStyle = pal.tree[0]; ctx.beginPath(); ctx.arc(c.x + ux * r * 0.26, c.y + uy * r * 0.26 - r * 0.2, r * 0.66, 0, Math.PI * 2); ctx.fill();
 }
 
-export function drawObjects(ctx: CanvasRenderingContext2D, m: Model, pr: Proj, pal: City, view: View) {
+export function drawObjects(ctx: CanvasRenderingContext2D, m: Model, pr: Proj, pal: City, view: View, opt: { labels?: boolean; windows?: boolean } = {}) {
   const { P } = pr, M = 60, x0 = -view.x / view.k - M, x1 = (view.w - view.x) / view.k + M, y0 = -view.y / view.k - M, y1 = (view.h - view.y) / view.k + 260;
   const items: { d: number; b?: Bld; t?: Tree }[] = [];
   const on = (x: number, y: number) => { const a = P(x, y); return a.x > x0 && a.x < x1 && a.y > y0 && a.y < y1; };
   for (const b of m.blds) if (on(b.cx, b.cy)) items.push({ d: pr.depth(b.cx, b.cy), b });
   for (const t of m.trees) if (on(t.x, t.y)) items.push({ d: pr.depth(t.x, t.y), t });
   items.sort((a, b) => a.d - b.d);
-  const lut = wallLut(pal), showWin = view.k > 0.4;
+  const lut = wallLut(pal), showWin = opt.windows ?? view.k > 0.4;
   for (const it of items) { if (it.b) drawBld(ctx, it.b, pr, pal, lut, showWin); else drawTree(ctx, it.t!, pr, pal); }
-  if (view.k < 0.35) return;
+  if (opt.labels === false || view.k < 0.35) return;
   ctx.font = "600 11px Sora, system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
   if ("letterSpacing" in ctx) (ctx as unknown as { letterSpacing: string }).letterSpacing = "2.5px";
   ctx.lineJoin = "round";

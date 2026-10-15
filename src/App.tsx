@@ -4,6 +4,8 @@ import { Bell, Radar, PlusCircle, Users, Package, BarChart3, RotateCcw, Play, Sh
 import * as S from "./store";
 import IsoMap, { ViewSwitch, type MapView } from "./IsoMap";
 import { toggleTheme, useTheme } from "./a11y";
+import { go, usePath } from "./route";
+import Landing from "./Landing";
 import { Detail, AiPhoto, PhotoPicker } from "./Detail";
 import { Pulse } from "./Pulse";
 import { Simulator } from "./Simulator";
@@ -286,13 +288,13 @@ function Account({ st, app, act }: { st: S.State; app: S.AppState; act: Act }) {
           <button onClick={() => act(async () => { await navigator.clipboard.writeText(invite); }, "Invite link copied")}>Copy invite link</button>
         </div>
       ) : (
-        <div className="card"><b>Simulated demo</b><small className="dim">Nothing here is real. Create an account to join your own neighborhood.</small><button className="go" onClick={() => S.leave()}>Create an account or sign in</button></div>
+        <div className="card"><b>Simulated demo</b><small className="dim">Nothing here is real. Create an account to join your own neighborhood.</small><button className="go" onClick={() => { S.leave(); go("/signin"); }}>Create an account or sign in</button></div>
       )}
       {live && (
         <div className="card">
           <b>My neighborhoods</b>
           {app.mine.map(m => <button key={m.id} className={m.id === n.id ? "go" : ""} onClick={() => act(() => S.enter(m))}>{m.name}</button>)}
-          <button onClick={() => S.leave()}>Find another neighborhood</button>
+          <button onClick={() => { S.leave(); go("/signin"); }}>Find another neighborhood</button>
           <button className="warn" onClick={() => { if (confirm("Leave this neighborhood?")) act(() => S.leaveNeighborhood()); }}>Leave this neighborhood</button>
         </div>
       )}
@@ -407,9 +409,9 @@ function Main({ app }: { app: S.AppState }) {
               </select>
             </label>
             <button onClick={() => act(async () => { await S.reset(); setSel(null); setPick(null); }, "Demo reset")}><RotateCcw size={14} /> {t("Reset demo")}</button>
-            <button className="ghost" onClick={() => S.leave()}><LogOut size={14} /> {t("Exit demo")}</button>
+            <button className="ghost" onClick={() => { S.leave(); go("/"); }}><LogOut size={14} /> {t("Exit demo")}</button>
           </>
-        ) : <button onClick={() => S.leave()}>{t("Switch neighborhood")}</button>}
+        ) : <button onClick={() => { S.leave(); go("/signin"); }}>{t("Switch neighborhood")}</button>}
       </header>
       <main className="center">
         <div className="layer" hidden={tabNow === "world" || view === "list"}>
@@ -456,9 +458,13 @@ function Main({ app }: { app: S.AppState }) {
 }
 
 export default function App() {
-  const app = S.useApp();
+  const app = S.useApp(), path = usePath();
   const impact = new URLSearchParams(location.search).get("impact");
   if (impact) return <PublicImpact id={impact} />;
-  if (app.mode === "none" || !app.nbhd) return <Onboarding />;
+  if (app.mode === "none" || !app.nbhd) {
+    let invite = false;
+    try { invite = !!localStorage.getItem("nos-pending-n"); } catch { /* ignore */ }
+    return path === "/signin" || invite ? <Onboarding /> : <Landing />;
+  }
   return <Main key={app.nbhd.id} app={app} />;
 }

@@ -11,7 +11,7 @@ const TYPES: S.HazardType[] = ["earthquake", "wildfire", "flood", "storm", "volc
 const SEV_R: Record<S.Sev, number> = { info: 2.4, watch: 3.4, warning: 5, severe: 6.5 };
 const ago = (t: number) => { const m = Math.round((Date.now() - t) / 60000); return m < 60 ? `${Math.max(m, 1)}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`; };
 
-const LAND_D = (() => {
+export const LAND_D = (() => {
   const topo = land as unknown as { objects: { land: never } };
   const fc = feature(topo as never, topo.objects.land) as unknown as { type: string; features?: { geometry: { type: string; coordinates: number[][][] | number[][][][] } }[]; geometry?: { type: string; coordinates: number[][][] | number[][][][] } };
   const feats = fc.features ?? [fc as { geometry: { type: string; coordinates: number[][][] | number[][][][] } }];
