@@ -6,7 +6,8 @@ import express from "express";
 import compression from "compression";
 import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
-import { can, dueEscalations, emptyDoc, publicSummary, purgeSos, reduce, sosActiveCount, STATUS_LABEL, visibleSos, weeklyDigest, type Action, type Cat, type Doc, type Role } from "../src/logic";
+import { can, dueEscalations, reportersOf, emptyDoc, publicSummary, purgeSos, reduce, sosActiveCount, STATUS_LABEL, visibleSos, weeklyDigest, type Action, type Cat, type Doc, type Role } from "../src/logic";
+
 import { alertsFor, SEV_RANK, type Alert } from "../src/world";
 import { CELL_R, parseCell } from "../src/geo";
 import { pool, tx } from "./db";
@@ -201,9 +202,9 @@ app.get("/api/n/:id/state", ah(async (req, res) => {
 
 const LIMITS: Partial<Record<Action["t"], [number, number]>> = {
   report: [10, 86400000], proof: [30, 86400000], spam: [20, 86400000], merge: [40, 86400000], flag: [20, 86400000], mission: [20, 86400000], addResource: [20, 86400000], sos: [3, 86400000],
-  update: [40, 86400000], feedback: [30, 86400000], agentStart: [20, 86400000], agentDraft: [60, 86400000], agentSend: [30, 86400000], shareAdd: [10, 86400000], shareMsg: [40, 86400000], careSet: [10, 86400000], noticeAdd: [20, 86400000], checkinStart: [10, 86400000],
+  update: [40, 86400000], feedback: [30, 86400000], reporterConfirm: [30, 86400000], agentStart: [20, 86400000], agentDraft: [60, 86400000], agentSend: [30, 86400000], shareAdd: [10, 86400000], shareMsg: [40, 86400000], careSet: [10, 86400000], noticeAdd: [20, 86400000], checkinStart: [10, 86400000],
 };
-const ADMIN_ACTIONS = new Set(["verify", "advance", "mission", "assign", "delivery", "shortage", "addResource", "hide", "restore", "sosAck", "sosAssign", "handoff", "handoffStatus", "planSet", "noticeAdd", "noticeRemove", "checkinStart", "checkinClose", "authoritySet", "authorityRemove", "agentEscalate", "approveResolution", "rejectResolution", "actionPlanApprove"]);
+const ADMIN_ACTIONS = new Set(["verify", "advance", "mission", "assign", "delivery", "shortage", "addResource", "hide", "restore", "sosAck", "sosAssign", "handoff", "handoffStatus", "planSet", "noticeAdd", "noticeRemove", "checkinStart", "checkinClose", "authoritySet", "authorityRemove", "agentEscalate", "approveResolution", "rejectResolution", "closeUnconfirmed", "actionPlanApprove"]);
 
 interface Actor { id: string; handle: string; platformAdmin: boolean }
 async function runAction(id: string, u: Actor, a: Action) {
@@ -229,22 +230,35 @@ async function runAction(id: string, u: Actor, a: Action) {
     if (ADMIN_ACTIONS.has(a.t)) await c.query("insert into audit_log (neighborhood_id, user_id, who, action, detail) values ($1, $2, $3, $4, $5)", [id, u.id, u.handle, a.t, JSON.stringify({ id: (a as any).id ?? (a as any).mid ?? null }).slice(0, 200)]);
     return { raw: r.doc, doc: viewDoc(r.doc, role, u.handle, await countMembers(c, id)), result: r.result, version, role };
   });
-  void afterAction(id, a, out.raw);
+  void afterAction(id, a, out.raw, u.handle);
   return out;
 }
 
-async function afterAction(id: string, a: Action, raw: Doc) {
+async function afterAction(id: string, a: Action, raw: Doc, actor: string) {
   try {
     if (a.t === "sos") await notify(id, "admins", { title: "New SOS request", body: "A neighbor asked for help. Open the SOS tab.", urgent: true });
     else if (a.t === "sosAssign") await notify(id, { name: a.name }, { title: "You were assigned to an SOS request", body: "Open the SOS tab for details.", urgent: true });
     else if (a.t === "assign") await notify(id, { name: a.name }, { title: "You were assigned to a mission", body: "Open the Missions tab." });
     else if (a.t === "checkinStart") await notify(id, "all", { title: "Safety check-in", body: `${a.title}. Please reply whether you are safe.`, urgent: true });
     else if (a.t === "noticeAdd" && a.urgent) await notify(id, "all", { title: a.title, body: a.body.slice(0, 140), urgent: true });
-    else if (a.t === "advance" || a.t === "approveResolution" || a.t === "rejectResolution") {
+    else if (a.t === "advance" || a.t === "approveResolution" || a.t === "rejectResolution" || a.t === "reporterConfirm" || a.t === "closeUnconfirmed") {
       const i = raw.issues.find(x => x.id === a.id);
       if (i) {
-        await notify(id, { name: i.author }, { title: "Update on your report", body: `"${i.title}" is now: ${STATUS_LABEL[i.status]}` });
-        if (i.status === "pending") await notify(id, "reviewers", { title: "A fix is waiting for review", body: i.title, urgent: true });
+        const others = reportersOf(i).filter(n => n !== actor);
+        if (a.t === "advance" && i.status === "pending") {
+          for (const n of others) await notify(id, { name: n }, { title: "Is the problem fixed?", body: `"${i.title}": the team says it is done. Open the app and answer Yes or Not fully, or reply FIXED or NOT FIXED by text.`, urgent: true });
+          await notify(id, "reviewers", { title: "A fix is waiting for review", body: i.title, urgent: true });
+        } else if (a.t === "advance") {
+          await notify(id, { name: i.author }, { title: "Update on your report", body: `"${i.title}" is now: ${STATUS_LABEL[i.status]}` });
+        } else if (a.t === "reporterConfirm") {
+          const fixed = i.status === "resolved";
+          await notify(id, "reviewers", { title: fixed ? "A reporter confirmed the fix" : "A reporter says it is not fully fixed", body: i.title, urgent: !fixed });
+          for (const n of others) await notify(id, { name: n }, { title: "Update on your report", body: `"${i.title}" is now: ${STATUS_LABEL[i.status]}` });
+        } else if (a.t === "closeUnconfirmed") {
+          for (const n of others) await notify(id, { name: n }, { title: "Report closed without confirmation", body: `"${i.title}" was closed because nobody answered. If it is still broken, open the app and reopen it.` });
+        } else {
+          for (const n of others) await notify(id, { name: n }, { title: "Update on your report", body: `"${i.title}" is now: ${STATUS_LABEL[i.status]}` });
+        }
       }
     }
     else if (a.t === "handoff") {
@@ -450,6 +464,14 @@ app.post("/api/sms", ah(async (req, res) => {
   try {
     if (cmd === "SAFE") { await runAction(ch.neighborhood_id, actor, { t: "checkinReply", ok: true }); return reply("Thanks. You are marked safe."); }
     if (cmd === "NEED" || cmd === "HELP" && (words[1] || "").toUpperCase() === "ME") { await runAction(ch.neighborhood_id, actor, { t: "checkinReply", ok: false }); return reply("Noted. Coordinators can see that you need help. If in danger call your local emergency number."); }
+    if (cmd === "FIXED" || cmd === "NOTFIXED" || (cmd === "NOT" && (words[1] || "").toUpperCase() === "FIXED")) {
+      const ok = cmd === "FIXED", n = (await pool.query("select doc from neighborhoods where id = $1", [ch.neighborhood_id])).rows[0];
+      const mine = ((n?.doc?.issues ?? []) as Doc["issues"]).filter(i => i.status === "pending" && !i.hidden && i.pendingBy !== actor.handle && reportersOf(i).includes(actor.handle));
+      if (!mine.length) return reply("No fix is waiting for your answer right now.");
+      if (mine.length > 1) return reply(`${mine.length} fixes are waiting for your answer. Please open NEIGHBORHOOD OS and answer each one.`);
+      await runAction(ch.neighborhood_id, actor, { t: "reporterConfirm", id: mine[0].id, ok, note: "[via text message]" });
+      return reply(ok ? `Thanks. "${mine[0].title}" is marked as fixed.` : `Thanks. "${mine[0].title}" is back in progress.`);
+    }
     if (cmd === "STATUS") { const n = (await pool.query("select doc, center_lat, center_lng, radius_m from neighborhoods where id = $1", [ch.neighborhood_id])).rows[0]; const al = alertsOf(n).filter(a => SEV_RANK[a.sev] >= 2); return reply(`${n.doc.issues.filter((i: any) => i.status !== "resolved" && !i.hidden).length} open issues. ${al.length ? `ALERT: ${al[0].title}` : "No official alerts."}`); }
     if (cmd === "SOS") {
       const need = ({ MEDICAL: "medical", RESCUE: "rescue", SHELTER: "shelter", FOOD: "food_water", WATER: "food_water" } as Record<string, string>)[(words[1] || "").toUpperCase()] ?? "other";
@@ -457,7 +479,7 @@ app.post("/api/sms", ah(async (req, res) => {
       await runAction(ch.neighborhood_id, actor, { t: "sos", need: need as any, people, note: `[via text message] ${note}`.slice(0, 300), lat: ch.center_lat, lng: ch.center_lng, consent: true, contact: from } as any);
       return reply("SOS received. A coordinator will review it. It is unverified. If anyone is in danger call your local emergency number now.");
     }
-    return reply("Commands: SAFE, NEED HELP, STATUS, SOS <medical|rescue|shelter|food> <people> <where you are and what you need>. Call your local emergency number first in danger.");
+    return reply("Commands: SAFE, NEED HELP, FIXED, NOT FIXED, STATUS, SOS <medical|rescue|shelter|food> <people> <where you are and what you need>. Call your local emergency number first in danger.");
   } catch (e) { return reply(e instanceof HttpError ? e.message : "Something went wrong. Try again."); }
 }));
 

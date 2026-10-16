@@ -91,7 +91,7 @@ function Feed({ st, app, sel, setSel, act, demo, goReport, alerts, onWorld }: { 
   const sorted = [...st.issues].sort((a, b) => S.priorityScore(st, b).score - S.priorityScore(st, a).score || b.created - a.created);
   const card = (i: S.Issue) => (
     <button key={i.id} className={`issue ${grp(i.status)}`} onClick={() => setSel(i.id)}>
-      <span className="dot" /><span className="grow">{i.title}<small>{LBL[i.status]} · {S.priorityScore(st, i).level} urgency{i.verif === "verified" ? " · verified" : i.verif === "disputed" ? " · disputed" : ""}{i.hidden ? " · hidden" : ""}</small></span><small className="mono">{ago(i.created)}</small>
+      <span className="dot" /><span className="grow">{i.title}<small>{LBL[i.status]}{i.status !== "resolved" ? ` · ${S.priorityScore(st, i).level} urgency` : ""}{i.verif === "verified" ? " · verified" : i.verif === "disputed" ? " · disputed" : ""}{i.closure === "unconfirmed" ? " · closed without confirmation" : ""}{i.hidden ? " · hidden" : ""}</small></span><small className="mono">{ago(i.created)}</small>
     </button>
   );
   if (issue) return (

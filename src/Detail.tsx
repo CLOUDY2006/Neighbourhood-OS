@@ -98,8 +98,13 @@ const NOW: Record<S.Issue["status"], string> = {
   review: "A coordinator is looking at this report.",
   assigned: "Someone has been assigned to fix this.",
   progress: "Work on this problem is under way.",
-  pending: "A fix was submitted. A different person has to confirm it.",
+  pending: "A fix was submitted. The reporter, or a different coordinator or moderator, has to confirm it.",
   resolved: "This problem was fixed and confirmed.",
+};
+const RESOLVED: Record<S.Closure, string> = {
+  reviewer: "This problem was fixed and a reviewer approved it.",
+  reporter: "This problem was fixed. The person who reported it confirmed it.",
+  unconfirmed: "This report was closed without confirmation. Nobody answered in 7 days.",
 };
 const CHECK: Record<S.Issue["verif"], string> = {
   unverified: "Not yet checked by a coordinator.",
@@ -113,7 +118,7 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
   const t = useT(), me = S.myName(), r = st.role;
   const [note, setNote] = useState(""), [photo, setPhoto] = useState<string>(), [prev, setPrev] = useState<string>();
   const [up, setUp] = useState({ text: "", photo: undefined as string | undefined });
-  const [reason, setReason] = useState(""), [fb, setFb] = useState("");
+  const [reason, setReason] = useState(""), [fb, setFb] = useState(""), [rnote, setRnote] = useState("");
   const m = st.missions.find(x => x.id === i.missionId), mine = i.author === me;
   const next = S.STATUSES[S.STATUSES.indexOf(i.status) + 1], idx = S.STATUSES.indexOf(i.status);
   const ps = S.priorityScore(st, i), plan = S.actionPlan(st, i), after = i.proof.find(p => p.photo)?.photo;
@@ -123,6 +128,10 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
   const evidenceCount = i.proof.length + (i.updates ?? []).length;
   const historyCount = (i.assignments ?? []).length + i.log.length;
   const demo = S.useApp().mode === "demo", asker = i.pendingBy === me, admin = S.can(r, "advance");
+  const canAnswer = S.canConfirmFix(i, me);
+  const canReopen = i.status === "resolved" && i.closure === "unconfirmed" && !i.hidden && i.pendingBy !== me && S.reportersOf(i).includes(me);
+  const waitDays = i.status === "pending" ? Math.max(0, Math.ceil((S.pendingSince(i) + S.UNCONFIRMED_AFTER_MS - Date.now()) / 864e5)) : 0;
+  const checkLine = i.closure === "reporter" ? "The reporter confirmed the fix." : i.closure === "unconfirmed" ? "No reporter confirmed the fix." : i.verif === "review" && i.status !== "reported" && i.status !== "review" ? "A coordinator has not marked this as verified yet." : CHECK[i.verif];
   const canProof = S.can(r, "proof") && i.status !== "resolved" && i.status !== "pending";
   const proofInline = canProof && (i.status === "assigned" || i.status === "progress");
   const proofForm = (
@@ -140,14 +149,15 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
       <button className="x back" onClick={close}>← {t("All reports")}</button>
       <strong className="dtitle">{i.title}</strong>
       <div className="chips">
-        <span className="chip">{i.cat}</span><span className="chip">{ps.level} urgency</span>
+        <span className="chip">{i.cat}</span>{ps.level !== "resolved" && <span className="chip">{ps.level} urgency</span>}
         <span className={`chip ${grp(i.status)}`}>{S.STATUS_LABEL[i.status]}</span>
+        {i.status === "resolved" && i.closure === "unconfirmed" && <span className="chip amber">{t("Closed without confirmation")}</span>}
         {i.hidden && <span className="chip red">Hidden</span>}
         {S.can(r, "hide") && i.flags.length > 0 && <span className="chip amber">{i.flags.length} flag(s)</span>}
       </div>
       <div className="statnow">
-        <b>{t(NOW[i.status])}</b>
-        <small className="dim">{t(i.verif === "review" && i.status !== "reported" && i.status !== "review" ? "A coordinator has not marked this as verified yet." : CHECK[i.verif])} {i.reports} {t(i.reports === 1 ? "person has reported this." : "people have reported this.")}</small>
+        <b>{t(i.status === "resolved" && i.closure ? RESOLVED[i.closure] : NOW[i.status])}</b>
+        <small className="dim">{t(checkLine)} {i.reports} {t(i.reports === 1 ? "person has reported this." : "people have reported this.")}</small>
       </div>
       <div className="steps">{S.STATUSES.map((s, n) => <i key={s} className={n <= idx ? "on" : ""} title={S.STATUS_LABEL[s]} />)}</div>
       <small className="dim">{t("Step")} {idx + 1}/{S.STATUSES.length} · {S.STATUS_LABEL[i.status]}</small>
@@ -156,10 +166,28 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
       {i.photo && after && <BeforeAfter before={i.photo} after={after} />}
       {m && <p>Mission: <b>{m.title}</b> · {m.joined.length}/{m.need} volunteers</p>}
 
+      {canAnswer && (
+        <div className="card alertcard">
+          <b>{t("Is the problem fixed?")}</b>
+          <p>{t("The team says this is done. You reported this problem (or confirmed it), so your answer counts: if you say it is fixed, the report is resolved.")}</p>
+          <input placeholder={t("Optional comment")} maxLength={200} value={rnote} onChange={e => setRnote(e.target.value)} aria-label="Your comment" />
+          <div className="row wrap">
+            <button className="go" onClick={() => act(async () => { await S.reporterConfirm(i.id, true, rnote); setRnote(""); }, "Thanks. The report is resolved")}>{t("Yes, it is fixed")}</button>
+            <button className="warn" onClick={() => act(async () => { await S.reporterConfirm(i.id, false, rnote); setRnote(""); }, "Thanks. The report goes back in progress")}>{t("No, not fully fixed")}</button>
+          </div>
+        </div>
+      )}
+      {canReopen && (
+        <div className="card alertcard">
+          <b>{t("This report was closed without confirmation.")}</b>
+          <p>{t("Nobody answered, so a coordinator closed it. If the problem is still there, you can reopen it.")}</p>
+          <div className="row wrap"><button className="warn" onClick={() => act(() => S.reporterConfirm(i.id, false), "Reopened. It is back in progress")}>{t("It is still broken. Reopen it")}</button></div>
+        </div>
+      )}
       {i.status === "pending" && (
         <div className="card alertcard">
           <b>{S.STATUS_LABEL.pending}</b>
-          <small className="dim">Submitted for review by {i.pendingBy}. A different person must approve it.</small>
+          <small className="dim">Submitted for review by {i.pendingBy}. The reporter, or a different coordinator or moderator, must confirm it.</small>
           {fbs.length > 0 && <p>Neighbor feedback: {good} say it looks fixed, {bad} say it is not fully fixed.</p>}
           {S.can(r, "approveResolution") && (
             <>
@@ -168,9 +196,21 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
                 <button className="go" disabled={i.pendingBy === me} onClick={() => act(() => S.approveResolution(i.id, reason), "Resolution approved")}>Approve resolution</button>
                 <button className="warn" disabled={!reason.trim()} onClick={() => act(async () => { await S.rejectResolution(i.id, reason); setReason(""); }, "Sent back for more work")}>Request more work</button>
               </div>
-              {asker && <small className="dim">{t("You submitted this fix, so a different coordinator or moderator must approve it.")}</small>}
-              {asker && demo && <button onClick={() => S.setRole("moderator")}>{t("Demo: switch to Moderator to approve")}</button>}
-              {asker && !demo && <small className="dim">{t("Ask another coordinator or a moderator to open this report and approve it. A neighbor can be made a coordinator from the Account tab.")}</small>}
+              {asker && <small className="dim">{t("You submitted this fix, so you cannot approve it yourself. The reporters were asked. A different coordinator or moderator can approve it too.")}</small>}
+              {asker && (
+                <div className="row wrap">
+                  <button disabled={waitDays > 0} onClick={() => act(() => S.closeUnconfirmed(i.id), "Closed without confirmation")}>{t("Close without confirmation")}</button>
+                  {waitDays > 0 && <small className="dim">{t("Possible after 7 days without an answer.")} ({waitDays} {t("days left")})</small>}
+                </div>
+              )}
+              {asker && demo && (
+                <div className="row wrap">
+                  <button onClick={() => act(() => S.demoAnswerAsReporter(i.id, true, "Looks good now"), "Simulated: the reporter confirmed the fix")}>{t("Demo: answer as the reporter")}</button>
+                  <button onClick={() => act(() => S.demoAnswerAsReporter(i.id, false, "Still not fixed on the left side"), "Simulated: the reporter says it is not fully fixed")}>{t("Demo: reporter says not fixed")}</button>
+                  <button onClick={() => S.demoSkipWait(i.id)}>{t("Demo: skip the 7-day wait")}</button>
+                  <button onClick={() => S.setRole("moderator")}>{t("Demo: switch to Moderator to approve")}</button>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -193,7 +233,7 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
           {!admin && i.status === "progress" && i.proof.length > 0 && <small className="dim">{t("Proof was added. A coordinator will submit the fix for review.")}</small>}
         </div>
       )}
-      {(i.status === "pending" || i.status === "resolved") && !i.hidden && (
+      {(i.status === "pending" || i.status === "resolved") && !i.hidden && !canAnswer && (
         <div className="card">
           <b>Does it look fixed?</b>
           <input placeholder="Optional comment" maxLength={200} value={fb} onChange={e => setFb(e.target.value)} aria-label="Feedback comment" />
@@ -249,7 +289,7 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
       </div>
 
       <details className="fold">
-        <summary>{t("How urgent")}: {ps.level} ({ps.score}/100)</summary>
+        <summary>{ps.level === "resolved" ? t("Priority details") : `${t("How urgent")}: ${ps.level} (${ps.score}/100)`}</summary>
         <ul className="why">{ps.reasons.map((x, n) => <li key={n}>{x.label}: +{x.pts}</li>)}</ul>
         <small className="dim">A fixed set of rules adds these points. It only sorts the list. A coordinator decides what happens.</small>
       </details>

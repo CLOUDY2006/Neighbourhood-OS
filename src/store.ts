@@ -380,6 +380,24 @@ export const agentEscalate = (id: string) => dispatch({ t: "agentEscalate", id }
 export const approveResolution = (id: string, note?: string) => dispatch({ t: "approveResolution", id, note });
 export const rejectResolution = (id: string, reason: string) => dispatch({ t: "rejectResolution", id, reason });
 export const feedback = (id: string, ok: boolean, note?: string) => dispatch({ t: "feedback", id, ok, note });
+export const reporterConfirm = (id: string, ok: boolean, note?: string) => dispatch({ t: "reporterConfirm", id, ok, note });
+export const closeUnconfirmed = (id: string, note?: string) => dispatch({ t: "closeUnconfirmed", id, note });
+/** Demo only: pretend the reporters stayed silent for a week, so "Close without confirmation" can be tried. Simulated. */
+export function demoSkipWait(id: string) {
+  if (app.mode !== "demo") return;
+  doc = structuredClone(doc);
+  const i = doc.issues.find(x => x.id === id);
+  if (i && i.status === "pending") { i.pendingAt = Date.now() - L.UNCONFIRMED_AFTER_MS - 1000; commit(); }
+}
+/** Demo only: answer "Is it fixed?" as the person who reported the problem, so one person can try the whole flow. Simulated. */
+export async function demoAnswerAsReporter(id: string, ok: boolean, note?: string): Promise<string | undefined> {
+  if (app.mode !== "demo") throw new Error("This shortcut only works in the demo");
+  const i = doc.issues.find(x => x.id === id);
+  const name = i ? L.reportersOf(i).find(n => n !== i.pendingBy) : undefined;
+  if (!i || !name) throw new Error("No reporter found for this report");
+  const j = L.reduce(doc, { role: "resident", name }, { t: "reporterConfirm", id, ok, note }, app.nbhd ? { lat: app.nbhd.lat, lng: app.nbhd.lng, r: 1e7, name: app.nbhd.name } : undefined);
+  doc = j.doc; commit(); return j.result;
+}
 export const addUpdate = (id: string, text: string, photo?: string) => dispatch({ t: "update", id, text, photo });
 export const actionPlanApprove = (id: string) => dispatch({ t: "actionPlanApprove", id });
 export const volunteerArea = (lat: number, lng: number, consent: boolean) => dispatch({ t: "volunteerArea", lat, lng, consent });

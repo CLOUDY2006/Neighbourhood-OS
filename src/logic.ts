@@ -9,6 +9,14 @@ export type Priority = "low" | "medium" | "high" | "critical";
 export type Kind = "shelter" | "water" | "aid" | "donation" | "assembly" | "equipment";
 
 export const STATUSES: Status[] = ["reported", "review", "assigned", "progress", "pending", "resolved"];
+/** How long reporters get to answer "Is it fixed?" before a coordinator may close the report without confirmation. */
+export const UNCONFIRMED_AFTER_MS = 7 * 24 * 3600 * 1000;
+/** The person who reported a problem plus everyone who confirmed it ("I see this too"). */
+export const reportersOf = (i: Pick<Issue, "author" | "confirmedBy">) => [...new Set([i.author, ...i.confirmedBy])].filter(n => n && n !== "Former member");
+/** True when this person may answer "Is it fixed?" for a fix that is waiting for confirmation. */
+export const canConfirmFix = (i: Issue, name: string) => i.status === "pending" && !i.hidden && i.pendingBy !== name && reportersOf(i).includes(name);
+/** When the fix was submitted for review. Older reports without a timestamp fall back to the activity log. */
+export const pendingSince = (i: Issue) => i.pendingAt ?? [...i.log].reverse().find(l => l.text === "Status moved to pending")?.t ?? i.created;
 export const STATUS_LABEL: Record<Status, string> = { reported: "Reported", review: "Under review", assigned: "Assigned", progress: "In progress", pending: "Resolution pending review", resolved: "Resolved" };
 export const CATS: Cat[] = ["pothole", "garbage", "streetlight", "water", "unsafe", "blocked", "other"];
 export const PRIORITIES: Priority[] = ["low", "medium", "high", "critical"];
@@ -17,12 +25,13 @@ export const ABILITIES = ["first_aid", "medical", "driving", "boat", "tools", "c
 export const SHARE_CATS = ["supplies", "tools", "ride", "food", "other"];
 export const CARE_NEEDS = ["mobility", "medical", "elderly_alone", "other"];
 
+export type Closure = "reviewer" | "reporter" | "unconfirmed";
 export interface Proof { t: number; by: string; text: string; photo?: string }
 export interface Issue {
   id: string; title: string; cat: Cat; desc: string; lat: number; lng: number;
   priority: Priority; status: Status; verif: Verif; reports: number; proof: Proof[];
   log: { t: number; by: string; text: string }[]; missionId?: string; photo?: string; created: number; resolvedAt?: number; handoff?: Handoff; agent?: AgentRecord;
-  pendingBy?: string; reviewedBy?: string; rejections?: number; feedback?: Record<string, { ok: boolean; note: string; t: number }>; updates?: Proof[]; assignments?: { t: number; by: string; text: string }[]; actionPlan?: { approvedBy: string; approvedAt: number };
+  pendingBy?: string; pendingAt?: number; closure?: Closure; reviewedBy?: string; rejections?: number; feedback?: Record<string, { ok: boolean; note: string; t: number }>; updates?: Proof[]; assignments?: { t: number; by: string; text: string }[]; actionPlan?: { approvedBy: string; approvedAt: number };
   author: string; confirmedBy: string[]; flags: string[]; hidden?: boolean;
 }
 export interface AgentDraft { level: number; to: string; lang: "en" | "hi"; subject: string; body: string; edited?: boolean; approvedBy?: string; approvedAt?: number; sentAt?: number; via?: "copied" | "emailed" | "simulated" }
@@ -100,6 +109,8 @@ export type Action =
   | { t: "agentEscalate"; id: string }
   | { t: "approveResolution"; id: string; note?: string }
   | { t: "rejectResolution"; id: string; reason: string }
+  | { t: "reporterConfirm"; id: string; ok: boolean; note?: string }
+  | { t: "closeUnconfirmed"; id: string; note?: string }
   | { t: "feedback"; id: string; ok: boolean; note?: string }
   | { t: "update"; id: string; text: string; photo?: string }
   | { t: "actionPlanApprove"; id: string }
@@ -118,7 +129,7 @@ export const CAN: Record<Action["t"], readonly Role[]> = {
   authoritySet: ["admin"], authorityRemove: ["admin"], handoff: ["admin"], handoffStatus: ["admin"],
   agentStart: ALL, agentDraft: ALL, agentApprove: ALL, agentSend: ALL, agentRef: ALL, agentEscalate: ["admin"],
   withdraw: ALL, spam: ALL, hide: ["admin", "moderator"], restore: ["admin", "moderator"],
-  approveResolution: ["admin", "moderator"], rejectResolution: ["admin", "moderator"], feedback: ALL, update: ALL, actionPlanApprove: ["admin"], volunteerArea: ["volunteer"], volunteerAreaClear: ["volunteer"],
+  approveResolution: ["admin", "moderator"], rejectResolution: ["admin", "moderator"], reporterConfirm: ALL, closeUnconfirmed: ["admin", "moderator"], feedback: ALL, update: ALL, actionPlanApprove: ["admin"], volunteerArea: ["volunteer"], volunteerAreaClear: ["volunteer"],
   delivery: ["admin"], shortage: ["admin"], addResource: ["admin"], demo: ALL, reset: ALL,
 };
 export const can = (r: Role, t: Action["t"]) => !!CAN[t]?.includes(r);
@@ -305,6 +316,7 @@ export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; ln
   purgeSos(d); purgeOld(d); dueEscalations(d, Date.now(), bounds?.name);
   const ev = (text: string, tone = "info", to?: string) => { d.events.unshift({ t: Date.now(), text, tone, to }); d.events = d.events.slice(0, 60); };
   const tell = (i: Issue, text: string) => { if (i.author !== who.name) ev(text, "info", i.author); };
+  const tellAll = (i: Issue, text: string) => reportersOf(i).forEach(n => { if (n !== who.name) ev(text, "info", n); });
   const assigned = (i: Issue | undefined, text: string) => { if (i) (i.assignments ??= []).push({ t: Date.now(), by: who.name, text }); };
   const issue = (id: string) => { const i = d.issues.find(x => x.id === id); if (!i) throw new Error("Issue not found"); return i; };
   const log = (i: Issue, text: string, tone = "info") => { i.log.push({ t: Date.now(), by: who.name, text }); ev(`${i.title}: ${text}`, tone); };
@@ -380,8 +392,9 @@ export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; ln
       if (next === "pending" && !i.proof.length) throw new Error("Add proof of fix before asking for review");
       i.status = next;
       if (next === "review") i.verif = "review";
-      if (next === "pending") i.pendingBy = who.name;
-      tell(i, `Your report "${i.title}" is now: ${STATUS_LABEL[next]}`);
+      if (next === "pending") { i.pendingBy = who.name; i.pendingAt = Date.now(); i.closure = undefined; }
+      if (next === "pending") reportersOf(i).forEach(n => { if (n !== who.name) ev(`Is the problem fixed? "${i.title}" was marked as done. Please check and answer Yes or Not fully.`, "alert", n); });
+      else tell(i, `Your report "${i.title}" is now: ${STATUS_LABEL[next]}`);
       log(i, `Status moved to ${next}`, "info"); break;
     }
     case "approveResolution": {
@@ -390,18 +403,55 @@ export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; ln
       if (i.pendingBy === who.name) throw new Error("A different reviewer must approve this fix");
       const fb = Object.values(i.feedback ?? {});
       if (fb.filter(f => !f.ok).length > fb.filter(f => f.ok).length) throw new Error("Neighbors say it is not fully fixed. Review the feedback or request more work");
-      i.status = "resolved"; i.verif = "resolved"; i.resolvedAt = Date.now(); i.reviewedBy = who.name;
+      i.status = "resolved"; i.verif = "resolved"; i.resolvedAt = Date.now(); i.reviewedBy = who.name; i.closure = "reviewer";
       if (i.agent) i.agent.escalateAt = undefined;
       const m = d.missions.find(x => x.id === i.missionId); if (m) m.done = true;
-      tell(i, `Your report "${i.title}" was verified as resolved`);
+      tellAll(i, `The report "${i.title}" was verified as resolved`);
       log(i, `Resolution approved${txt(a.note, 200) ? `: ${txt(a.note, 200)}` : ""}`, "ok"); break;
     }
     case "rejectResolution": {
       const i = issue(a.id);
       if (i.status !== "pending") throw new Error("This fix is not waiting for review");
       i.status = "progress"; i.verif = "disputed"; i.rejections = (i.rejections ?? 0) + 1; i.pendingBy = undefined;
-      tell(i, `The fix for "${i.title}" needs more work`);
+      tellAll(i, `The fix for "${i.title}" needs more work`);
       log(i, `Fix not approved: ${str(a.reason, 200, "Reason")}`, "alert"); break;
+    }
+    case "reporterConfirm": {
+      const i = issue(a.id);
+      const reopenClosed = i.status === "resolved" && i.closure === "unconfirmed" && !a.ok;
+      if (i.hidden || (i.status !== "pending" && !reopenClosed)) throw new Error("This fix is not waiting for your answer");
+      if (i.pendingBy === who.name) throw new Error("You submitted this fix, so someone else must confirm it");
+      if (!reportersOf(i).includes(who.name)) throw new Error("Only the person who reported this problem, or someone who confirmed it, can answer this");
+      const note = txt(a.note, 200);
+      const m = d.missions.find(x => x.id === i.missionId);
+      if (!a.ok) {
+        i.status = "progress"; i.verif = "disputed"; i.rejections = (i.rejections ?? 0) + 1;
+        i.pendingBy = undefined; i.pendingAt = undefined; i.resolvedAt = undefined; i.closure = undefined; i.reviewedBy = undefined; i.feedback = {};
+        if (m) m.done = false;
+        tellAll(i, `A reporter says "${i.title}" is not fully fixed. It is back in progress.`);
+        log(i, `A reporter says it is not fully fixed${note ? `: ${note}` : ""}. Back in progress`, "alert"); break;
+      }
+      (i.feedback ??= {})[who.name] = { ok: true, note, t: Date.now() };
+      const fb = Object.values(i.feedback);
+      if (fb.filter(f => !f.ok).length > fb.filter(f => f.ok).length) throw new Error("Other neighbors say it is not fully fixed. A coordinator should review it");
+      i.status = "resolved"; i.verif = "resolved"; i.resolvedAt = Date.now(); i.reviewedBy = who.name; i.closure = "reporter";
+      if (i.agent) i.agent.escalateAt = undefined;
+      if (m) m.done = true;
+      tellAll(i, `The fix for "${i.title}" was confirmed by a reporter. It is resolved.`);
+      log(i, `Confirmed as fixed by a reporter${note ? `: ${note}` : ""}`, "ok"); break;
+    }
+    case "closeUnconfirmed": {
+      const i = issue(a.id);
+      if (i.hidden || i.status !== "pending") throw new Error("This fix is not waiting for confirmation");
+      const left = pendingSince(i) + UNCONFIRMED_AFTER_MS - Date.now();
+      if (left > 0) throw new Error(`Give the reporters ${Math.ceil(left / 864e5)} more day(s) to answer before closing without confirmation`);
+      const fb = Object.values(i.feedback ?? {});
+      if (fb.filter(f => !f.ok).length > fb.filter(f => f.ok).length) throw new Error("Neighbors say it is not fully fixed. Review the feedback or request more work");
+      i.status = "resolved"; i.resolvedAt = Date.now(); i.reviewedBy = who.name; i.closure = "unconfirmed";
+      if (i.agent) i.agent.escalateAt = undefined;
+      const m = d.missions.find(x => x.id === i.missionId); if (m) m.done = true;
+      tellAll(i, `"${i.title}" was closed without confirmation because nobody answered. If it is still broken, you can reopen it.`);
+      log(i, `Closed without confirmation: nobody answered in ${Math.round(UNCONFIRMED_AFTER_MS / 864e5)} days${txt(a.note, 200) ? `. ${txt(a.note, 200)}` : ""}`, "info"); break;
     }
     case "feedback": {
       const i = issue(a.id);
@@ -692,7 +742,7 @@ export function statsFor(d: Doc) {
   d.issues.forEach(i => {
     if (i.hidden) return;
     if (goodV(i)) { g(i.author).reports++; i.confirmedBy.forEach(n => { g(n).confirms++; }); }
-    if (i.status === "resolved") i.proof.forEach(p => { g(p.by).proofs++; });
+    if (i.status === "resolved" && i.closure !== "unconfirmed") i.proof.forEach(p => { g(p.by).proofs++; });
   });
   d.missions.forEach(x => x.joined.forEach(n => { g(n).missions++; }));
   (d.sos ?? []).forEach(x => { if (x.status === "helped") x.assigned.forEach(n => { g(n).sos++; }); });
