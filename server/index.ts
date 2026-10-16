@@ -11,7 +11,7 @@ import { alertsFor, SEV_RANK, type Alert } from "../src/world";
 import { CELL_R, parseCell } from "../src/geo";
 import { pool, tx } from "./db";
 import { fetchMap, geocode, placeName } from "./osm";
-import { aiAnalyze, aiCompare, aiImage, aiInsights, aiSuggest } from "./ai";
+import { aiAnalyze, aiCompare, aiEnabled, aiImage, aiInsights, aiLabel, aiSuggest } from "./ai";
 import { getWorld, worldSnapshot } from "./world";
 import { capAlertsFor, capFeedCount, capSnapshot, getCap } from "./cap";
 import { caps, notify, sendEmail, sendText, sign, twilioReady, twilioToken } from "./notify";
@@ -377,7 +377,7 @@ app.post("/api/n/:id/leave", ah(async (req, res) => {
 
 app.get("/api/capabilities", ah(async (req, res) => {
   await authenticate(req);
-  res.json({ ai: !!process.env.ANTHROPIC_API_KEY, ...caps(), cap: capFeedCount() });
+  res.json({ ai: aiEnabled(), ...caps(), cap: capFeedCount() });
 }));
 
 const KINDS_CH = ["push", "email", "sms", "whatsapp"];
@@ -604,4 +604,4 @@ if (existsSync(dist)) {
 
 app.use((e: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => fail(res, e?.status && e.status < 500 ? new HttpError(e.status, "Invalid request") : e));
 
-app.listen(PORT, () => console.log(`API on http://localhost:${PORT} · AI: ${process.env.ANTHROPIC_API_KEY ? "on" : "off (rule-based fallback)"}${existsSync(dist) ? " · serving built app" : ""}`));
+app.listen(PORT, () => console.log(`API on http://localhost:${PORT} · AI: ${aiLabel()}${existsSync(dist) ? " · serving built app" : ""}`));

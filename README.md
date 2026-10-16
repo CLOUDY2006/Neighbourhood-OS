@@ -20,7 +20,7 @@ Requires Node.js 18 or newer and a free Supabase project.
    - `DATABASE_URL`: the Postgres connection string from Project Settings, Database.
    - `CONTACT_EMAIL`: sent in the User-Agent to OpenStreetMap services, as their usage policy requires.
    - `PLATFORM_ADMINS` (optional): comma-separated emails of platform moderators who can act in any neighborhood.
-   - `ANTHROPIC_API_KEY` (optional): turns on AI summaries, photo checks and insights. Without it, rule-based fallbacks are used.
+   - `AI_API_KEY` (optional): turns on AI summaries, photo checks and insights. Without it, rule-based fallbacks are used. A free Google Gemini key from Google AI Studio works (`AI_PROVIDER=gemini`, the default). Free tiers have low limits and their terms can allow the provider to use what you send, so use only demo data with a free key.
 5. `npm install` then `npm run dev`, and open http://localhost:5173.
 
 To run for real: `npm run build` then `npm start`. The server serves the built app and the API from one port, with a strict content security policy.
@@ -52,7 +52,10 @@ Values starting with `VITE_` are read when the web app starts or is built, so re
 | `REQUIRE_EMAIL_CONFIRMED` | `false` | When `true`, the server refuses people whose email is not confirmed. Only useful if "Confirm email" is also on in Supabase. |
 | `PLATFORM_ADMINS` | empty | Comma-separated emails of moderators who can act in any neighborhood. |
 | `CORS_ORIGIN` | empty | Leave empty when the app and API share one address (the normal case). |
-| `ANTHROPIC_API_KEY`, `AI_MODEL` | empty, `claude-sonnet-5-5` | Turns on AI summaries, photo checks, photo comparison and insights. Without a key, rule-based fallbacks are used. Change `AI_MODEL` if that model name is not available to your account. |
+| `AI_PROVIDER` | `gemini` | `gemini`, `groq`, `anthropic`, or `openai` (any OpenAI-compatible service, which also needs `AI_BASE_URL` and `AI_MODEL`). |
+| `AI_API_KEY` | empty | Turns on AI summaries, photo checks, photo comparison and insights. Without a key, rule-based fallbacks are used. The old `ANTHROPIC_API_KEY` still works on its own and selects Anthropic. |
+| `AI_MODEL` | provider default | Model names change often. If the server log shows HTTP 404 for the model, copy the current name from the provider's console. A leftover `claude-*` name is ignored for non-Anthropic providers. |
+| `AI_BASE_URL`, `AI_VISION` | empty | Optional endpoint override. `AI_VISION=true` lets Groq or `openai`-style providers receive photos (only if the chosen model accepts images); otherwise photo checks show "Not checked". |
 | `OVERPASS_URL`, `NOMINATIM_URL` | public servers | Override the OpenStreetMap map-data and place-search servers, for example with your own. Not listed in `.env.example`. |
 
 ### Official local alerts: `CAP_FEEDS`
@@ -155,7 +158,7 @@ Run `database/schema.sql` again in the Supabase SQL editor. It is safe to repeat
 
 A resident reports a problem (typed or spoken, in Hindi or English). The agent then coordinates the fix, and the map shows its progress as a ring around the pin.
 
-1. **Understands the report.** With an `ANTHROPIC_API_KEY` it detects the language, category, priority and writes an English summary. Without a key it uses simple Hindi and English keyword rules, and labels that clearly.
+1. **Understands the report.** With an `AI_API_KEY` it detects the language, category, priority and writes an English summary. Without a key it uses simple Hindi and English keyword rules, and labels that clearly.
 2. **Merges duplicates** using the existing nearby-report matching.
 3. **Chooses the complaint route** from the editable table in `src/routes.ts`: which authority or channel, what to include, how many days to wait, and the escalation steps.
 4. **Drafts the complaint** in English or Hindi from a fixed template. The AI never writes the legal wording, so it cannot invent rules or deadlines. The author or a coordinator can edit it.

@@ -43,10 +43,12 @@ export function AgentPanel({ i, st, act }: { i: S.Issue; st: S.State; act: Act }
   const last = a.history[a.history.length - 1], pending = !!last && d.level > last.level && !resolved;
   const next = route.ladder[d.level], mp = S.proposeMission(i), m = st.missions.find(x => x.id === i.missionId);
   const text = `${ed?.subject ?? d.subject}\n\n${ed?.body ?? d.body}`;
+  const needsAction = !resolved && ((owns && !sent) || pending);
 
   return (
-    <div className="card agent">
-      <div className="row between"><b>{t("AI agent")}</b><span className="chip sel">{w.done}/{w.total}</span></div>
+    <details className="card agent fold" open={needsAction}>
+      <summary>{t("AI agent")} · {w.done}/{w.total}{w.steps[w.current] ? ` · ${t("Next")}: ${t(w.steps[w.current].label)}` : ""}</summary>
+      <div className="foldbody">
       <ol className="steps2">
         {w.steps.map((s, n) => (
           <li key={s.id} className={s.done ? "done" : n === w.current ? "now" : ""}>
@@ -112,6 +114,7 @@ export function AgentPanel({ i, st, act }: { i: S.Issue; st: S.State; act: Act }
         </div>
       )}
       <small className="dim">Prepared {ago(a.created)} · {a.source === "ai" ? "AI-assisted" : a.source === "scripted" ? "simulated demo" : "rule-based"}. Drafts are suggestions and can be edited.</small>
-    </div>
+      </div>
+    </details>
   );
 }

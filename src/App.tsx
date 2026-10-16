@@ -88,12 +88,23 @@ function Feed({ st, app, sel, setSel, act, demo, goReport, alerts, onWorld }: { 
   useEffect(() => {
     if (sel) requestAnimationFrame(() => document.querySelector(".card.detail")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }, [sel]);
+  const sorted = [...st.issues].sort((a, b) => S.priorityScore(st, b).score - S.priorityScore(st, a).score || b.created - a.created);
+  const card = (i: S.Issue) => (
+    <button key={i.id} className={`issue ${grp(i.status)}`} onClick={() => setSel(i.id)}>
+      <span className="dot" /><span className="grow">{i.title}<small>{LBL[i.status]} · {S.priorityScore(st, i).level} urgency{i.verif === "verified" ? " · verified" : i.verif === "disputed" ? " · disputed" : ""}{i.hidden ? " · hidden" : ""}</small></span><small className="mono">{ago(i.created)}</small>
+    </button>
+  );
+  if (issue) return (
+    <>
+      <AlertBanner alerts={alerts} onWorld={onWorld} />
+      <Detail i={issue} st={st} act={act} close={() => setSel(null)} />
+    </>
+  );
   return (
     <>
-      {issue && <Detail i={issue} st={st} act={act} close={() => setSel(null)} />}
       <AlertBanner alerts={alerts} onWorld={onWorld} />
       <CheckinCard st={st} app={app} act={act} compact />
-      <NoticeBoard st={st} act={act} />
+      <div className="stats"><div className="red"><b>{open}</b>{t("Open")}</div><div className="amber"><b>{prog}</b>{t("In progress")}</div><div className="green"><b>{done}</b>{t("Fixed")}</div></div>
       {st.issues.some(i => i.status === "pending" && !i.hidden) && (
         <div className="card alertcard">
           <b>Fixes waiting for review</b>
@@ -101,7 +112,6 @@ function Feed({ st, app, sel, setSel, act, demo, goReport, alerts, onWorld }: { 
           <small className="dim">Neighbors can say whether it looks fixed. A moderator approves the resolution.</small>
         </div>
       )}
-      <div className="stats"><div className="red"><b>{open}</b>{t("Open")}</div><div className="amber"><b>{prog}</b>{t("In progress")}</div><div className="green"><b>{done}</b>{t("Fixed")}</div></div>
       {st.issues.length > 0 && <Pipeline st={st} />}
       {demo && (
         <div className="card demo">
@@ -119,13 +129,17 @@ function Feed({ st, app, sel, setSel, act, demo, goReport, alerts, onWorld }: { 
         </div>
       )}
       {st.issues.length > 0 && <h3>{t("Live issues")}</h3>}
-      {[...st.issues].sort((a, b) => S.priorityScore(st, b).score - S.priorityScore(st, a).score || b.created - a.created).map(i => (
-        <button key={i.id} className={`issue ${grp(i.status)}`} onClick={() => setSel(i.id)}>
-          <span className="dot" /><span className="grow">{i.title}<small>{LBL[i.status]} · {VL[i.verif]} · score {S.priorityScore(st, i).score}{i.hidden ? " · hidden" : ""}</small></span><small className="mono">{ago(i.created)}</small>
-        </button>
-      ))}
-      <h3>{t("Event log")}</h3>
-      {st.events.slice(0, 10).map((e, n) => <div key={n} className={`ev ${e.tone}`}><span className="mono">{ago(e.t)}</span> {e.text}</div>)}
+      {st.issues.length > 0 && <p className="dim hint">{t("Tap a pin on the map or a report below to see what is happening and what you can do.")}</p>}
+      {sorted.filter(i => i.status !== "resolved").map(card)}
+      {sorted.some(i => i.status === "resolved") && <h3>{t("Fixed")}</h3>}
+      {sorted.filter(i => i.status === "resolved").map(card)}
+      <NoticeBoard st={st} act={act} />
+      {st.events.length > 0 && (
+        <details className="fold">
+          <summary>{t("Event log")} ({Math.min(st.events.length, 10)})</summary>
+          <div className="foldbody">{st.events.slice(0, 10).map((e, n) => <div key={n} className={`ev ${e.tone}`}><span className="mono">{ago(e.t)}</span> {e.text}</div>)}</div>
+        </details>
+      )}
     </>
   );
 }

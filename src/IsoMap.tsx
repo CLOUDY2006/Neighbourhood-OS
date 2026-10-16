@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Ban, Box, Construction, Cross, Crosshair, Droplets, Flag, Flame, Hammer, HeartHandshake, History, Home, Info, Layers, Lightbulb, List, Map as MapIcon, Minus, Navigation2, Plus, Rotate3d, RotateCcw, RotateCw, Search, Siren, Trash2, User, Users, Wrench, X } from "lucide-react";
+import { AlertTriangle, Ban, Box, Construction, Cross, Crosshair, Droplets, Flag, Flame, Hammer, HeartHandshake, History, Home, Info, Layers, Lightbulb, List, Map as MapIcon, Minus, Navigation2, Plus, Rotate3d, RotateCcw, RotateCw, Search, Siren, Trash2, User, Users, Wrench, X, LocateFixed } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import * as S from "./store";
-import { fromXY, toXY } from "./geo";
+import { cellOf, fromXY, toXY } from "./geo";
+import { fmtDist, hereInfo, useHere } from "./here";
+import { useT } from "./i18n";
 import type { MapData } from "./mapdata";
 import { buildModel, drawCars, drawGround, drawObjects, K, KF, KZ, makeProj, TILT0, TILT_MAX, TILT_MIN, type Cam } from "./city3d";
 import { useA11y, useTheme } from "./a11y";
@@ -67,6 +69,15 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
   const [q, setQ] = useState("");
   const [legend, setLegend] = useState(false);
   const R = map?.r ?? 650;
+  const tr = useT(), app = S.useApp(), { here, start, stop } = useHere();
+  const [opening, setOpening] = useState(false), [openErr, setOpenErr] = useState("");
+  const hi = here.status === "on" && here.lat != null && here.lng != null ? hereInfo(here.lat, here.lng, center, R) : null;
+  const openMine = async () => {
+    if (here.lat == null || here.lng == null) return;
+    setOpening(true); setOpenErr("");
+    try { await S.joinCell(cellOf(here.lat, here.lng).id); } catch (e) { setOpenErr((e as Error).message); }
+    setOpening(false);
+  };
   const proj = useMemo(() => makeProj(R, flat, cam), [R, flat, cam]);
   const { P } = proj, t = proj.t, lift = flat ? 72 : 120 * (proj.zf / KZ);
   const model = useMemo(() => (map ? buildModel(map) : null), [map]);
@@ -317,6 +328,12 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
               </g>
             </g>
           )}
+          {hi?.inside && (() => { const a = A(here.lat!, here.lng!); return (
+            <g pointerEvents="none" aria-hidden="true">
+              <ellipse cx={a.x} cy={a.y} rx="26" ry={26 * t} fill="none" stroke="#2563eb" strokeWidth="2.5" className="ring" />
+              <ellipse cx={a.x} cy={a.y} rx="9" ry={9 * t} fill="#2563eb" stroke="#fff" strokeWidth="3" />
+              <text x={a.x} y={a.y - 22} textAnchor="middle" fontSize="13" fontWeight="700" fill={pal.city.label} stroke={pal.city.halo} strokeWidth="4" paintOrder="stroke">{tr("YOU ARE HERE")}</text>
+            </g>); })()}
         </g>
       </svg>
 
@@ -340,6 +357,23 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
         </label>
       </div>
       <ViewSwitch view={view} setView={setView} />
+      {here.status !== "off" && (
+        <div className="hud hud-here glass" role="status" aria-live="polite">
+          {here.status === "asking" && <span>{tr("Finding your location…")}</span>}
+          {here.status === "denied" && <span>{tr("Location is blocked. Allow it in your browser's site settings, then try again.")}</span>}
+          {here.status === "unsupported" && <span>{tr("Your browser does not support location.")}</span>}
+          {here.status === "error" && <span>{tr("Could not get your location. Try again.")}</span>}
+          {hi && <>
+            <i className="herepoint" />
+            <span><b>{tr("You are here")}</b> · {hi.inside ? tr("inside this neighborhood") : `${fmtDist(hi.dist)} ${tr("from the center of this neighborhood")}`}{here.acc != null && here.acc > 50 ? ` · ±${Math.round(here.acc)} m` : ""}</span>
+            {!hi.inside && app.mode === "live" && <button className="go" disabled={opening} onClick={openMine}>{tr("Open my area")}</button>}
+            {!hi.inside && app.mode !== "live" && <span className="dim">{tr("This demo area is simulated, so you will not appear on it.")}</span>}
+          </>}
+          <button className="tabb" onClick={stop}>{here.status === "on" || here.status === "asking" ? tr("Stop") : tr("Close")}</button>
+          {openErr && <small className="bad">{openErr}</small>}
+          <small className="dim">{tr("Your location stays on this device. Opening your area sends only a 1 km area code.")}</small>
+        </div>
+      )}
 
       <div className="hud hud-right">
         {(zones.length > 0 || official) && <button className="active-pill" onClick={() => { if (zones.length) { const a = A(zones[0].lat, zones[0].lng); centerOn(a.x, a.y - 40, 1); } }}><AlertTriangle size={16} /> {official ? "Official alert" : "Crisis active"}</button>}
@@ -360,6 +394,7 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
           <button className={`rbtn ${timeOn ? "on" : ""}`} aria-pressed={timeOn} {...tip("Then vs now")} onClick={onTime}><History size={17} /></button>
         </div>
         <div className="tgroup glass">
+          <button className={`rbtn ${here.status === "on" ? "on" : ""}`} {...tip(tr("Show my location"))} onClick={() => { if (here.status !== "on") start(); else if (hi?.inside) { const a = A(here.lat!, here.lng!); centerOn(a.x, a.y - 40, 1.1); } }}><LocateFixed size={17} /></button>
           <button className="rbtn" {...tip("Recenter on the issues")} onClick={home}><Crosshair size={17} /></button>
         </div>
       </div>
