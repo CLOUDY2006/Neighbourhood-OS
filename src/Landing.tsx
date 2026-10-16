@@ -264,7 +264,7 @@ function Hero() {
 
 /* ---------------------------------------------------------------- sources marquee */
 
-const SOURCES: [LucideIcon, string][] = [[MapPin, "OpenStreetMap"], [Globe, "USGS earthquakes"], [Globe, "NASA EONET"], [AlertTriangle, "GDACS alerts"], [Siren, "Local CAP feeds"], [MessageSquare, "SMS & WhatsApp"], [WifiOff, "Offline-first PWA"], [Sparkles, "Claude AI suggestions"], [Languages, "English & हिन्दी"]];
+const SOURCES: [LucideIcon, string][] = [[MapPin, "OpenStreetMap"], [Globe, "USGS earthquakes"], [Globe, "NASA EONET"], [AlertTriangle, "GDACS alerts"], [Siren, "Local CAP feeds"], [MessageSquare, "SMS & WhatsApp"], [WifiOff, "Offline-first PWA"], [Sparkles, "Claude AI suggestions"], [Globe, "TinyFish web agent"], [Languages, "English & हिन्दी"]];
 function Sources() {
   return (
     <section className="ln-sources" aria-label="Data and services">
@@ -598,6 +598,45 @@ function Trust() {
   );
 }
 
+/* ---------------------------------------------------------------- live TinyFish try-it */
+
+function TryTinyFish() {
+  const [on, setOn] = useState(false), [city, setCity] = useState(""), [cat, setCat] = useState<S.Cat>("garbage"), [busy, setBusy] = useState(false), [res, setRes] = useState<S.TfRouteCheck | null>(null), [err, setErr] = useState("");
+  useEffect(() => { let a = true; S.tfPublicOn().then(v => { if (a) setOn(v); }); return () => { a = false; }; }, []);
+  if (!on) return null;
+  const run = async () => {
+    setBusy(true); setErr(""); setRes(null);
+    try { setRes(await S.tfPublicRoute(cat, city.trim())); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  };
+  const ext = { target: "_blank", rel: "noopener noreferrer" } as const;
+  return (
+    <section id="try-tinyfish" className="ln-sec">
+      <div className="ln-wrap">
+        <Head eyebrow="Live with TinyFish" center title={<>Find your city&rsquo;s <em>real complaint page</em>.</>} sub="No account needed. TinyFish searches the live web and reads the official pages for your city. The same step runs inside every report." />
+        <Reveal className="ln-try">
+          <div className="ln-tryrow">
+            <input value={city} onChange={e => setCity(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && city.trim().length > 1 && !busy) void run(); }} placeholder="Your city, for example Pune" maxLength={60} aria-label="City" />
+            <select value={cat} onChange={e => setCat(e.target.value as S.Cat)} aria-label="Problem type">{(Object.keys(S.CAT_EN) as S.Cat[]).map(c => <option key={c} value={c}>{S.CAT_EN[c]}</option>)}</select>
+            <button className="xl" disabled={busy || city.trim().length < 2} onClick={run}><Globe size={16} /> {busy ? "Reading official pages…" : "Find it"}</button>
+          </div>
+          {err && <p className="ln-tryerr" role="alert">{err}</p>}
+          {res && (
+            <div className="ln-tryout" aria-live="polite">
+              <b>Results for {res.city}</b>
+              {res.sources.map(r => <span key={r.url}><a href={r.url} {...ext}>{r.title || r.url}</a> · {r.official ? "Government website" : "Not confirmed as official"}</span>)}
+              {res.helplines.length > 0 && <span>Helplines found on the pages: {res.helplines.map(h => h.value).join(", ")}</span>}
+              {res.emails.length > 0 && <span>Emails found: {res.emails.map(h => h.value).join(", ")}</span>}
+              {res.links.map(l => <span key={l.url}><a href={l.url} {...ext}>{l.label}</a> · {l.kind === "track" ? "Track a complaint" : "Complaint page"}</span>)}
+              <small>{res.note}</small>
+            </div>
+          )}
+          <small className="ln-trynote">Powered by TinyFish Search and Fetch. Read by software, so it can be wrong or out of date: always confirm on the official site. Each visitor gets a few tries an hour.</small>
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
 /* ---------------------------------------------------------------- cta + footer */
 
 function FinalCta({ me }: { me: boolean }) {
@@ -627,7 +666,7 @@ function Footer() {
       </div>
       <div className="ln-wrap ln-footnote">
         <p><Siren size={14} /> NEIGHBORHOOD OS is not an emergency service. In an emergency, call your local emergency number (112 in India).</p>
-        <p>Map data © OpenStreetMap contributors · Hazard data from USGS, NASA EONET and GDACS</p>
+        <p>Map data © OpenStreetMap contributors · Hazard data from USGS, NASA EONET and GDACS · Official complaint pages found with TinyFish</p>
       </div>
     </footer>
   );
@@ -647,6 +686,7 @@ export default function Landing() {
           <Loop />
           <Stats />
           <Features />
+          <TryTinyFish />
           <Crisis />
           <Roles />
           <Trust />

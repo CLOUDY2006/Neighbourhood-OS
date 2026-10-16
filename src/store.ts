@@ -302,7 +302,7 @@ export const authorityRemove = (id: string) => dispatch({ t: "authorityRemove", 
 export const handoff = (id: string, authorityId: string, ref: string) => dispatch({ t: "handoff", id, authorityId, ref });
 export const handoffStatus = (id: string, status: L.Handoff["status"], ref?: string) => dispatch({ t: "handoffStatus", id, status, ref });
 
-export interface Caps { ai: boolean; push: string | null; email: boolean; sms: boolean; whatsapp: boolean; cap: number }
+export interface Caps { ai: boolean; tinyfish?: boolean; push: string | null; email: boolean; sms: boolean; whatsapp: boolean; cap: number }
 export interface Chan { kind: string; target: string; verified: boolean }
 export const capabilities = () => api<Caps>("/api/capabilities");
 export const channels = () => api<Chan[]>(`/api/n/${enc(app.nbhd!.id)}/channels`);
@@ -318,6 +318,51 @@ export async function enablePush(key: string) {
 }
 export const aiCompare = (issueId: string, photo: string) => api<{ samePlace: string; fixed: string; note: string; source: string }>(`${aiBase()}/compare`, { issueId, photo });
 export const publicSummary_ = (id: string) => fetch(`/api/public/${enc(id)}/summary`).then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || "Not found"); return j as { name: string; summary: ReturnType<typeof L.publicSummary> }; });
+
+export interface TfRouteCheck {
+  city: string; cat: L.Cat; checkedAt: number; simulated?: boolean;
+  sources: { title: string; url: string; official: boolean; snippet: string }[];
+  helplines: { value: string; url: string }[]; emails: { value: string; url: string }[];
+  links: { label: string; url: string; kind: "complaint" | "track" }[]; note: string;
+}
+export interface TfStatus { state: "running" | "done" | "failed"; streamingUrl?: string; found?: boolean; status?: string; lastUpdated?: string; remarks?: string; suggest?: "acknowledged" | "resolved"; error?: string; simulated?: boolean }
+const tfBase = () => `/api/n/${enc(app.nbhd!.id)}/tinyfish`;
+export const tfAvailable = async (): Promise<boolean> => (app.mode === "demo" ? true : capabilities().then(c => !!c.tinyfish).catch(() => false));
+
+/** Open to anyone, no account. The server limits each visitor and the whole site. */
+export const tfPublicOn = (): Promise<boolean> => fetch("/api/public/tinyfish").then(r => r.json()).then((j: { enabled?: boolean }) => !!j.enabled).catch(() => false);
+export async function tfPublicRoute(cat: L.Cat, city: string): Promise<TfRouteCheck> {
+  const r = await fetch("/api/public/tinyfish/route", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cat, city }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((j as { error?: string }).error || `Request failed (${r.status})`);
+  return j as TfRouteCheck;
+}
+
+export async function tfVerifyRoute(cat: L.Cat, city?: string): Promise<TfRouteCheck> {
+  if (app.mode === "demo") {
+    if (city?.trim() && (await tfPublicOn())) return tfPublicRoute(cat, city.trim());
+    await new Promise(r => setTimeout(r, 1200));
+    return {
+      city: "Maple Nagar (fictional demo city)", cat, checkedAt: Date.now(), simulated: true,
+      sources: [{ title: "Example municipal grievance portal (simulated)", url: "https://example.org/", official: false, snippet: "Simulated example. No real website was read in demo mode." }],
+      helplines: [{ value: "1800 000 0000", url: "https://example.org/" }], emails: [],
+      links: [{ label: "Register a complaint (simulated)", url: "https://example.org/complaint", kind: "complaint" }, { label: "Track a complaint (simulated)", url: "https://example.org/track", kind: "track" }],
+      note: "This is a simulated example. Type a real city above to run it live, or sign in to a real neighborhood.",
+    };
+  }
+  return api<TfRouteCheck>(`${tfBase()}/route`, { cat, city: city || undefined });
+}
+export async function tfStartStatus(issueId: string, url: string): Promise<string> {
+  if (app.mode === "demo") return `demo:${Date.now()}`;
+  return (await api<{ runId: string }>(`${tfBase()}/status`, { issueId, url })).runId;
+}
+export async function tfPollStatus(runId: string): Promise<TfStatus> {
+  if (runId.startsWith("demo:")) {
+    if (Date.now() - Number(runId.slice(5)) < 3000) return { state: "running", simulated: true };
+    return { state: "done", simulated: true, found: true, status: "Registered. Assigned to the zonal officer.", lastUpdated: new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }), remarks: "Simulated example. No real portal was visited.", suggest: "acknowledged" };
+  }
+  return api<TfStatus>(`${tfBase()}/runs/${enc(runId)}`);
+}
 
 export async function agentAnalyze(text: string): Promise<Analysis> {
   if (app.mode === "live" && app.nbhd) {

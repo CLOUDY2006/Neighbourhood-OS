@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import * as S from "./store";
 import { useT } from "./i18n";
 import { ago, type Act } from "./ui";
@@ -15,6 +15,105 @@ export function AnalysisCard({ a, onApply }: { a: S.Analysis; onApply: () => voi
       <p>{t("Complaint goes to")}: <b>{route.authority}</b></p>
       <small className="dim">{a.source === "ai" ? "Understood by AI. " : "Understood with simple rules (no AI key). "}A complaint draft is prepared after you submit. Nothing is sent without a person approving it.</small>
       <button onClick={onApply}>{t("Use these suggestions")}</button>
+    </div>
+  );
+}
+
+const ext = { target: "_blank", rel: "noopener noreferrer" } as const;
+
+function TinyFishCard({ i, admin, owns, sent, act }: { i: S.Issue; admin: boolean; owns: boolean; sent: boolean; act: Act }) {
+  const t = useT(), app = S.useApp();
+  const [ok, setOk] = useState(false), [city, setCity] = useState(""), [busy, setBusy] = useState(false), [res, setRes] = useState<S.TfRouteCheck | null>(null), [err, setErr] = useState("");
+  const [url, setUrl] = useState(""), [runId, setRunId] = useState(""), [st, setSt] = useState<S.TfStatus | null>(null), [serr, setSerr] = useState("");
+  const ref = i.handoff?.ref ?? "", resolved = i.status === "resolved";
+
+  useEffect(() => { let on = true; S.tfAvailable().then(v => { if (on) setOk(v); }); return () => { on = false; }; }, [app.mode]);
+  useEffect(() => {
+    if (!runId) return;
+    let on = true, n = 0, timer: ReturnType<typeof setTimeout> | undefined;
+    const tick = async () => {
+      try {
+        const r = await S.tfPollStatus(runId);
+        if (!on) return;
+        if (r.state === "running" && ++n >= 60) { setSt({ state: "failed", error: "The check took too long. Try again later." }); return; }
+        setSt(r);
+        if (r.state === "running") timer = setTimeout(tick, 3000);
+      } catch (e) { if (on) setSt({ state: "failed", error: (e as Error).message }); }
+    };
+    void tick();
+    return () => { on = false; if (timer) clearTimeout(timer); };
+  }, [runId]);
+
+  const showRoute = owns && !resolved, showStatus = admin && sent && !!ref && !resolved;
+  if (!ok || (!showRoute && !showStatus)) return null;
+
+  const verify = async () => {
+    setBusy(true); setErr("");
+    try { setRes(await S.tfVerifyRoute(i.cat, city.trim())); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  };
+  const start = async () => {
+    setSerr(""); setSt({ state: "running" }); setRunId("");
+    try { setRunId(await S.tfStartStatus(i.id, url.trim())); } catch (e) { setSt(null); setSerr((e as Error).message); }
+  };
+  const track = res?.links.filter(l => l.kind === "track") ?? [];
+
+  return (
+    <div className="card">
+      <b>{t("TinyFish web agent")}</b>
+      {showRoute && (
+        <>
+          <small className="dim">{t("Search the live web for your city's official complaint page, helpline and tracker. Free to run. This is a suggestion; check it before you send anything.")}</small>
+          <div className="row wrap">
+            <input value={city} onChange={e => setCity(e.target.value)} placeholder={app.mode === "demo" ? t("Type a real city to run it live") : t("City (optional)")} maxLength={80} aria-label={t("City")} />
+            <button disabled={busy} onClick={verify}>{busy ? t("Reading official pages…") : t("Verify this route with TinyFish")}</button>
+          </div>
+          {err && <small className="errtext">{err}</small>}
+          {res && (
+            <div className="foldbody">
+              {res.simulated && <small className="errtext">{t("Simulated example. No real website was read.")}</small>}
+              <small className="dim">{t("City searched")}: {res.city}</small>
+              {res.sources.map(r => (
+                <small key={r.url} className="dim">
+                  <a href={r.url} {...ext}>{r.title || r.url}</a> · {r.official ? t("Government website") : t("Not confirmed as official")}
+                </small>
+              ))}
+              {res.helplines.length > 0 && <small className="dim">{t("Helpline numbers found on the pages")}: {res.helplines.map(h => h.value).join(", ")}</small>}
+              {res.emails.length > 0 && <small className="dim">{t("Email addresses found")}: {res.emails.map(h => h.value).join(", ")}</small>}
+              {res.links.map(l => <small key={l.url} className="dim"><a href={l.url} {...ext}>{l.label}</a> · {l.kind === "track" ? t("Track a complaint") : t("Complaint page")}</small>)}
+              <small className="dim">{res.note}</small>
+              {track.length > 0 && showStatus && <div className="row wrap">{track.map(l => <button key={l.url} className="chip btn" onClick={() => setUrl(l.url)}>{t("Use this tracker")}: {l.label.slice(0, 30)}</button>)}</div>}
+            </div>
+          )}
+        </>
+      )}
+      {showStatus && (
+        <>
+          <b>{t("Check complaint status")}</b>
+          <small className="dim">{t("A TinyFish web agent opens the public tracker page and looks up your reference number. It only reads. It never logs in or files anything. It uses TinyFish credits.")}</small>
+          <small className="dim">{t("Reference number")}: {ref}</small>
+          <div className="row wrap">
+            <input type="url" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://" maxLength={300} aria-label={t("Tracker page address")} />
+            <button disabled={!url.trim() || st?.state === "running"} onClick={start}>{st?.state === "running" ? t("Checking…") : t("Check status")}</button>
+          </div>
+          {serr && <small className="errtext">{serr}</small>}
+          {st?.state === "running" && <small className="dim">{t("The agent is working on the website. This can take up to two minutes.")}{st.streamingUrl ? <> <a href={st.streamingUrl} {...ext}>{t("Watch it live")}</a></> : null}</small>}
+          {st?.state === "failed" && <small className="errtext">{st.error || t("The check did not finish.")}</small>}
+          {st?.state === "done" && (
+            <div className="foldbody">
+              {st.simulated && <small className="errtext">{t("Simulated example. No real portal was visited.")}</small>}
+              {st.found
+                ? <p><b>{st.status || t("No status text")}</b>{st.lastUpdated ? <small className="dim"> · {st.lastUpdated}</small> : null}</p>
+                : <p>{t("The agent could not find a status for this number.")}</p>}
+              {st.remarks && <small className="dim">{st.remarks}</small>}
+              <small className="dim">{t("This is what the website showed, read by an AI agent. Check the page yourself before relying on it.")}</small>
+              {st.suggest && i.handoff?.status !== st.suggest && (
+                <button onClick={() => act(() => S.handoffStatus(i.id, st.suggest!), "Status recorded")}>{t("Record as")}: {st.suggest === "resolved" ? t("Resolved by the authority") : t("Acknowledged by the authority")}</button>
+              )}
+            </div>
+          )}
+        </>
+      )}
+      <small className="dim">{t("Powered by TinyFish")}</small>
     </div>
   );
 }
@@ -66,6 +165,8 @@ export function AgentPanel({ i, st, act }: { i: S.Issue; st: S.State; act: Act }
         <small className="dim">Escalation: {route.ladder.map(l => `after ${l.waitDays} day(s) to ${l.to}`).join(", then ")}</small>
         <small className="dim">Check this route against your city's official website before sending. Names and portals differ between cities.</small>
       </details>
+
+      <TinyFishCard i={i} admin={admin} owns={owns} sent={sent} act={act} />
 
       <b>{t("Complaint draft")}{d.level > 0 ? ` (${t("Escalation")} ${d.level})` : ""}</b>
       <small className="dim">To: {d.to}</small>

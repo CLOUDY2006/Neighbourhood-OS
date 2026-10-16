@@ -56,6 +56,9 @@ Values starting with `VITE_` are read when the web app starts or is built, so re
 | `AI_API_KEY` | empty | Turns on AI summaries, photo checks, photo comparison and insights. Without a key, rule-based fallbacks are used. The old `ANTHROPIC_API_KEY` still works on its own and selects Anthropic. |
 | `AI_MODEL` | provider default | Model names change often. If the server log shows HTTP 404 for the model, copy the current name from the provider's console. A leftover `claude-*` name is ignored for non-Anthropic providers. |
 | `AI_BASE_URL`, `AI_VISION` | empty | Optional endpoint override. `AI_VISION=true` lets Groq or `openai`-style providers receive photos (only if the chosen model accepts images); otherwise photo checks show "Not checked". |
+| `TINYFISH_API_KEY` | empty | Turns on the TinyFish features in the AI agent panel (see "TinyFish: verify the route and check the status"). Get a key at agent.tinyfish.ai/api-keys. Server only. Never put it in a `VITE_` variable. Without it the buttons are hidden in live mode. |
+| `TRUST_PROXY` | `1` | How many proxies sit in front of the server, so the per-visitor rate limits see the real visitor address. `1` is right for Render, Railway and Fly. Use `0` if the server is reached directly. |
+| `TINYFISH_SEARCH_URL`, `TINYFISH_FETCH_URL`, `TINYFISH_AGENT_URL` | TinyFish public servers | Endpoint overrides, used by the tests. Not listed in `.env.example`. |
 | `OVERPASS_URL`, `NOMINATIM_URL` | public servers | Override the OpenStreetMap map-data and place-search servers, for example with your own. Not listed in `.env.example`. |
 
 ### Official local alerts: `CAP_FEEDS`
@@ -171,6 +174,22 @@ Open the Command tab in demo mode and press "Run next step" to play the whole fl
 
 **Check before relying on it:** the authority names and escalation steps in `src/routes.ts` are generic. Different cities use different portals and offices, so check each entry against your city's official website and edit it.
 
+## TinyFish: verify the route and check the status
+
+Two features in the AI agent panel use [TinyFish](https://www.tinyfish.ai) when `TINYFISH_API_KEY` is set on the server.
+
+**Verify this route (Search and Fetch APIs, free to run).** Press the button on any report. The server works out the city from the neighborhood's area cell, asks TinyFish Search for that city's official complaint pages, reads the top results with TinyFish Fetch, and lists the sources, helpline numbers, emails and complaint or tracker links it found on those pages. Only pages on government domains are marked official. Everything else says "Not confirmed as official". Results are cached for a week per city and category. The numbers and links come from simple pattern matching on the page text, not from an AI, so they can be wrong or out of date. The table in `src/routes.ts` stays as the fallback.
+
+**Check complaint status (Web Agent API, uses TinyFish credits).** After a coordinator has saved a reference number, they paste the public tracker page address and press "Check status". A TinyFish web agent opens the page, looks up the number and reports what the page shows. The goal sent to the agent is read-only: no login, no registration, no new complaint, nothing typed except the reference number. If the page wants a login, OTP or CAPTCHA, the agent stops. The result is shown with a live view link while it runs. If the wording looks like "acknowledged" or "resolved", a button offers to record it, and a coordinator still has to press it. Nothing changes by itself.
+
+**Try it without an account.** When the key is set, the landing page shows a "Find your city's real complaint page" box, and demo mode runs the same lookup live if you type a real city. It uses only Search and Fetch, never the agent, so it costs no credits. It is limited to 6 tries an hour per visitor and 300 a day for the whole site (in memory, so they reset when the server restarts). The free Fetch allowance is limited too, so this cap protects it.
+
+What leaves your server: the city name, the issue category, the tracker address and the reference number. Never names, photos or the exact location. The reference number is a code the authority gave out, but it does go to TinyFish and the portal.
+
+Safeguards: coordinators only for status checks (10 an hour each and 100 a day for the whole server, in memory), tracker addresses must be public `https://` sites, runs are tied to the user who started them, and text read from a web page is shown as plain text only. In demo mode both features show clearly labeled simulated examples and call nothing.
+
+**Not tested for real:** the automated tests (`tests/tinyfishCheck.ts`) use a local mock of the TinyFish API, so they check our requests, parsing and safeguards but not TinyFish itself. Run both features once with a real key before relying on them. Some portals block automated visits or need a CAPTCHA, and then the agent will report that it could not find a status.
+
 ## New: review, simulation and analytics
 
 - **Moderator role and four-eyes review.** The lifecycle is now Reported, Under review, Assigned, In progress, Resolution pending review, Resolved. A coordinator can ask for review once proof exists, but the person who asked cannot approve it. A moderator (or a different coordinator) approves or sends it back with a reason. Neighbors can say "it looks fixed" or "not fully fixed", and approval is blocked while more neighbors say it is not fixed. Coordinators set moderators in the People tab.
@@ -211,7 +230,8 @@ Run `database/schema.sql` again (it adds the moderator role). If you copy files 
 - Hindi translations were written without native review and cover the main screens only.
 - Voice input depends on the browser's speech service, and its audio may leave the device.
 - Offline copies are cleared on sign-out, but anyone using a shared device while signed in can see them.
-- Automated tests cover the shared rules and the CAP parser only, not the server routes or the screens.
+- Automated tests cover the shared rules, the CAP parser, the AI providers and the TinyFish module (against a mock), but not the server routes or the screens.
+- TinyFish results (route links, helplines, portal status) are suggestions read from third-party websites by software. A person must confirm them.
 
 ## Layout
 

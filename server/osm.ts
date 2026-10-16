@@ -34,6 +34,21 @@ export async function placeName(lat: number, lng: number) {
   } catch { return fallback; }
 }
 
+/** City and state for a point, used only to look up the right official website. Never includes the exact spot. */
+export async function cityOf(lat: number, lng: number): Promise<string> {
+  const key = `c:${lat.toFixed(2)},${lng.toFixed(2)}`;
+  const hit = recall<string>(key);
+  if (hit !== undefined) return hit;
+  try {
+    const r = await queue(() => fetch(`${NOMINATIM}/reverse?format=jsonv2&zoom=10&lat=${lat}&lon=${lng}`, { headers: { "User-Agent": UA, "Accept-Language": "en" }, signal: AbortSignal.timeout(5000) }));
+    if (!r.ok) return "";
+    const a = ((await r.json()) as any).address ?? {};
+    const city = String(a.city || a.town || a.municipality || a.county || a.state_district || "").slice(0, 60);
+    const state = String(a.state || "").slice(0, 60);
+    return remember(key, [city, state].filter(Boolean).join(", "));
+  } catch { return ""; }
+}
+
 type Pt = [number, number];
 const HW: Record<string, number> = { motorway: 0, trunk: 0, primary: 0, secondary: 1, tertiary: 1, unclassified: 2, residential: 2, living_street: 2, service: 3, pedestrian: 3 };
 

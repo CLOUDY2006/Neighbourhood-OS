@@ -6,12 +6,13 @@ import express from "express";
 import compression from "compression";
 import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
-import { can, dueEscalations, emptyDoc, publicSummary, purgeSos, reduce, sosActiveCount, STATUS_LABEL, visibleSos, weeklyDigest, type Action, type Doc, type Role } from "../src/logic";
+import { can, dueEscalations, emptyDoc, publicSummary, purgeSos, reduce, sosActiveCount, STATUS_LABEL, visibleSos, weeklyDigest, type Action, type Cat, type Doc, type Role } from "../src/logic";
 import { alertsFor, SEV_RANK, type Alert } from "../src/world";
 import { CELL_R, parseCell } from "../src/geo";
 import { pool, tx } from "./db";
-import { fetchMap, geocode, placeName } from "./osm";
+import { cityOf, fetchMap, geocode, placeName } from "./osm";
 import { aiAnalyze, aiCompare, aiEnabled, aiImage, aiInsights, aiLabel, aiSuggest } from "./ai";
+import { getStatusRun, runOwner, startStatusRun, tfEnabled, tfLabel, TinyFishError, trackRun, verifyRoute } from "./tinyfish";
 import { getWorld, worldSnapshot } from "./world";
 import { capAlertsFor, capFeedCount, capSnapshot, getCap } from "./cap";
 import { caps, notify, sendEmail, sendText, sign, twilioReady, twilioToken } from "./notify";
@@ -103,6 +104,8 @@ const ah = (fn: (req: express.Request, res: express.Response) => Promise<unknown
 
 const app = express();
 app.disable("x-powered-by");
+// Hosts such as Render, Railway and Fly put one proxy in front. Without this every visitor looks like the same address to the rate limits.
+{ const hops = (process.env.TRUST_PROXY ?? "").trim() === "" ? 1 : Number(process.env.TRUST_PROXY); if (Number.isInteger(hops) && hops >= 0) app.set("trust proxy", hops); }
 app.use(compression());
 app.use((_req, res, next) => { res.setHeader("X-Content-Type-Options", "nosniff"); res.setHeader("Referrer-Policy", "no-referrer"); res.setHeader("X-Frame-Options", "DENY"); next(); });
 app.use(cors({ origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(",") : false }));
@@ -377,7 +380,7 @@ app.post("/api/n/:id/leave", ah(async (req, res) => {
 
 app.get("/api/capabilities", ah(async (req, res) => {
   await authenticate(req);
-  res.json({ ai: aiEnabled(), ...caps(), cap: capFeedCount() });
+  res.json({ ai: aiEnabled(), tinyfish: tfEnabled(), ...caps(), cap: capFeedCount() });
 }));
 
 const KINDS_CH = ["push", "email", "sms", "whatsapp"];
@@ -506,6 +509,70 @@ app.post("/api/n/:id/ai/suggest", aiRoute((doc, b) => {
 app.post("/api/n/:id/ai/image", aiRoute((_doc, b) => aiImage(String(b.photo ?? ""), String(b.mode ?? "report"), b.cat), 20));
 app.post("/api/n/:id/ai/insights", aiRoute(doc => aiInsights(doc), 10));
 
+const CATS = ["pothole", "garbage", "streetlight", "water", "unsafe", "blocked", "other"];
+const tfFail = (e: unknown): never => { if (e instanceof TinyFishError) throw new HttpError(e.status, e.message); throw e; };
+const tfAdmin = async (req: express.Request) => {
+  const u = await authenticate(req); const id = String(req.params.id);
+  if (!isId(id)) throw new HttpError(400, "Invalid neighborhood");
+  if (!tfEnabled()) throw new HttpError(503, "TinyFish is not set up on this server");
+  if ((await memberRole(pool, id, u)) !== "admin") throw new HttpError(403, "Only a coordinator can run a status check");
+  return { u, id };
+};
+
+app.post("/api/n/:id/tinyfish/route", ah(async (req, res) => {
+  const u = await authenticate(req); const id = String(req.params.id);
+  if (!isId(id)) throw new HttpError(400, "Invalid neighborhood");
+  if (!tfEnabled()) throw new HttpError(503, "TinyFish is not set up on this server");
+  rl(`tfroute:${u.id}`, 20, 3600000);
+  await memberRole(pool, id, u);
+  const cat = String(req.body?.cat ?? "other");
+  if (!CATS.includes(cat)) throw new HttpError(400, "Invalid category");
+  let city = String(req.body?.city ?? "").trim().slice(0, 80);
+  if (!city) {
+    const n = (await pool.query("select center_lat, center_lng from neighborhoods where id = $1", [id])).rows[0];
+    if (!n) throw new HttpError(404, "Neighborhood not found");
+    city = await cityOf(n.center_lat, n.center_lng);
+  }
+  if (!city) throw new HttpError(400, "Could not tell the city. Type it in and try again");
+  try { res.json(await verifyRoute(city, cat as Cat)); } catch (e) { tfFail(e); }
+}));
+
+app.post("/api/n/:id/tinyfish/status", ah(async (req, res) => {
+  const { u, id } = await tfAdmin(req);
+  rl(`tfstatus:${u.id}`, 10, 3600000);
+  rl("tfstatus:all", 100, 86400000);
+  const n = (await pool.query("select doc from neighborhoods where id = $1", [id])).rows[0];
+  const issueId = String(req.body?.issueId ?? "");
+  const i = n?.doc.issues.find((x: any) => x.id === issueId && !x.hidden);
+  if (!i) throw new HttpError(404, "Issue not found");
+  if (!i.handoff?.ref) throw new HttpError(400, "Save the reference number first");
+  try {
+    const runId = await startStatusRun(String(req.body?.url ?? ""), i.handoff.ref);
+    trackRun(runId, { nid: id, uid: u.id, issueId });
+    res.json({ runId });
+  } catch (e) { tfFail(e); }
+}));
+
+app.get("/api/n/:id/tinyfish/runs/:runId", ah(async (req, res) => {
+  const { u, id } = await tfAdmin(req);
+  rl(`tfpoll:${u.id}`, 300, 3600000);
+  const runId = String(req.params.runId), o = runOwner(runId);
+  if (!o || o.nid !== id || o.uid !== u.id) throw new HttpError(404, "Run not found");
+  try { res.json(await getStatusRun(runId)); } catch (e) { tfFail(e); }
+}));
+
+app.get("/api/public/tinyfish", (_req, res) => res.json({ enabled: tfEnabled() }));
+app.post("/api/public/tinyfish/route", ah(async (req, res) => {
+  if (!tfEnabled()) throw new HttpError(503, "TinyFish is not set up on this server");
+  rl(`tfpub:${req.ip}`, 6, 3600000);
+  rl("tfpub:all", 300, 86400000);
+  const cat = String(req.body?.cat ?? "other");
+  if (!CATS.includes(cat)) throw new HttpError(400, "Invalid category");
+  const city = String(req.body?.city ?? "").normalize("NFKC").replace(/[^\p{L}\p{N} ,.'-]/gu, "").replace(/\s+/g, " ").trim().slice(0, 60);
+  if (city.length < 2) throw new HttpError(400, "Enter a city name");
+  try { res.json(await verifyRoute(city, cat as Cat)); } catch (e) { tfFail(e); }
+}));
+
 app.delete("/api/me", ah(async (req, res) => {
   const u = await authenticate(req);
   await tx(async c => {
@@ -604,4 +671,4 @@ if (existsSync(dist)) {
 
 app.use((e: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => fail(res, e?.status && e.status < 500 ? new HttpError(e.status, "Invalid request") : e));
 
-app.listen(PORT, () => console.log(`API on http://localhost:${PORT} · AI: ${aiLabel()}${existsSync(dist) ? " · serving built app" : ""}`));
+app.listen(PORT, () => console.log(`API on http://localhost:${PORT} · AI: ${aiLabel()} · TinyFish: ${tfLabel()}${existsSync(dist) ? " · serving built app" : ""}`));
