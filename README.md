@@ -58,6 +58,7 @@ Values starting with `VITE_` are read when the web app starts or is built, so re
 | `AI_BASE_URL`, `AI_VISION` | empty | Optional endpoint override. `AI_VISION=true` lets Groq or `openai`-style providers receive photos (only if the chosen model accepts images); otherwise photo checks show "Not checked". |
 | `TINYFISH_API_KEY` | empty | Turns on the TinyFish features in the AI agent panel (see "TinyFish: verify the route and check the status"). Get a key at agent.tinyfish.ai/api-keys. Server only. Never put it in a `VITE_` variable. Without it the buttons are hidden in live mode. |
 | `TRUST_PROXY` | `1` | How many proxies sit in front of the server, so the per-visitor rate limits see the real visitor address. `1` is right for Render, Railway and Fly. Use `0` if the server is reached directly. |
+| `TINYFISH_COUNTRY` | `IN` | Two-letter country code that TinyFish searches are limited to. The default is India, where only `gov.in` and `nic.in` sites count as official and pages from other countries' governments are dropped. Set it empty for worldwide results. |
 | `TINYFISH_SEARCH_URL`, `TINYFISH_FETCH_URL`, `TINYFISH_AGENT_URL` | TinyFish public servers | Endpoint overrides, used by the tests. Not listed in `.env.example`. |
 | `OVERPASS_URL`, `NOMINATIM_URL` | public servers | Override the OpenStreetMap map-data and place-search servers, for example with your own. Not listed in `.env.example`. |
 

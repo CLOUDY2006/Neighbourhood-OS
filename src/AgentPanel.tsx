@@ -64,14 +64,14 @@ function TinyFishCard({ i, admin, owns, sent, act }: { i: S.Issue; admin: boolea
         <>
           <small className="dim">{t("Search the live web for your city's official complaint page, helpline and tracker. Free to run. This is a suggestion; check it before you send anything.")}</small>
           <div className="row wrap">
-            <input value={city} onChange={e => setCity(e.target.value)} placeholder={app.mode === "demo" ? t("Type a real city to run it live") : t("City (optional)")} maxLength={80} aria-label={t("City")} />
+            <input value={city} onChange={e => setCity(e.target.value)} placeholder={app.mode === "demo" ? t("Type a real city to run it live, e.g. Dwarka, Delhi") : t("City (optional)")} maxLength={80} aria-label={t("City")} />
             <button disabled={busy} onClick={verify}>{busy ? t("Reading official pages…") : t("Verify this route with TinyFish")}</button>
           </div>
           {err && <small className="errtext">{err}</small>}
           {res && (
             <div className="foldbody">
               {res.simulated && <small className="errtext">{t("Simulated example. No real website was read.")}</small>}
-              <small className="dim">{t("City searched")}: {res.city}</small>
+              <small className="dim">{t("City searched")}: {res.city}{res.region ? ` (${res.region})` : ""}</small>
               {res.sources.map(r => (
                 <small key={r.url} className="dim">
                   <a href={r.url} {...ext}>{r.title || r.url}</a> · {r.official ? t("Government website") : t("Not confirmed as official")}

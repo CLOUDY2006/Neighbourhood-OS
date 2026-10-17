@@ -11,9 +11,12 @@ export function tfConfig() {
   const e = process.env;
   const key = (e.TINYFISH_API_KEY || "").trim();
   const base = (v: string | undefined, d: string) => ((v || "").trim() || d).replace(/\/+$/, "");
+  const cc = (e.TINYFISH_COUNTRY ?? "IN").trim().toUpperCase();
   return {
     key,
     enabled: !!key,
+    // Two-letter country code that searches are limited to. Unset means India. Set it to empty for worldwide results.
+    country: /^[A-Z]{2}$/.test(cc) ? cc : "",
     search: base(e.TINYFISH_SEARCH_URL, "https://api.search.tinyfish.ai"),
     fetch: base(e.TINYFISH_FETCH_URL, "https://api.fetch.tinyfish.ai"),
     agent: base(e.TINYFISH_AGENT_URL, "https://agent.tinyfish.ai"),
@@ -62,7 +65,7 @@ const clean = (s: unknown, max: number) => String(s ?? "").replace(/[\u0000-\u00
 
 export interface RouteSource { title: string; url: string; official: boolean; snippet: string }
 export interface RouteCheck {
-  city: string; cat: Cat; checkedAt: number; source: "tinyfish";
+  city: string; region: string; cat: Cat; checkedAt: number; source: "tinyfish";
   sources: RouteSource[];
   helplines: { value: string; url: string }[];
   emails: { value: string; url: string }[];
@@ -76,17 +79,27 @@ const WHAT: Record<Cat, string> = {
 };
 
 const hostOf = (u: string) => { try { return new URL(u).hostname.toLowerCase(); } catch { return ""; } };
+const REGION: Record<string, string> = { IN: "India" };
+const GOV_DOMAINS: Record<string, string> = { IN: "gov.in,nic.in" };
 /** Only strict government domain patterns count as official. Everything else is shown as "not confirmed". */
-export const isOfficial = (u: string) => /(^|\.)(gov|nic)\.[a-z]{2,3}(\.[a-z]{2})?$|\.gov$|\.gob\.[a-z]{2}$|\.govt\.[a-z]{2}$|\.go\.[a-z]{2}$/.test(hostOf(u));
+export const isOfficial = (u: string, country: string = tfConfig().country) =>
+  country === "IN"
+    ? /(^|\.)(gov|nic)\.in$/.test(hostOf(u))
+    : /(^|\.)(gov|nic)\.[a-z]{2,3}(\.[a-z]{2})?$|\.gov$|\.gob\.[a-z]{2}$|\.govt\.[a-z]{2}$|\.go\.[a-z]{2}$/.test(hostOf(u));
+/** When searching in India, drop pages that clearly belong to another country's government, school or military. */
+const isForeign = (u: string, country: string) => country === "IN" && /\.(gov|edu|mil|us)$|\.(gov|co|ac)\.(uk|au|nz|za)$|\.gc\.ca$/.test(hostOf(u));
 const httpsUrl = (u: unknown) => { try { const x = new URL(String(u)); return x.protocol === "https:" || x.protocol === "http:" ? x.href.slice(0, 300) : ""; } catch { return ""; } };
 
 const cache = new Map<string, { at: number; v: RouteCheck }>();
 
-export async function tfSearch(query: string): Promise<RouteSource[]> {
-  const j = await call(`${tfConfig().search}?query=${encodeURIComponent(query)}`, {}, 15000);
+export async function tfSearch(query: string, includeDomains?: string): Promise<RouteSource[]> {
+  const c = tfConfig(), q = new URLSearchParams({ query });
+  if (c.country) q.set("location", c.country);
+  if (includeDomains) q.set("include_domains", includeDomains);
+  const j = await call(`${c.search}?${q}`, {}, 15000);
   const rows: any[] = Array.isArray(j?.results) ? j.results : [];
   return rows.map(r => ({ title: clean(r?.title, 140), url: httpsUrl(r?.url), official: false, snippet: clean(r?.snippet, 220) }))
-    .filter(r => r.url).map(r => ({ ...r, official: isOfficial(r.url) }));
+    .filter(r => r.url && !isForeign(r.url, c.country)).map(r => ({ ...r, official: isOfficial(r.url, c.country) }));
 }
 
 export async function tfFetch(urls: string[]): Promise<{ url: string; text: string }[]> {
@@ -137,16 +150,23 @@ export function extractContacts(text: string, url: string) {
 export async function verifyRoute(city: string, cat: Cat): Promise<RouteCheck> {
   const where = clean(city, 80);
   if (where.length < 2) throw new TinyFishError(400, "Enter the city name first");
-  const key = `${where.toLowerCase()}|${cat}`, hit = cache.get(key);
+  const { country } = tfConfig(), region = REGION[country] ?? country;
+  const key = `${country}|${where.toLowerCase()}|${cat}`, hit = cache.get(key);
   if (hit && Date.now() - hit.at < 7 * DAY) return hit.v;
 
   const what = WHAT[cat] ?? WHAT.other;
-  let found = await tfSearch(`${where} municipal ${what} online portal helpline number`);
-  if (!found.some(r => r.official)) {
-    try { found = [...found, ...(await tfSearch(`${where} ${what} site:gov.in`))]; } catch (e) { if (!found.length) throw e; }
+  // Naming the country in the query keeps a short name such as "Delhi" from matching places abroad.
+  const place = region && !where.toLowerCase().includes(region.toLowerCase()) ? `${where}, ${region}` : where;
+  let found = await tfSearch(`${place} municipal ${what} online portal helpline number`);
+  if (!found.some(r => r.official) && GOV_DOMAINS[country]) {
+    try { found = [...found, ...(await tfSearch(`${place} ${what}`, GOV_DOMAINS[country]))]; } catch (e) { if (!found.length) throw e; }
   }
   const uniq = [...new Map(found.map(r => [r.url, r])).values()];
-  const ranked = [...uniq.filter(r => r.official), ...uniq.filter(r => !r.official)].slice(0, 5);
+  // Government pages first, and within each group the ones that actually mention the place first.
+  const tok = where.split(/[ ,]+/)[0].toLowerCase();
+  const mentions = (r: RouteSource) => tok.length >= 3 && `${r.title} ${r.snippet} ${r.url}`.toLowerCase().includes(tok);
+  const score = (r: RouteSource) => (r.official ? 2 : 0) + (mentions(r) ? 1 : 0);
+  const ranked = [...uniq].sort((a, b) => score(b) - score(a)).slice(0, 5);
   if (!ranked.length) throw new TinyFishError(404, "No pages were found for that city. Check the spelling or try a larger nearby city");
 
   const toRead = ranked.slice(0, 3).map(r => r.url);
@@ -160,11 +180,11 @@ export async function verifyRoute(city: string, cat: Cat): Promise<RouteCheck> {
   }
   const official = ranked.some(r => r.official);
   const v: RouteCheck = {
-    city: where, cat, checkedAt: Date.now(), source: "tinyfish", sources: ranked,
+    city: where, region, cat, checkedAt: Date.now(), source: "tinyfish", sources: ranked,
     helplines: helplines.slice(0, 5), emails: emails.slice(0, 4), links: links.slice(0, 6),
     note: official
       ? "Found on pages TinyFish read just now. Open the official link and confirm before you send anything."
-      : "No government website was among the top results. Treat these as leads only and check your city's official site.",
+      : `No ${region ? region + " " : ""}government website was among the top results. Treat these as leads only and check your city's official site.`,
   };
   cache.set(key, { at: Date.now(), v });
   if (cache.size > 200) cache.delete(cache.keys().next().value as string);

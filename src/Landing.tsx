@@ -615,14 +615,14 @@ function TryTinyFish() {
         <Head eyebrow="Live with TinyFish" center title={<>Find your city&rsquo;s <em>real complaint page</em>.</>} sub="No account needed. TinyFish searches the live web and reads the official pages for your city. The same step runs inside every report." />
         <Reveal className="ln-try">
           <div className="ln-tryrow">
-            <input value={city} onChange={e => setCity(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && city.trim().length > 1 && !busy) void run(); }} placeholder="Your city, for example Pune" maxLength={60} aria-label="City" />
+            <input value={city} onChange={e => setCity(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && city.trim().length > 1 && !busy) void run(); }} placeholder="Your city or area, for example Dwarka, Delhi" maxLength={60} aria-label="City" />
             <select value={cat} onChange={e => setCat(e.target.value as S.Cat)} aria-label="Problem type">{(Object.keys(S.CAT_EN) as S.Cat[]).map(c => <option key={c} value={c}>{S.CAT_EN[c]}</option>)}</select>
             <button className="xl" disabled={busy || city.trim().length < 2} onClick={run}><Globe size={16} /> {busy ? "Reading official pages…" : "Find it"}</button>
           </div>
           {err && <p className="ln-tryerr" role="alert">{err}</p>}
           {res && (
             <div className="ln-tryout" aria-live="polite">
-              <b>Results for {res.city}</b>
+              <b>Results for {res.city}{res.region ? ` (${res.region})` : ""}</b>
               {res.sources.map(r => <span key={r.url}><a href={r.url} {...ext}>{r.title || r.url}</a> · {r.official ? "Government website" : "Not confirmed as official"}</span>)}
               {res.helplines.length > 0 && <span>Helplines found on the pages: {res.helplines.map(h => h.value).join(", ")}</span>}
               {res.emails.length > 0 && <span>Emails found: {res.emails.map(h => h.value).join(", ")}</span>}
@@ -630,7 +630,7 @@ function TryTinyFish() {
               <small>{res.note}</small>
             </div>
           )}
-          <small className="ln-trynote">Powered by TinyFish Search and Fetch. Read by software, so it can be wrong or out of date: always confirm on the official site. Each visitor gets a few tries an hour.</small>
+          <small className="ln-trynote">Powered by TinyFish Search and Fetch. Read by software, so it can be wrong or out of date: always confirm on the official site. Results are limited to India. Each visitor gets a few tries an hour.</small>
         </Reveal>
       </div>
     </section>

@@ -320,7 +320,7 @@ export const aiCompare = (issueId: string, photo: string) => api<{ samePlace: st
 export const publicSummary_ = (id: string) => fetch(`/api/public/${enc(id)}/summary`).then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || "Not found"); return j as { name: string; summary: ReturnType<typeof L.publicSummary> }; });
 
 export interface TfRouteCheck {
-  city: string; cat: L.Cat; checkedAt: number; simulated?: boolean;
+  city: string; region?: string; cat: L.Cat; checkedAt: number; simulated?: boolean;
   sources: { title: string; url: string; official: boolean; snippet: string }[];
   helplines: { value: string; url: string }[]; emails: { value: string; url: string }[];
   links: { label: string; url: string; kind: "complaint" | "track" }[]; note: string;
@@ -343,7 +343,7 @@ export async function tfVerifyRoute(cat: L.Cat, city?: string): Promise<TfRouteC
     if (city?.trim() && (await tfPublicOn())) return tfPublicRoute(cat, city.trim());
     await new Promise(r => setTimeout(r, 1200));
     return {
-      city: "Maple Nagar (fictional demo city)", cat, checkedAt: Date.now(), simulated: true,
+      city: "Maple Nagar (fictional demo city)", region: "India", cat, checkedAt: Date.now(), simulated: true,
       sources: [{ title: "Example municipal grievance portal (simulated)", url: "https://example.org/", official: false, snippet: "Simulated example. No real website was read in demo mode." }],
       helplines: [{ value: "1800 000 0000", url: "https://example.org/" }], emails: [],
       links: [{ label: "Register a complaint (simulated)", url: "https://example.org/complaint", kind: "complaint" }, { label: "Track a complaint (simulated)", url: "https://example.org/track", kind: "track" }],

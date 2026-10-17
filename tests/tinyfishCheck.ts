@@ -7,7 +7,7 @@ const check = (m: string, ok: boolean, extra = "") => { if (!ok) bad++; console.
 const KEY = "test-key-not-real";
 
 type Hit = { method: string; url: string; headers: http.IncomingHttpHeaders; body: any };
-let hits: Hit[] = [], mode = "ok";
+let hits: Hit[] = [], mode = "ok", searches: URLSearchParams[] = [];
 const PAGE = [
   "# Municipal Corporation grievance cell",
   "Call our toll free helpline 1800 11 2345 or dial 1916 for sanitation complaints.",
@@ -28,10 +28,20 @@ const server = http.createServer((req, res) => {
     if (mode === "401") return send(401, { error: "bad key " + KEY });
     if (mode === "badjson") return send(200, "not json");
     if (req.url?.startsWith("/search")) {
+      const sp = new URL(req.url, "http://x").searchParams; searches.push(sp);
+      const blog = { position: 1, site_name: "blog", title: "A blog about civic life", snippet: "tips", url: "https://civic-blog.example.com/post" };
+      const gov = { position: 2, site_name: "city.gov.in", title: "City Municipal Corporation", snippet: "Official site", url: "https://city.gov.in/grievance" };
+      if (mode === "nogov") return send(200, { results: sp.get("include_domains") ? [gov] : [blog] });
+      if (mode === "rank") return send(200, { results: [
+        { title: "National grievance portal", snippet: "Lodge any grievance", url: "https://pgportal.gov.in/" },
+        { title: "Random page about Dwarka", snippet: "Dwarka", url: "https://blog.example.in/dwarka" },
+        { title: "Dwarka sub-city complaints", snippet: "Dwarka", url: "https://dwarka.delhi.gov.in/c" },
+      ] });
       return send(200, { query: "q", results: [
-        { position: 1, site_name: "blog", title: "A blog about civic life", snippet: "tips", url: "https://civic-blog.example.com/post" },
-        { position: 2, site_name: "city.gov.in", title: "City Municipal Corporation", snippet: "Official site", url: "https://city.gov.in/grievance" },
+        blog, gov,
         { position: 3, site_name: "x", title: "Bad link", snippet: "", url: "javascript:alert(1)" },
+        { position: 4, site_name: "texas.gov", title: "Texas state complaints", snippet: "Texas", url: "https://www.texas.gov/complaints" },
+        { position: 5, site_name: "x.us", title: "A county page", snippet: "", url: "https://county.example.us/x" },
       ] });
     }
     if (req.url?.startsWith("/fetch")) {
@@ -55,7 +65,7 @@ const server = http.createServer((req, res) => {
 });
 await new Promise<void>(r => server.listen(0, "127.0.0.1", r));
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-const reset = () => { hits = []; mode = "ok"; resetTinyFish(); };
+const reset = () => { hits = []; searches = []; mode = "ok"; resetTinyFish(); };
 const fails = async (p: Promise<unknown>) => { try { await p; return null; } catch (e) { return e as TinyFishError; } };
 
 delete process.env.TINYFISH_API_KEY;
@@ -77,11 +87,32 @@ check("helplines are found (1800 number and 1916), years are not", r.helplines.s
 check("email found", r.emails[0]?.value === "grievance.cell@city.gov.in");
 check("complaint and tracker links are labeled, other links ignored", r.links.some(l => l.kind === "complaint") && r.links.some(l => l.kind === "track") && !r.links.some(l => l.url.includes("about")));
 check("note tells the person to confirm", /confirm/i.test(r.note) && r.source === "tinyfish");
+check("search is limited to India with location=IN", searches[0].get("location") === "IN", searches[0].toString().slice(0, 80));
+check("the query names the country so a short name cannot match abroad", /Pune, Maharashtra, India municipal/.test(searches[0].get("query") ?? ""), searches[0].get("query") ?? "");
+check("US and other foreign government pages are dropped when searching India", !r.sources.some(x => /texas\.gov|example\.us/.test(x.url)));
+check("response says which region was searched", r.region === "India");
 const n = hits.length;
 await verifyRoute("pune, maharashtra", "garbage");
 check("same city and category is served from the cache (no new requests)", hits.length === n);
 e = await fails(verifyRoute("x", "water"));
 check("a one-letter city is rejected before any request", e?.status === 400 && hits.length === n);
+
+reset(); mode = "nogov";
+const ng = await verifyRoute("Nagpur", "water");
+check("no official page in the first search triggers a second search limited to gov.in and nic.in", searches.length === 2 && searches[1].get("include_domains") === "gov.in,nic.in" && ng.sources[0].official, `(${searches.length} searches)`);
+
+reset(); mode = "rank";
+const rk = await verifyRoute("Dwarka, Delhi", "garbage");
+check("official pages mentioning the place rank first, then other official pages, then the rest", rk.sources.map(x => new URL(x.url).hostname).join(",") === "dwarka.delhi.gov.in,pgportal.gov.in,blog.example.in", rk.sources.map(x => new URL(x.url).hostname).join(","));
+check("a place name that already includes the country is not repeated", (await (async () => { reset(); await verifyRoute("Delhi, India", "water"); return searches[0].get("query") ?? ""; })()).indexOf("India") === (searches[0].get("query") ?? "").lastIndexOf("India"));
+
+reset(); process.env.TINYFISH_COUNTRY = "US";
+const us = await verifyRoute("Austin", "garbage");
+check("another country can be chosen: location=US, no India in the query, .gov counts as official", searches[0].get("location") === "US" && !/India/.test(searches[0].get("query") ?? "") && us.sources.some(x => /texas\.gov/.test(x.url) && x.official));
+reset(); process.env.TINYFISH_COUNTRY = "";
+await verifyRoute("Austin", "garbage");
+check("an empty TINYFISH_COUNTRY means worldwide: no location sent", !searches[0].has("location"));
+delete process.env.TINYFISH_COUNTRY;
 
 reset(); mode = "429";
 e = await fails(verifyRoute("Delhi", "water"));
@@ -95,7 +126,8 @@ check("unreadable reply gives a clean error", e instanceof TinyFishError && e.st
 
 const x = extractContacts("Dial 100 for police. Contact helpdesk: 011-2345-6789 call. info@x.org", "https://a.gov.in");
 check("extractContacts finds a phone near a help word and an email", x.helplines.some(h => h.value.startsWith("011")) && x.emails[0].value === "info@x.org", JSON.stringify(x.helplines));
-check("official domain patterns", isOfficial("https://mcd.nic.in/x") && isOfficial("https://city.gov.in") && isOfficial("https://www.nyc.gov/a") && !isOfficial("https://gov.in.evil.com") && !isOfficial("https://notgov.com") && !isOfficial("https://example.com"));
+check("official domain patterns (India)", isOfficial("https://mcd.nic.in/x") && isOfficial("https://city.gov.in") && !isOfficial("https://www.nyc.gov/a") && !isOfficial("https://gov.in.evil.com") && !isOfficial("https://notgov.com") && !isOfficial("https://example.com"));
+check("official domain patterns (other countries)", isOfficial("https://www.nyc.gov/a", "US") && isOfficial("https://www.gov.uk/x", "GB") && !isOfficial("https://example.com", "US"));
 
 check("portal url: normal https accepted, hash removed", safePortalUrl("https://mcdonline.nic.in/track#top") === "https://mcdonline.nic.in/track");
 for (const bad1 of ["http://city.gov.in/x", "https://localhost/x", "https://127.0.0.1/x", "https://10.0.0.5/x", "https://user:pw@city.gov.in/", "https://city.gov.in:8443/", "https://intranet/", "ftp://city.gov.in", "javascript:alert(1)", "https://printer.local/"]) {
