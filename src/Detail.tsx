@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Flag } from "lucide-react";
 import * as S from "./store";
 import { useT } from "./i18n";
 import { AgentPanel } from "./AgentPanel";
@@ -118,12 +119,12 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
   const t = useT(), me = S.myName(), r = st.role;
   const [note, setNote] = useState(""), [photo, setPhoto] = useState<string>(), [prev, setPrev] = useState<string>();
   const [up, setUp] = useState({ text: "", photo: undefined as string | undefined });
-  const [reason, setReason] = useState(""), [fb, setFb] = useState(""), [rnote, setRnote] = useState("");
+  const [reason, setReason] = useState(""), [fb, setFb] = useState(""), [rnote, setRnote] = useState(""), [askSpam, setAskSpam] = useState(false);
   const m = st.missions.find(x => x.id === i.missionId), mine = i.author === me;
   const next = S.STATUSES[S.STATUSES.indexOf(i.status) + 1], idx = S.STATUSES.indexOf(i.status);
   const ps = S.priorityScore(st, i), plan = S.actionPlan(st, i), after = i.proof.find(p => p.photo)?.photo;
   const fbs = Object.values(i.feedback ?? {}), good = fbs.filter(f => f.ok).length, bad = fbs.length - good;
-  const hasMore = (S.can(r, "flag") && i.status !== "resolved") || (mine && i.status === "reported" && !i.hidden) || (!mine && !i.hidden) || (S.can(r, "verify") && i.status !== "resolved" && i.verif !== "disputed") || S.can(r, "hide");
+  const hasMore = (S.can(r, "flag") && i.status !== "resolved") || (mine && i.status === "reported" && !i.hidden) || (S.can(r, "verify") && i.status !== "resolved" && i.verif !== "disputed") || S.can(r, "hide");
   const hasVol = (S.can(r, "assign") && i.status !== "resolved" && st.volunteers.length > 0) || r === "admin" || !!i.handoff;
   const evidenceCount = i.proof.length + (i.updates ?? []).length;
   const historyCount = (i.assignments ?? []).length + i.log.length;
@@ -155,6 +156,22 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
         {i.hidden && <span className="chip red">Hidden</span>}
         {S.can(r, "hide") && i.flags.length > 0 && <span className="chip amber">{i.flags.length} flag(s)</span>}
       </div>
+      {!mine && !i.hidden && (
+        i.flags.includes(me)
+          ? <small className="dim">{t("Thanks. You reported this one.")}</small>
+          : askSpam
+            ? (
+              <div className="card alertcard">
+                <b>{t("Report this as spam or a wrong report?")}</b>
+                <small className="dim">{t("Use this for fake, joke, duplicate or abusive reports. Coordinators will look at it. If several people report it, it is hidden until a coordinator checks.")}</small>
+                <div className="row wrap">
+                  <button className="warn" onClick={() => act(async () => { await S.spam(i.id); setAskSpam(false); }, "Thanks. Coordinators will look at it")}>{t("Yes, report it")}</button>
+                  <button className="x" onClick={() => setAskSpam(false)}>{t("Cancel")}</button>
+                </div>
+              </div>
+            )
+            : <div className="row wrap"><button className="warn" onClick={() => setAskSpam(true)}><Flag size={14} aria-hidden="true" /> {t("Report spam or wrong report")}</button></div>
+      )}
       <div className="statnow">
         <b>{t(i.status === "resolved" && i.closure ? RESOLVED[i.closure] : NOW[i.status])}</b>
         <small className="dim">{t(checkLine)} {i.reports} {t(i.reports === 1 ? "person has reported this." : "people have reported this.")}</small>
@@ -259,7 +276,6 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
           <div className="foldbody"><div className="row wrap">
         {S.can(r, "flag") && i.status !== "resolved" && <button className="warn" onClick={() => act(() => S.flag(i.id), "Flag sent to coordinators")}>Flag for attention</button>}
         {mine && i.status === "reported" && !i.hidden && <button className="warn" onClick={() => act(() => S.withdraw(i.id), "Report withdrawn")}>Withdraw my report</button>}
-        {!mine && !i.hidden && <button className="x" onClick={() => act(() => S.spam(i.id), "Thanks. Coordinators will look at it")}>Report spam or abuse</button>}
         {S.can(r, "verify") && i.status !== "resolved" && i.verif !== "disputed" && <button className="warn" onClick={() => act(() => S.setVerif(i.id, "disputed"), "Marked disputed")}>Mark disputed</button>}
         {S.can(r, "hide") && (i.hidden ? <button onClick={() => act(() => S.restore(i.id), "Report restored")}>Restore report</button> : <button className="warn" onClick={() => act(() => S.hide(i.id), "Report hidden")}>Hide report</button>)}
           </div></div>

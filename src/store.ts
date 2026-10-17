@@ -121,11 +121,15 @@ async function refresh() {
   } catch { if (!app.stale) setApp({ stale: true }); }
 }
 
-async function loadMap(n: NInfo) {
+async function loadMap(n: NInfo, retried = false) {
   try {
-    const m = await api<MapData | { source: "none" }>(`/api/n/${enc(n.id)}/map`);
+    const m = await api<MapData | { source: "none"; reason?: "sparse" | "unavailable" }>(`/api/n/${enc(n.id)}/map`);
     if (app.nbhd?.id !== n.id) return;
-    if (m.source === "none") setApp({ map: genCity(n.r), mapNote: "OpenStreetMap has little data for this area, so a schematic view is shown." });
+    if (m.source === "none") {
+      const down = (m as { reason?: string }).reason === "unavailable";
+      setApp({ map: genCity(n.r), mapNote: down ? "The OpenStreetMap server did not answer, so a sample map is shown for now. Trying again soon." : "OpenStreetMap has little data for this area, so a schematic view is shown." });
+      if (down && !retried) setTimeout(() => { if (app.nbhd?.id === n.id && app.map?.source === "generated") void loadMap(n, true); }, 50000);
+    }
     else setApp({ map: m as MapData, mapNote: (m as MapData).sparse ? "Few buildings are mapped here on OpenStreetMap." : "" });
   } catch { if (app.nbhd?.id === n.id) setApp({ map: genCity(n.r), mapNote: "Could not load map data, so a schematic view is shown." }); }
 }

@@ -286,7 +286,9 @@ app.get("/api/world", ah(async (req, res) => {
   res.json({ events: w.events, sources: w.sources, updated: w.updated });
 }));
 
-const mapMisses = new Map<string, number>();
+const mapMisses = new Map<string, { at: number; reason: "sparse" | "unavailable" }>();
+const MISS_TTL = { sparse: 600000, unavailable: 45000 };
+const noMap = (res: express.Response, reason: "sparse" | "unavailable") => { res.setHeader("X-Map-Status", "none"); res.json({ source: "none", reason }); };
 app.get("/api/n/:id/map", ah(async (req, res) => {
   const u = await authenticate(req); const id = String(req.params.id);
   if (!isId(id)) throw new HttpError(400, "Invalid neighborhood");
@@ -294,13 +296,14 @@ app.get("/api/n/:id/map", ah(async (req, res) => {
   const n = (await pool.query("select center_lat, center_lng, radius_m, map, map_fetched_at from neighborhoods where id = $1", [id])).rows[0];
   if (!n) throw new HttpError(404, "Neighborhood not found");
   if (n.map && n.map_fetched_at && Date.now() - new Date(n.map_fetched_at).getTime() < 30 * 86400000) return res.json(n.map);
-  if (Date.now() - (mapMisses.get(id) ?? 0) < 600000) return res.json({ source: "none" });
+  const miss = mapMisses.get(id);
+  if (miss && Date.now() - miss.at < MISS_TTL[miss.reason]) return noMap(res, miss.reason);
   try {
     const m = await fetchMap(n.center_lat, n.center_lng, n.radius_m);
-    if (m.roads.length < 8) throw new Error("too little map data");
+    if (m.roads.length < 8) { mapMisses.set(id, { at: Date.now(), reason: "sparse" }); return noMap(res, "sparse"); }
     await pool.query("update neighborhoods set map = $2, map_fetched_at = now() where id = $1", [id, JSON.stringify(m)]);
     res.json(m);
-  } catch (e) { console.warn("Map fetch failed for", id, (e as Error).message); mapMisses.set(id, Date.now()); res.json({ source: "none" }); }
+  } catch (e) { console.warn("Map fetch failed for", id, (e as Error).message); mapMisses.set(id, { at: Date.now(), reason: "unavailable" }); noMap(res, "unavailable"); }
 }));
 
 const MAGIC = (b: Buffer) => (b[0] === 0xff && b[1] === 0xd8 ? "image/jpeg" : b.subarray(1, 4).toString() === "PNG" ? "image/png" : b.subarray(0, 4).toString() === "RIFF" && b.subarray(8, 12).toString() === "WEBP" ? "image/webp" : null);

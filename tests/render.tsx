@@ -24,5 +24,17 @@ const parts: [string, () => string][] = [
   ["AgentPanel", () => renderToString(<AgentPanel i={st.issues.find(i => i.id === "i4")!} st={st} act={act} />)],
 ];
 let bad = 0;
+{
+  // A report written by someone else must show the spam button near the top, before the collapsed "More options".
+  const other = { ...st.issues.find(i => i.id === "i4")!, author: "Someone else", flags: [] as string[], hidden: false };
+  const h = renderToString(<Detail i={other} st={st} act={act} close={() => undefined} />);
+  const a = h.indexOf("Report spam or wrong report"), f = h.indexOf("More options");
+  const okTop = a > -1 && (f === -1 || a < f);
+  if (!okTop) { bad++; console.log("FAIL spam button is missing or buried"); } else console.log("ok spam button is near the top");
+  const own = renderToString(<Detail i={{ ...other, author: S.myName() }} st={st} act={act} close={() => undefined} />);
+  if (own.includes("Report spam or wrong report")) { bad++; console.log("FAIL author can flag own report"); } else console.log("ok author does not see the spam button");
+  const hid = renderToString(<Detail i={{ ...other, hidden: true }} st={st} act={act} close={() => undefined} />);
+  if (hid.includes("Report spam or wrong report")) { bad++; console.log("FAIL hidden report still offers spam button"); } else console.log("ok hidden report does not offer the spam button");
+}
 for (const [n, f] of parts) { try { const h = f(); console.log("ok", n, h.length, "chars"); } catch (e) { bad++; console.log("FAIL", n, (e as Error).stack?.split("\n").slice(0, 4).join(" | ")); } }
 process.exit(bad ? 1 : 0);

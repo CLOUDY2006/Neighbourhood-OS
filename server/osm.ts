@@ -1,5 +1,7 @@
 const UA = `NeighborhoodOS/1.0 (${process.env.CONTACT_EMAIL || "contact not set"})`;
-const OVERPASS = process.env.OVERPASS_URL || "https://overpass-api.de/api/interpreter";
+// Several public servers, tried in order. The main one is often overloaded, so the others are a safety net.
+const OVERPASS_LIST = (process.env.OVERPASS_URL || "https://overpass-api.de/api/interpreter,https://overpass.private.coffee/api/interpreter,https://maps.mail.ru/osm/tools/overpass/api/interpreter").split(",").map(x => x.trim()).filter(Boolean);
+const GAP = Number(process.env.OVERPASS_GAP_MS ?? 1500);
 const NOMINATIM = process.env.NOMINATIM_URL || "https://nominatim.openstreetmap.org";
 
 let chain: Promise<unknown> = Promise.resolve();
@@ -72,11 +74,26 @@ function simplify(p: Pt[], tol: number): Pt[] {
 const area = (p: Pt[]) => { let s = 0; for (let i = 0; i < p.length; i++) { const [x1, y1] = p[i], [x2, y2] = p[(i + 1) % p.length]; s += x1 * y2 - x2 * y1; } return Math.abs(s) / 2; };
 const flat = (p: Pt[]) => p.flatMap(q => q);
 
+async function overpass(q: string): Promise<any[]> {
+  const errors: string[] = [];
+  for (const url of OVERPASS_LIST) {
+    const host = (() => { try { return new URL(url).host; } catch { return url; } })();
+    try {
+      const res = await queue(() => fetch(url, { method: "POST", headers: { "User-Agent": UA, "Content-Type": "application/x-www-form-urlencoded" }, body: "data=" + encodeURIComponent(q), signal: AbortSignal.timeout(24000) }), GAP);
+      if (!res.ok) { errors.push(`${host} HTTP ${res.status}`); continue; }
+      const j = (await res.json()) as any;
+      const els: any[] = Array.isArray(j?.elements) ? j.elements : [];
+      // A busy server can answer 200 with an empty list and a remark instead of an error. That is a failure, not "no data".
+      if (!els.length && typeof j?.remark === "string") { errors.push(`${host} ${String(j.remark).slice(0, 80)}`); continue; }
+      return els;
+    } catch (e) { errors.push(`${host} ${(e as Error).message}`); }
+  }
+  throw new Error(`Overpass unavailable (${errors.join("; ")})`);
+}
+
 export async function fetchMap(lat: number, lng: number, r: number) {
-  const q = `[out:json][timeout:30];(way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|pedestrian)$"](around:${r},${lat},${lng});way["building"](around:${r},${lat},${lng});way["leisure"~"^(park|garden|playground|pitch)$"](around:${r},${lat},${lng});way["natural"="water"](around:${r},${lat},${lng});way["landuse"~"^(grass|recreation_ground|forest)$"](around:${r},${lat},${lng}););out geom;`;
-  const res = await queue(() => fetch(OVERPASS, { method: "POST", headers: { "User-Agent": UA, "Content-Type": "application/x-www-form-urlencoded" }, body: "data=" + encodeURIComponent(q), signal: AbortSignal.timeout(45000) }), 2000);
-  if (!res.ok) throw new Error(`Overpass responded with ${res.status}`);
-  const els: any[] = ((await res.json()) as any).elements ?? [];
+  const q = `[out:json][timeout:20];(way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|pedestrian)$"](around:${r},${lat},${lng});way["building"](around:${r},${lat},${lng});way["leisure"~"^(park|garden|playground|pitch)$"](around:${r},${lat},${lng});way["natural"="water"](around:${r},${lat},${lng});way["landuse"~"^(grass|recreation_ground|forest)$"](around:${r},${lat},${lng}););out geom;`;
+  const els = await overpass(q);
   const kx = 111320 * Math.cos((lat * Math.PI) / 180), ky = 110540;
   const pr = (g: { lat: number; lon: number }): Pt => [Math.round((g.lon - lng) * kx), Math.round((lat - g.lat) * ky)];
   const roads: { c: number; p: number[]; n?: string }[] = [], blds: { p: number[]; h: number; d: number }[] = [], areas: { k: "park" | "water"; p: number[] }[] = [];

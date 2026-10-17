@@ -1,11 +1,18 @@
-const SHELL = "nos-shell-v1";
-const MAPS = "nos-maps-v1";
+const SHELL = "nos-shell-v2";
+const MAPS = "nos-maps-v2";
 
 self.addEventListener("install", e => {
   self.skipWaiting();
   e.waitUntil(caches.open(SHELL).then(c => c.addAll(["/", "/manifest.webmanifest", "/icon.svg"])).catch(() => undefined));
 });
-self.addEventListener("activate", e => e.waitUntil(self.clients.claim()));
+// Drop older shell caches so a bad copy saved while the server was failing is not reused.
+self.addEventListener("activate", e => e.waitUntil(
+  caches.keys().then(keys => Promise.all(keys.filter(k => (k.startsWith("nos-shell-") && k !== SHELL) || (k.startsWith("nos-maps-") && k !== MAPS)).map(k => caches.delete(k)))).then(() => self.clients.claim())
+));
+
+const OFFLINE = '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NEIGHBORHOOD OS</title>' +
+  '<body style="font-family:system-ui,sans-serif;max-width:32rem;margin:15vh auto;padding:0 1.25rem;line-height:1.5"><h1>Cannot reach the server</h1>' +
+  '<p>Check your connection, or wait a few seconds if the site was asleep, then reload this page.</p>';
 
 async function networkFirst(req) {
   const cache = await caches.open(SHELL);
@@ -16,14 +23,18 @@ async function networkFirst(req) {
   } catch (err) {
     const hit = await cache.match(req);
     if (hit) return hit;
-    if (req.mode === "navigate") { const home = await cache.match("/"); if (home) return home; }
+    if (req.mode === "navigate") {
+      const home = await cache.match("/");
+      if (home) return home;
+      return new Response(OFFLINE, { status: 503, headers: { "Content-Type": "text/html; charset=utf-8" } });
+    }
     throw err;
   }
 }
 async function staleWhileRevalidate(req) {
   const cache = await caches.open(MAPS);
   const hit = await cache.match(req.url);
-  const fresh = fetch(req).then(res => { if (res.ok) cache.put(req.url, res.clone()); return res; }).catch(() => hit);
+  const fresh = fetch(req).then(res => { if (res.ok && res.headers.get("X-Map-Status") !== "none") cache.put(req.url, res.clone()); return res; }).catch(() => hit);
   return hit || fresh;
 }
 
