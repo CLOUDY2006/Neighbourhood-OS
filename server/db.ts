@@ -11,6 +11,9 @@ export const pool = new pg.Pool({
   max: 10,
 });
 
+// A dropped idle connection (common with hosted databases) emits an error here. Without a listener Node would exit.
+pool.on("error", e => console.error("[db] idle connection error:", e.message));
+
 export async function tx<T>(fn: (c: pg.PoolClient) => Promise<T>): Promise<T> {
   const c = await pool.connect();
   try {
