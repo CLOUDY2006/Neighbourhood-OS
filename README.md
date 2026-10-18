@@ -7,6 +7,9 @@ Two ways to use it:
 - **Simulated demo.** No account needed. A made-up neighborhood with scripted data and a guided walkthrough. Everything runs in the browser.
 - **Real neighborhoods.** Sign up, then join the neighborhood for your area (automatic, about 1 km) or a named one that someone created. Everyone in the same neighborhood sees the same live map and data.
 
+## Demo video
+Video Link:- https://youtu.be/htcGoGhxfN4
+
 ## Setup
 
 Requires Node.js 18 or newer and a free Supabase project.
