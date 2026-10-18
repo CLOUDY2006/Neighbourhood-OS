@@ -72,7 +72,7 @@ try {
   await r.text();
 
   r = await post(a.base, "/api/n/abc/tinyfish/route", { cat: "water" });
-  check("signed-out request to the neighborhood route gets 401", r.status === 401);
+  check("signed-out request to the neighbourhood route gets 401", r.status === 401);
   r = await post(a.base, "/api/n/abc/tinyfish/status", { issueId: "i1", url: "https://city.gov.in/track" });
   check("signed-out request to the status route gets 401", r.status === 401);
   r = await fetch(a.base + "/api/n/abc/tinyfish/runs/run_abc123");

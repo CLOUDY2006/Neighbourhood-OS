@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-// Two public pages share one bundle: "/" (landing) and "/signin". Everything inside a neighborhood ignores the path.
+// Two public pages share one bundle: "/" (landing) and "/signin". Everything inside a neighbourhood ignores the path.
 const subs = new Set<() => void>();
 const path = () => (typeof location === "undefined" ? "/" : location.pathname.replace(/\/+$/, "") || "/");
 if (typeof window !== "undefined") window.addEventListener("popstate", () => subs.forEach(f => f()));

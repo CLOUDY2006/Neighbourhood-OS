@@ -30,10 +30,10 @@ function AuthArt() {
   return (
     <aside className="auth-art" aria-hidden="true">
       <div className="auth-artglow" />
-      <a className="auth-logo" href="/" onClick={e => { e.preventDefault(); go("/"); }} tabIndex={-1}><span className="logo">N</span>NEIGHBORHOOD OS</a>
+      <a className="auth-logo" href="/" onClick={e => { e.preventDefault(); go("/"); }} tabIndex={-1}><span className="logo">N</span>NEIGHBOURHOOD OS</a>
       <div className="auth-artbody">
         <motion.h2 initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, ease: EASE }}>Fix your street, <em>together</em>.</motion.h2>
-        <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.8, ease: EASE }}>Report problems on a live 3D map of your neighborhood, fix them with your neighbors, and prove they are fixed.</motion.p>
+        <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.8, ease: EASE }}>Report problems on a live 3D map of your neighbourhood, fix them with your neighbors, and prove they are fixed.</motion.p>
         <ol className="auth-loop">
           {LOOP.map((x, k) => (
             <motion.li key={x.k} className={k <= step ? "on" : ""} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 + k * 0.07, duration: 0.6, ease: EASE }}>
@@ -62,7 +62,7 @@ export default function Onboarding() {
   const [near, setNear] = useState<S.NearNamed[]>([]);
   const [q, setQ] = useState(""), [places, setPlaces] = useState<S.Place[]>([]);
   const [nm, setNm] = useState({ name: "", r: 500 });
-  useEffect(() => { document.title = "Sign in · NEIGHBORHOOD OS"; return () => { document.title = "NEIGHBORHOOD OS"; }; }, []);
+  useEffect(() => { document.title = "Sign in · NEIGHBOURHOOD OS"; return () => { document.title = "NEIGHBOURHOOD OS"; }; }, []);
 
   const run = async (fn: () => Promise<unknown>, ok = "") => {
     setBusy(true); setBad(false); setMsg("");
@@ -86,9 +86,9 @@ export default function Onboarding() {
       if (r === "confirm") { setBad(false); setMsg("Check your email and open the confirmation link, then sign in."); setMode("in"); }
     } else { await S.resetPassword(f.email); setMsg("If that email has an account, a reset link is on its way."); }
   });
-  const title = app.me ? "Choose your neighborhood" : mode === "up" ? "Create your account" : mode === "reset" ? "Reset your password" : "Welcome back";
-  const sub = app.me ? "Open one of yours, join the area you live in, or start a named neighborhood." : mode === "up" ? "Join your neighborhood in under a minute." : mode === "reset" ? "We will email you a link to choose a new password." : "Sign in to your neighborhood, or explore the demo first.";
-  const demo = <button className="auth-demo" onClick={S.enterDemo}><span className="auth-demoic"><Play size={16} /></span><span><b>{t("Explore the live demo")}</b><small>No account needed · simulated neighborhood</small></span></button>;
+  const title = app.me ? "Choose your neighbourhood" : mode === "up" ? "Create your account" : mode === "reset" ? "Reset your password" : "Welcome back";
+  const sub = app.me ? "Open one of yours, join the area you live in, or start a named neighbourhood." : mode === "up" ? "Join your neighbourhood in under a minute." : mode === "reset" ? "We will email you a link to choose a new password." : "Sign in to your neighbourhood, or explore the demo first.";
+  const demo = <button className="auth-demo" onClick={S.enterDemo}><span className="auth-demoic"><Play size={16} /></span><span><b>{t("Explore the live demo")}</b><small>No account needed · simulated neighbourhood</small></span></button>;
 
   return (
     <div className="auth">
@@ -109,7 +109,7 @@ export default function Onboarding() {
 
           {!S.LIVE_AVAILABLE && (
             <>
-              <div className="auth-info"><Info size={16} /><span>Accounts are not set up on this server yet. Add the Supabase keys from the README to turn on real neighborhoods. The demo works without them.</span></div>
+              <div className="auth-info"><Info size={16} /><span>Accounts are not set up on this server yet. Add the Supabase keys from the README to turn on real neighbourhoods. The demo works without them.</span></div>
               {demo}
             </>
           )}
@@ -130,7 +130,7 @@ export default function Onboarding() {
               )}
               <form className="auth-form" onSubmit={e => { e.preventDefault(); submit(); }}>
                 {mode === "up" && (
-                  <label className="fld"><span>Display name</span><input placeholder="A nickname is fine" maxLength={30} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} autoComplete="nickname" /><small>Visible to people in your neighborhood. You do not have to use your full name.</small></label>
+                  <label className="fld"><span>Display name</span><input placeholder="A nickname is fine" maxLength={30} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} autoComplete="nickname" /><small>Visible to people in your neighbourhood. You do not have to use your full name.</small></label>
                 )}
                 <label className="fld"><span>Email</span><input type="email" placeholder="you@example.com" autoComplete="email" required value={f.email} onChange={e => setF({ ...f, email: e.target.value })} /></label>
                 {mode !== "reset" && (
@@ -152,12 +152,12 @@ export default function Onboarding() {
               <div className="auth-me"><span className="auth-av">{app.me.handle.slice(0, 1).toUpperCase()}</span><div><small>Signed in as</small><b>{app.me.handle}</b></div><button className="x" onClick={S.signOut}><LogOut size={13} /> Sign out</button></div>
               {app.mine.length > 0 && (
                 <div className="form">
-                  <h3>{t("Your neighborhoods")}</h3>
+                  <h3>{t("Your neighbourhoods")}</h3>
                   {app.mine.map(n => <button key={n.id} className="issue" onClick={() => run(() => S.enter(n))}><span className="auth-nic"><MapPin size={15} /></span><span className="grow">{n.name}<small>{n.kind === "named" ? "Named" : "Area"} · you are a {n.role === "admin" ? "coordinator" : n.role}</small></span></button>)}
                 </div>
               )}
               <div className="form">
-                <h3>{t("Find a neighborhood")}</h3>
+                <h3>{t("Find a neighbourhood")}</h3>
                 <button disabled={busy} onClick={locate}><LocateFixed size={15} /> {t("Use my location")}</button>
                 <small className="dim">Optional. Your browser shares your position once, and only the roughly 1 km area it falls in is used. Your exact location is never sent or stored.</small>
                 <div className="row">
@@ -169,11 +169,11 @@ export default function Onboarding() {
               {spot && (
                 <div className="card">
                   <b>{spot.label}</b>
-                  <button className="go" disabled={busy} onClick={() => run(() => S.joinCell(cellOf(spot.lat, spot.lng).id))}>{t("Join this area's neighborhood")}</button>
-                  {near.length > 0 && <><small className="dim">Named neighborhoods nearby</small>{near.map(n => <button key={n.id} className="issue" onClick={() => run(() => S.joinById(n.id))}><span className="grow">{n.name}<small>{n.members} member{n.members === 1 ? "" : "s"} · {n.r} m radius</small></span></button>)}</>}
+                  <button className="go" disabled={busy} onClick={() => run(() => S.joinCell(cellOf(spot.lat, spot.lng).id))}>{t("Join this area's neighbourhood")}</button>
+                  {near.length > 0 && <><small className="dim">Named neighbourhoods nearby</small>{near.map(n => <button key={n.id} className="issue" onClick={() => run(() => S.joinById(n.id))}><span className="grow">{n.name}<small>{n.members} member{n.members === 1 ? "" : "s"} · {n.r} m radius</small></span></button>)}</>}
                   <div className="form">
-                    <small className="dim">Or start a named neighborhood centered here</small>
-                    <input placeholder="Name, e.g. Lakeview Colony" aria-label="Neighborhood name" maxLength={60} value={nm.name} onChange={e => setNm({ ...nm, name: e.target.value })} />
+                    <small className="dim">Or start a named neighbourhood centered here</small>
+                    <input placeholder="Name, e.g. Lakeview Colony" aria-label="Neighbourhood name" maxLength={60} value={nm.name} onChange={e => setNm({ ...nm, name: e.target.value })} />
                     <select value={nm.r} aria-label="Radius" onChange={e => setNm({ ...nm, r: Number(e.target.value) })}>{[300, 500, 800, 1200, 2000].map(r => <option key={r} value={r}>{r} m radius</option>)}</select>
                     <button disabled={busy || nm.name.trim().length < 3} onClick={() => run(() => S.createNamed({ name: nm.name.trim(), lat: spot.lat, lng: spot.lng, r: nm.r }))}><Plus size={15} /> Create and become its coordinator</button>
                   </div>
@@ -185,7 +185,7 @@ export default function Onboarding() {
           )}
 
           <AnimatePresence>{(msg || app.error) && <motion.p key={msg || app.error} initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className={`auth-msg ${bad || app.error ? "bad" : "ok"}`} role="status">{msg || app.error}</motion.p>}</AnimatePresence>
-          <p className="auth-foot">NEIGHBORHOOD OS is not an emergency service. In an emergency, call your local emergency number.</p>
+          <p className="auth-foot">NEIGHBOURHOOD OS is not an emergency service. In an emergency, call your local emergency number.</p>
         </motion.div>
       </main>
     </div>

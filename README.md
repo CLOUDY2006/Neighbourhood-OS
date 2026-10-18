@@ -1,13 +1,13 @@
-# NEIGHBORHOOD OS
+# NEIGHBOURHOOD OS
 
-**Every neighborhood, live in 3D. Report it. Fix it. Prove it.**
+**Every neighbourhood, live in 3D. Report it. Fix it. Prove it.**
 
-NEIGHBORHOOD OS is a civic community platform. Each neighborhood gets its own live 3D isometric map, built from real OpenStreetMap streets and buildings. Residents pin problems on it (a pothole, overflowing garbage, a broken streetlight), neighbors confirm them, coordinators verify and assign them, volunteers fix them, and proof of the fix goes back on the map. When an official hazard alert covers the area, the same map switches into Crisis Mode with safety check-ins and consent-based SOS requests.
+NEIGHBOURHOOD OS is a civic community platform. Each neighbourhood gets its own live 3D isometric map, built from real OpenStreetMap streets and buildings. Residents pin problems on it (a pothole, overflowing garbage, a broken streetlight), neighbors confirm them, coordinators verify and assign them, volunteers fix them, and proof of the fix goes back on the map. When an official hazard alert covers the area, the same map switches into Crisis Mode with safety check-ins and consent-based SOS requests.
 
 It is built with India in mind (English and Hindi, Indian complaint routes and government sites), and works anywhere OpenStreetMap has data.
 
 - **Demo video:** https://youtu.be/htcGoGhxfN4
-- **Design brief:** [NEIGHBORHOOD-OS-design-brief.pdf](NEIGHBORHOOD-OS-design-brief.pdf) covers every screen, role, API endpoint and data field. It was checked against the code on 18 October 2026.
+- **Design brief:** [NEIGHBOURHOOD-OS-design-brief.pdf](NEIGHBOURHOOD-OS-design-brief.pdf) covers every screen, role, API endpoint and data field. It was checked against the code on 18 October 2026.
 
 ## Contents
 
@@ -38,21 +38,21 @@ Alongside the loop, an **AI agent** turns each report into a complaint addressed
 
 | Mode | Account? | What you get |
 |---|---|---|
-| Simulated demo | No | A made-up neighborhood with scripted data, a guided AI agent walkthrough and a role switcher. Runs entirely in the browser. |
-| Real neighborhoods | Yes (email sign-up) | Join the automatic area of about 1 km you are in, or a named neighborhood someone created. Everyone in it sees the same live map and data. |
+| Simulated demo | No | A made-up neighbourhood with scripted data, a guided AI agent walkthrough and a role switcher. Runs entirely in the browser. |
+| Real neighbourhoods | Yes (email sign-up) | Join the automatic area of about 1 km you are in, or a named neighbourhood someone created. Everyone in it sees the same live map and data. |
 
 ### Feature tour
 
 | Area | What it does |
 |---|---|
-| Landing and sign-in | Public landing page at `/` with a live 3D city, the five-step loop and a "Find your city's real complaint page" box. Sign-in and neighborhood picker at `/signin`. |
+| Landing and sign-in | Public landing page at `/` with a live 3D city, the five-step loop and a "Find your city's real complaint page" box. Sign-in and neighbourhood picker at `/signin`. |
 | Live 3D map | Real OpenStreetMap roads, buildings, parks and water drawn as an isometric city, with moving cars and a night look in dark mode. 3D, Flat and List views. You can rotate and tilt the camera, search, and switch on a priority heatmap, the volunteer overlay, a "Then vs now" slider and "You are here". |
 | Issues | Seven categories (pothole, garbage, streetlight, water, unsafe, blocked road, other). Six stages from Reported to Resolved, with one guided next-step button per stage. A priority score out of 100 that lists its reasons. Duplicate detection and spam handling. |
 | AI agent | Understands the report (language, category, priority, English summary), picks the complaint route, drafts the complaint in English or Hindi, waits for approval, records reference numbers and prepares escalations. Falls back to simple rules without an API key. |
 | TinyFish web agent | "Verify this route" finds a city's official complaint pages, helplines and trackers from live web pages. "Check status" sends a read-only agent to a public complaint tracker. |
 | Missions and volunteers | Missions with progress and volunteer hours. Volunteer skills, availability and emergency abilities. Suggested volunteers for each issue. |
 | Resources and exchange | Shelters, water points, aid posts and equipment, with shortage flags. Neighbor offers and requests with a message thread. |
-| World layer and Crisis Mode | A global hazard map from USGS, NASA EONET and GDACS, plus local CAP feeds. An alert that overlaps the neighborhood switches on Crisis Mode. |
+| World layer and Crisis Mode | A global hazard map from USGS, NASA EONET and GDACS, plus local CAP feeds. An alert that overlaps the neighbourhood switches on Crisis Mode. |
 | SOS | Consent-based help requests, visible only to coordinators and the assigned volunteer. The location is wiped when the request closes, or after 24 hours. |
 | Safety and preparedness | Safety check-ins ("I am safe" / "I need help"), an optional extra-help register, an emergency plan, a notice board and an automated weekly summary. |
 | Reporting to authorities | Council reports with trends and hotspots, hand-offs to authorities with overdue flags, CSV and PDF export, and a public page that shows totals only. |
@@ -69,10 +69,10 @@ The server enforces every permission from the table in `src/logic.ts`. In the co
 | Resident | Every new member | Report, confirm, flag, report spam, add updates, answer "Is the problem fixed?" on their own reports, send SOS, reply to check-ins, use the neighbor exchange, approve the agent's complaint for their own report. |
 | Volunteer | A resident who opts in under Account | Everything a resident can except flagging, plus join missions, set skills and availability, share an approximate area, and post proof of a fix. |
 | Moderator | Set by a coordinator in the People tab | Verify or dispute reports, hide and restore them, approve or reject fixes (never their own), close a fix without confirmation. |
-| Coordinator | Whoever creates a named neighborhood, or a member a coordinator promotes | Everything a member can, plus move issues forward, create missions, assign volunteers, manage resources and SOS, run check-ins, post notices, hand issues to authorities, run TinyFish status checks, and use What-if, Reports and People. |
-| Platform admin | Emails listed in `PLATFORM_ADMINS` | Acts as a coordinator in any neighborhood. |
+| Coordinator | Whoever creates a named neighbourhood, or a member a coordinator promotes | Everything a member can, plus move issues forward, create missions, assign volunteers, manage resources and SOS, run check-ins, post notices, hand issues to authorities, run TinyFish status checks, and use What-if, Reports and People. |
+| Platform admin | Emails listed in `PLATFORM_ADMINS` | Acts as a coordinator in any neighbourhood. |
 
-A neighborhood cannot lose its last coordinator. In the demo, the Role menu in the header lets you preview every role.
+A neighbourhood cannot lose its last coordinator. In the demo, the Role menu in the header lets you preview every role.
 
 ### Trust principles
 
@@ -91,7 +91,7 @@ No keys, database or account are needed for the demo.
 2. On the landing page, press **Try the live demo**.
 3. In the Command tab, press **Run next step** nine times to play the AI agent flow on a Hindi report.
 4. Use the **Role** menu in the header to see the app as a resident, volunteer, moderator or coordinator. Switch away from Moderator before using Run next step or Reset demo (see [Known issues](#known-issues)).
-5. Press **Simulate an earthquake alert** to switch the neighborhood into Crisis Mode, then open the SOS and Prepare tabs.
+5. Press **Simulate an earthquake alert** to switch the neighbourhood into Crisis Mode, then open the SOS and Prepare tabs.
 
 ## How it is built
 
@@ -105,8 +105,8 @@ No keys, database or account are needed for the demo.
 
 ### Design decisions worth knowing
 
-- **One document per neighborhood.** A neighborhood's whole state is one JSON document (`neighborhoods.doc` in Postgres). Browsers poll `GET /api/n/:id/state` every 5 seconds. Every write goes through one endpoint, `POST /api/n/:id/action`, which locks the row, checks the caller's role, writes the audit log and sends notifications.
-- **Shared rules.** `src/logic.ts` holds the rules, validation and permission table. The browser runs it for the demo and the server runs it for real neighborhoods, so both behave the same.
+- **One document per neighbourhood.** A neighbourhood's whole state is one JSON document (`neighbourhoods.doc` in Postgres). Browsers poll `GET /api/n/:id/state` every 5 seconds. Every write goes through one endpoint, `POST /api/n/:id/action`, which locks the row, checks the caller's role, writes the audit log and sends notifications.
+- **Shared rules.** `src/logic.ts` holds the rules, validation and permission table. The browser runs it for the demo and the server runs it for real neighbourhoods, so both behave the same.
 - **Real maps, with a fallback.** Map data comes from OpenStreetMap and is cached on the server for 30 days. If an area has too little data, or the servers do not answer, a clearly labelled schematic city is drawn instead.
 - **A custom map renderer.** The isometric city is drawn by our own code rather than Leaflet or Three.js, so it can show real OpenStreetMap data in the intended look. The Flat view is the top-down alternative.
 
@@ -119,7 +119,7 @@ src/                     React web app (also runs the whole demo in the browser)
   route.ts               the two public paths: / (landing) and /signin
   App.tsx                app shell plus the Command, Report, Missions, Resources, People and Account tabs
   Landing.tsx            public landing page (styles in landing.css)
-  Onboarding.tsx         sign-in and neighborhood picker
+  Onboarding.tsx         sign-in and neighbourhood picker
   Detail.tsx             issue detail, the richest screen
   AgentPanel.tsx         AI agent panel, TinyFish card and report analysis card
   agent.ts, routes.ts    agent steps and the editable table of complaint routes per category
@@ -146,7 +146,7 @@ server/
   tinyfish.ts            TinyFish search, fetch and web agent
   world.ts, cap.ts       global hazard feeds and local CAP alerts
   notify.ts              push, email, SMS and WhatsApp delivery
-  seed.ts                fictional "Maple Nagar" neighborhood
+  seed.ts                fictional "Maple Nagar" neighbourhood
 database/
   schema.sql             tables with row-level security (safe to run again)
   seed.sql               SQL version of the seed data
@@ -171,11 +171,11 @@ Requires Node.js 18 or newer (Render uses Node 22) and a free Supabase project. 
 
 To run it the production way: `npm run build` then `npm start`. The server serves the built app and the API from one port.
 
-Optional: `npm run seed` adds a clearly labelled fictional neighborhood, "Maple Nagar", that you can join from the search box. `npm run seed:sql` rewrites `database/seed.sql` with the same data.
+Optional: `npm run seed` adds a clearly labelled fictional neighbourhood, "Maple Nagar", that you can join from the search box. `npm run seed:sql` rewrites `database/seed.sql` with the same data.
 
 ### Upgrading an existing install
 
-Run `database/schema.sql` again in the Supabase SQL editor. It is safe to repeat, and adds anything newer versions need, such as the `channels` table for notifications and the moderator role. If you copied files over an older project, delete `src/Agent.tsx` and `src/Sim.tsx`, which were renamed `AgentPanel.tsx` and `Simulator.tsx`.
+Run `database/schema.sql` again in the Supabase SQL editor. It is safe to repeat, and adds anything newer versions need, such as the `channels` table for notifications and the moderator role. It also renames tables and columns from older versions to the `neighbourhood` spelling, keeping their data. If you copied files over an older project, delete `src/Agent.tsx` and `src/Sim.tsx`, which were renamed `AgentPanel.tsx` and `Simulator.tsx`.
 
 ## Deploying to Render
 
@@ -198,7 +198,7 @@ Run `database/schema.sql` again in the Supabase SQL editor. It is safe to repeat
 
 ## Configuration reference
 
-Everything below goes in `.env`. Only the first group is required for real neighborhoods.
+Everything below goes in `.env`. Only the first group is required for real neighbourhoods.
 
 Values starting with `VITE_` are read when the web app starts or is built, so restart `npm run dev` (or rebuild) after changing them.
 
@@ -219,7 +219,7 @@ Values starting with `VITE_` are read when the web app starts or is built, so re
 | `DATABASE_SSL` | `true` | Set `false` only for a local Postgres without SSL. |
 | `PORT` | `8787` | API and built-app port. |
 | `REQUIRE_EMAIL_CONFIRMED` | `false` | When `true`, the server refuses people whose email is not confirmed. Only useful if "Confirm email" is also on in Supabase. |
-| `PLATFORM_ADMINS` | empty | Comma-separated emails of moderators who can act in any neighborhood. |
+| `PLATFORM_ADMINS` | empty | Comma-separated emails of moderators who can act in any neighbourhood. |
 | `CORS_ORIGIN` | empty | Leave empty when the app and API share one address (the normal case). |
 | `PUBLIC_URL` | empty | The public address of the server, with no trailing slash. Needed for Twilio (see below). |
 | `AI_PROVIDER` | `gemini` | `gemini`, `groq`, `anthropic`, or `openai` (any OpenAI-compatible service, which also needs `AI_BASE_URL` and `AI_MODEL`). |
@@ -239,7 +239,7 @@ CAP (Common Alerting Protocol) is the standard format national warning agencies 
 - **Format:** a comma-separated list of addresses starting with `http://` or `https://`, for example `CAP_FEEDS=https://example.gov/alerts.xml,https://other.gov/feed.atom`.
 - **What each address can be:** one CAP alert file, or an Atom or RSS feed whose entries link to CAP alert files. Up to 40 alerts per feed are read, and feeds are refreshed every 5 minutes.
 - **Where to get them:** from the website of your national disaster-management or weather agency. Look for pages titled "CAP", "RSS" or "alerts feed". For India, the national disaster management and weather agencies publish such feeds; check their sites for the current addresses. None are included here because current addresses could not be confirmed.
-- **Important limit:** an alert only reaches a neighborhood if it contains map coordinates (a polygon or a circle). Alerts that name only districts or states are ignored. Only alerts marked "Actual" are used, not tests or exercises.
+- **Important limit:** an alert only reaches a neighbourhood if it contains map coordinates (a polygon or a circle). Alerts that name only districts or states are ignored. Only alerts marked "Actual" are used, not tests or exercises.
 - **Checking it works:** restart the server. Failed feeds are logged as "CAP feed failed". In the app, Account, Notifications shows how many feeds are connected.
 
 ### Push notifications
@@ -252,7 +252,7 @@ CAP (Common Alerting Protocol) is the standard format national warning agencies 
 ### Email
 
 - `SMTP_URL`: your mail server as a web-style address, for example `smtps://username:password@smtp.example.com:465`.
-- `SMTP_FROM`: the sender, for example `NEIGHBORHOOD OS <alerts@example.com>`.
+- `SMTP_FROM`: the sender, for example `NEIGHBOURHOOD OS <alerts@example.com>`.
 - The same mail setup is used for alerts, hand-offs to authorities and the weekly summary.
 
 ### Text messages and WhatsApp (Twilio)
@@ -260,7 +260,7 @@ CAP (Common Alerting Protocol) is the standard format national warning agencies 
 1. Create a Twilio account and get `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN`.
 2. `TWILIO_FROM`: your Twilio phone number, for example `+15551234567`.
 3. `TWILIO_WHATSAPP_FROM` (optional): your WhatsApp-enabled sender, written as `whatsapp:+15551234567`.
-4. `PUBLIC_URL`: the public address of this server with no trailing slash, for example `https://neighborhood.example.com`. It must match exactly what Twilio calls, because incoming messages are signature-checked against it.
+4. `PUBLIC_URL`: the public address of this server with no trailing slash, for example `https://neighbourhood.example.com`. It must match exactly what Twilio calls, because incoming messages are signature-checked against it.
 5. In the Twilio console, set the incoming-message webhook (HTTP POST) of your number or WhatsApp sender to `PUBLIC_URL/api/sms`.
 6. Twilio cannot reach `localhost`. For testing, use a tunnel and set `PUBLIC_URL` to the tunnel address.
 
@@ -270,18 +270,18 @@ CAP (Common Alerting Protocol) is the standard format national warning agencies 
 
 | Problem | What it does |
 |---|---|
-| Every neighborhood is different | Each neighborhood is its own record with its own data and its own map, built from real OpenStreetMap data around its center. |
-| Same neighborhood, same view | Members read the same server state and the same cached map. Only zoom and pan are personal. |
-| Where do people belong? | Automatic area cells of about 1 km, computed in the browser. Named neighborhoods (200 m to 2 km) can be created and joined by search or invite link. People near a border can join the next area. Up to 5 neighborhoods per person. |
+| Every neighbourhood is different | Each neighbourhood is its own record with its own data and its own map, built from real OpenStreetMap data around its center. |
+| Same neighbourhood, same view | Members read the same server state and the same cached map. Only zoom and pan are personal. |
+| Where do people belong? | Automatic area cells of about 1 km, computed in the browser. Named neighbourhoods (200 m to 2 km) can be created and joined by search or invite link. People near a border can join the next area. Up to 5 neighbourhoods per person. |
 | Location privacy | Location is opt-in. Only the area cell is sent. Exact positions are never sent or stored, except a pin a person deliberately places on a report or SOS. "You are here" stays on the device. |
-| Fake or spam reports | Rate limits per user, a cap of 15 open reports each, the location must fall inside the neighborhood, a person cannot confirm their own report or confirm twice, and three neighbor flags hide a report until a coordinator reviews it. Authors can withdraw. |
+| Fake or spam reports | Rate limits per user, a cap of 15 open reports each, the location must fall inside the neighbourhood, a person cannot confirm their own report or confirm twice, and three neighbor flags hide a report until a coordinator reviews it. Authors can withdraw. |
 | Fake "verified" claims | Only a human coordinator or moderator can mark a report verified. AI output is always labelled a suggestion. |
 | Coordinator abuse | Every coordinator action is written to an audit log shown to other coordinators. Platform admins can step in. |
-| Who becomes a coordinator? | The creator of a named neighborhood. Otherwise people ask to coordinate, and an existing coordinator (or platform admin) approves in the People tab. |
-| Empty neighborhoods | A guided empty state explains how to report, invite neighbors and ask for a coordinator. |
+| Who becomes a coordinator? | The creator of a named neighbourhood. Otherwise people ask to coordinate, and an existing coordinator (or platform admin) approves in the People tab. |
+| Empty neighbourhoods | A guided empty state explains how to report, invite neighbors and ask for a coordinator. |
 | Data and accounts | Accounts through Supabase Auth. Roles are enforced on the server. Deleting an account removes memberships and photos and replaces the person's name with "Former member". |
 | Emergencies | The app states in several places that it is not an emergency service. SOS locations are consent-based, restricted and deleted automatically. |
-| Worldwide awareness | Official public hazard feeds are shown globally and can switch a neighborhood into Crisis Mode. Crowd reports stay local. |
+| Worldwide awareness | Official public hazard feeds are shown globally and can switch a neighbourhood into Crisis Mode. Crowd reports stay local. |
 
 ### Fix review and reporter confirmation
 
@@ -312,7 +312,7 @@ A resident reports a problem, typed or spoken, in Hindi or English. The agent th
 
 Two features in the AI agent panel use [TinyFish](https://www.tinyfish.ai) when `TINYFISH_API_KEY` is set on the server.
 
-**Verify this route (Search and Fetch APIs, free to run).** The server works out the city from the neighborhood's area, asks TinyFish Search for that city's official complaint pages, reads the top results with TinyFish Fetch, and lists the sources, helplines, emails and complaint or tracker links it found. Only pages on government domains are marked "Government website". Everything else says "Not confirmed as official". Results are cached for a week per city and category. The numbers and links come from simple pattern matching on the page text, not from an AI, so they can be wrong or out of date. The table in `src/routes.ts` stays as the fallback.
+**Verify this route (Search and Fetch APIs, free to run).** The server works out the city from the neighbourhood's area, asks TinyFish Search for that city's official complaint pages, reads the top results with TinyFish Fetch, and lists the sources, helplines, emails and complaint or tracker links it found. Only pages on government domains are marked "Government website". Everything else says "Not confirmed as official". Results are cached for a week per city and category. The numbers and links come from simple pattern matching on the page text, not from an AI, so they can be wrong or out of date. The table in `src/routes.ts` stays as the fallback.
 
 **Check complaint status (Web Agent API, uses TinyFish credits).** After a coordinator has saved a reference number, they paste the public tracker address and press "Check status". A TinyFish web agent opens the page, looks up the number and reports what the page shows, with a live view link while it runs. The agent's goal is read-only: no login, no registration, no new complaint, nothing typed except the reference number. If the page wants a login, OTP or CAPTCHA, the agent stops. If the result looks like "acknowledged" or "resolved", a button offers to record it, and a coordinator still has to press it.
 
@@ -325,13 +325,13 @@ Two features in the AI agent panel use [TinyFish](https://www.tinyfish.ai) when 
 ### World layer and Crisis Mode
 
 - **World tab:** a global map of official hazard events from USGS (earthquakes), NASA EONET (wildfires, floods, storms, volcanoes) and GDACS (cyclones, floods, volcanoes, wildfires). The server fetches and caches them for 10 minutes, so browsers never call those services directly. Each event shows its source, time and a link. The layer only informs; it never starts a rescue by itself.
-- **Automatic Crisis Mode:** each neighborhood's state includes the hazards that overlap it (for example a magnitude 6 earthquake within 150 km, or a fire within 25 km). A "watch" level shows a heads-up banner. A "warning" or "severe" level switches on Crisis Mode: an official alert banner, a red alert chip, an emergency-services-first notice and a prominent SOS tab. A cluster of 3 or more open reports of one type within 250 m also turns on the crisis chip.
+- **Automatic Crisis Mode:** each neighbourhood's state includes the hazards that overlap it (for example a magnitude 6 earthquake within 150 km, or a fire within 25 km). A "watch" level shows a heads-up banner. A "warning" or "severe" level switches on Crisis Mode: an official alert banner, a red alert chip, an emergency-services-first notice and a prominent SOS tab. A cluster of 3 or more open reports of one type within 250 m also turns on the crisis chip.
 - **Demo:** the Command tab has a "Simulate an earthquake alert" button, so the escalation can be shown without waiting for a real event.
 
 ### SOS requests
 
 - The form needs an explicit consent tick. The exact location is chosen on the map or from the device, and is only sent when the person presses Send.
-- Only the author, the neighborhood's coordinators and a volunteer a coordinator assigns can see the request and its location. Everyone else sees only a count.
+- Only the author, the neighbourhood's coordinators and a volunteer a coordinator assigns can see the request and its location. Everyone else sees only a count.
 - Closing, cancelling or marking a request helped deletes its location and note immediately. Anything still open is closed and wiped after 24 hours.
 - One active request per person, at most 3 a day. Coordinators see the nearest shelter or aid post and can assign available volunteers.
 - Texting `SOS medical 3 <where you are>` to the Twilio number works too, from a number linked under Account, Notifications. It shares the phone number with coordinators until the request is closed.
@@ -340,11 +340,11 @@ Two features in the AI agent panel use [TinyFish](https://www.tinyfish.ai) when 
 ### Community, preparedness and reporting
 
 - **Works on a bad connection:** the app can be installed. The map is cached, the last known state is shown with an "Offline" label, and reports, SOS requests, confirmations, proofs, check-in replies and exchange messages made offline are saved on the device and sent when the connection returns. Photos need a connection.
-- **Notifications:** in-app bell, web push, email, SMS and WhatsApp, with a limit per person per hour. Alerts go out for official alerts near a neighborhood, SOS requests (to coordinators), assignments, fix confirmations, safety check-ins and urgent notices.
+- **Notifications:** in-app bell, web push, email, SMS and WhatsApp, with a limit per person per hour. Alerts go out for official alerts near a neighbourhood, SOS requests (to coordinators), assignments, fix confirmations, safety check-ins and urgent notices.
 - **Safety check-ins:** a coordinator starts a check-in, members answer "I am safe" or "I need help", and coordinators see who has not replied, with neighbors on the extra-help register listed first. The register is optional, consent-based and visible only to coordinators.
 - **Preparedness:** an emergency plan with evacuation routes and contacts, assembly points and shared equipment, and a summary of volunteer abilities.
 - **Neighbor exchange and notice board:** offers and requests with a short message thread, and coordinator announcements that can be pinned or marked urgent.
-- **Council reports:** filters, weekly trends, hotspots, a hand-off tracker, CSV export and a print or save-as-PDF view. A public page, `/?impact=<neighborhood id>`, shows only totals, with no names or locations.
+- **Council reports:** filters, weekly trends, hotspots, a hand-off tracker, CSV export and a print or save-as-PDF view. A public page, `/?impact=<neighbourhood id>`, shows only totals, with no names or locations.
 - **Hand-off to authorities:** coordinators keep a directory of authorities, pass an issue on (by email if the authority has an address and email is set up) and track whether it was acknowledged, with overdue ones flagged.
 - **What-if simulator** (coordinators): change volunteers, team size, hours, the order of work and the assumed authority delay, and compare with today's setup. Everything is labelled an estimate and nothing changes in real reports.
 - **Pulse:** charts with date filters for reported and resolved issues, open issues over time, categories, hours to resolve and volunteer hours. Each chart is tagged Actual or Estimate.
@@ -362,7 +362,7 @@ Two features in the AI agent panel use [TinyFish](https://www.tinyfish.ai) when 
 
 - A location claim is self-asserted. Trust comes from verification, rate limits and moderation, not from proving where someone lives.
 - OpenStreetMap coverage varies. Some areas have few buildings mapped, and the app says so.
-- State is one JSON document per neighborhood, locked on each write. That suits neighborhood-sized communities, but a very busy neighborhood would need normalized tables.
+- State is one JSON document per neighbourhood, locked on each write. That suits neighbourhood-sized communities, but a very busy neighbourhood would need normalized tables.
 - Photos are stored in Postgres. Move them to object storage if volume grows.
 - Updates use 5-second polling. Supabase Realtime would make them instant.
 - Rate limits are kept in memory, so run one server instance, or add a shared store such as Redis.

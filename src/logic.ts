@@ -178,7 +178,7 @@ export function seed(): Doc {
       vol("v4", "Dev P. (demo)", ["water", "unsafe"], true, 28.567, 77.2148, ["boat", "first_aid"]),
       vol("v5", "Kiran L. (demo)", ["garbage", "pothole"], true, 28.5652, 77.2136),
     ],
-    events: [{ t: Date.now(), text: "Demo neighborhood loaded (simulated data)", tone: "info" }],
+    events: [{ t: Date.now(), text: "Demo neighbourhood loaded (simulated data)", tone: "info" }],
     plan: { routes: "Simulated plan. If told to leave, walk to the Community Hall via Main Street, away from the river. Avoid Elm Street (open manhole).", notes: "Keep a bag with water, torch, documents and medicines. Check on elderly neighbors.", contacts: "Coordinators: use the SOS tab. Simulated contact list.", updated: ago(2000), by: "Coordinator (demo)" },
     notices: [{ id: "n1", title: "Cleanup this Sunday", body: "Simulated notice. Join the Weekend tree planting mission from the Missions tab.", author: "Coordinator (demo)", created: ago(600), pinned: true, urgent: false }],
     shares: [
@@ -241,7 +241,7 @@ export function matchVolunteers(d: Doc, i: Issue) {
 
 export const emptyDoc = (): Doc => ({
   demo: 0, sos: [], issues: [], missions: [], resources: [], volunteers: [],
-  events: [{ t: Date.now(), text: "Neighborhood created. Be the first to report an issue or offer help", tone: "info" }],
+  events: [{ t: Date.now(), text: "Neighbourhood created. Be the first to report an issue or offer help", tone: "info" }],
 });
 
 export function insights(d: Doc): Insights {
@@ -322,10 +322,10 @@ export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; ln
   const log = (i: Issue, text: string, tone = "info") => { i.log.push({ t: Date.now(), by: who.name, text }); ev(`${i.title}: ${text}`, tone); };
   const inBounds = (lat: number, lng: number) => {
     if (Math.abs(lat) > 90 || Math.abs(lng) > 180) throw new Error("Invalid location");
-    if (bounds && dist(bounds, { lat, lng }) > bounds.r * 1.15) throw new Error("That spot is outside this neighborhood");
+    if (bounds && dist(bounds, { lat, lng }) > bounds.r * 1.15) throw new Error("That spot is outside this neighbourhood");
   };
   const txt = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
-  const nbhd = bounds?.name ?? "our neighborhood";
+  const nbhd = bounds?.name ?? "our neighbourhood";
   const owns = (i: Issue) => who.role === "admin" || i.author === who.name;
   const makeAgent = (i: Issue, info: { lang: string; original: string; summaryEn: string; source: string }): AgentRecord => {
     const lang = info.lang === "hi" || info.lang === "en" ? info.lang : "other", dl: "en" | "hi" = lang === "hi" ? "hi" : "en", route = routeFor(i.cat);
@@ -347,7 +347,7 @@ export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; ln
       if (!CATS.includes(a.cat) || !PRIORITIES.includes(a.priority)) throw new Error("Invalid category or priority");
       const lat = num(a.lat, "Latitude"), lng = num(a.lng, "Longitude");
       inBounds(lat, lng);
-      if (d.issues.length >= 2000) throw new Error("This neighborhood has reached its report limit");
+      if (d.issues.length >= 2000) throw new Error("This neighbourhood has reached its report limit");
       if (d.issues.filter(i => i.author === who.name && i.status !== "resolved" && !i.hidden).length >= 15) throw new Error("You already have 15 open reports. Wait for some to be resolved");
       const n: Issue = {
         id: uid("i"), title: str(a.title, 120, "Title"), desc: (typeof a.desc === "string" ? a.desc : "").trim().slice(0, 1000),
@@ -753,7 +753,7 @@ export function statsFor(d: Doc) {
 export const points = (s: Stats) => s.reports * 3 + s.confirms + s.proofs * 3 + s.missions * 2 + s.sos * 5 + s.shares * 2;
 export const BADGES: { id: string; label: string; test: (s: Stats) => boolean }[] = [
   { id: "reporter", label: "Verified reporter", test: s => s.reports >= 1 },
-  { id: "watch", label: "Neighborhood watch", test: s => s.confirms >= 5 },
+  { id: "watch", label: "Neighbourhood watch", test: s => s.confirms >= 5 },
   { id: "fixer", label: "Fixer", test: s => s.proofs >= 3 },
   { id: "volunteer", label: "Volunteer", test: s => s.missions >= 3 },
   { id: "responder", label: "Responder", test: s => s.sos >= 1 },
@@ -787,7 +787,7 @@ export function publicSummary(d: Doc) {
 export function weeklyDigest(d: Doc) {
   const now = Date.now(), w = 7 * 86400000, ins = insights(d);
   const fresh = d.issues.filter(i => !i.hidden && now - i.created < w).length, fixed = d.issues.filter(i => i.resolvedAt && now - i.resolvedAt < w).length;
-  return { title: "Weekly neighborhood summary", body: `This week: ${fresh} new report(s), ${fixed} fixed. ${ins.summary}\n${ins.bullets.map(b => `- ${b.title}: ${b.detail}`).join("\n")}` };
+  return { title: "Weekly neighbourhood summary", body: `This week: ${fresh} new report(s), ${fixed} fixed. ${ins.summary}\n${ins.bullets.map(b => `- ${b.title}: ${b.detail}`).join("\n")}` };
 }
 
 function escalate(i: Issue, nbhd: string) {
@@ -803,7 +803,7 @@ function escalate(i: Issue, nbhd: string) {
   return true;
 }
 
-export function dueEscalations(d: Doc, now = Date.now(), nbhd = "our neighborhood") {
+export function dueEscalations(d: Doc, now = Date.now(), nbhd = "our neighbourhood") {
   const titles: string[] = [];
   d.issues.forEach(i => {
     if (!i.agent?.escalateAt || now < i.agent.escalateAt || i.status === "resolved" || i.hidden) return;

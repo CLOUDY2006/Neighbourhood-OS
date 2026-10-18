@@ -1,7 +1,7 @@
 import type { MapData } from "./mapdata";
 import type { City, RGB } from "./theme";
 
-/* Canvas renderer for the 3D neighborhood: a floating diorama slab, lit buildings with cast shadows,
+/* Canvas renderer for the 3D neighbourhood: a floating diorama slab, lit buildings with cast shadows,
    trees, street lamps and traffic. The camera can rotate around the city and tilt. Pins and overlays
    are drawn in SVG on top using the same projection. */
 
@@ -244,7 +244,7 @@ export function drawGround(ctx: CanvasRenderingContext2D, m: Model, pr: Proj, pa
   }
   ctx.restore();
 
-  // neighborhood boundary
+  // neighbourhood boundary
   const br = pr.flat ? m.R * KF : m.R * K * Math.SQRT2;
   ctx.beginPath(); ctx.ellipse(c0.x, c0.y, br, pr.flat ? br : br * pr.t, 0, 0, Math.PI * 2);
   ctx.setLineDash([14, 10]); ctx.lineWidth = 2; ctx.strokeStyle = pal.slabRing; ctx.globalAlpha = 0.4; ctx.stroke();

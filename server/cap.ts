@@ -2,7 +2,7 @@ import { XMLParser } from "fast-xml-parser";
 import { dist } from "../src/logic";
 import type { Alert, HazardType, Sev } from "../src/world";
 
-const UA = `NeighborhoodOS/1.0 (${process.env.CONTACT_EMAIL || "contact not set"})`;
+const UA = `NeighbourhoodOS/1.0 (${process.env.CONTACT_EMAIL || "contact not set"})`;
 const FEEDS = (process.env.CAP_FEEDS || "").split(",").map(s => s.trim()).filter(s => /^https?:\/\//.test(s));
 export const capFeedCount = () => FEEDS.length;
 

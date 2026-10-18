@@ -101,7 +101,7 @@ export function Prepare({ st, app, act }: { st: S.State; app: S.AppState; act: A
           <div className="form">
             <select value={care.need} onChange={e => setCare({ ...care, need: e.target.value })} aria-label="Type of help">{S.CARE_NEEDS.map(n => <option key={n} value={n}>{label(n)}</option>)}</select>
             <input placeholder="Short note (optional, no address)" maxLength={200} value={care.note} onChange={e => setCare({ ...care, note: e.target.value })} />
-            <label className="check"><input type="checkbox" checked={care.consent} onChange={e => setCare({ ...care, consent: e.target.checked })} /> I agree that this neighborhood's coordinators can see that I may need extra help.</label>
+            <label className="check"><input type="checkbox" checked={care.consent} onChange={e => setCare({ ...care, consent: e.target.checked })} /> I agree that this neighbourhood's coordinators can see that I may need extra help.</label>
             <button onClick={() => act(() => S.careSet(care.need, care.note, care.consent), "You are on the register")}>Add me</button>
           </div>
         )}

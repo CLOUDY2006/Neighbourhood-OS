@@ -301,7 +301,7 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
         <ol>{plan.steps.map((x, n) => <li key={n}>{x}</li>)}</ol>
         <p>Volunteers: {plan.volunteers}. Effort: about {plan.personHours} person-hours (estimate). Time: {plan.timeline} (estimate). Materials: {plan.materials.join(", ")}.</p>
         <p>Safety: {plan.safety}</p>
-        <p>Suggested by NEIGHBORHOOD OS. A coordinator must approve it before any action is taken. {i.actionPlan ? `Approved by ${i.actionPlan.approvedBy}.` : "Not approved yet."}</p>
+        <p>Suggested by NEIGHBOURHOOD OS. A coordinator must approve it before any action is taken. {i.actionPlan ? `Approved by ${i.actionPlan.approvedBy}.` : "Not approved yet."}</p>
       </div>
 
       <details className="fold">

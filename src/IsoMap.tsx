@@ -265,7 +265,7 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
   return (
     <div className={`iso ${flat ? "isflat" : ""}`} ref={box}>
       <canvas ref={cvs} className="citycanvas" aria-hidden="true" />
-      <svg ref={svg} role="img" aria-label="Interactive 3D neighborhood map. The same items are listed in the side panel." className={`isosvg ${picking ? "picking" : ""}`}
+      <svg ref={svg} role="img" aria-label="Interactive 3D neighbourhood map. The same items are listed in the side panel." className={`isosvg ${picking ? "picking" : ""}`}
         onContextMenu={e => e.preventDefault()}
         onPointerDown={e => {
           const orbit = e.button === 2 || e.shiftKey;
@@ -337,7 +337,7 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
         </g>
       </svg>
 
-      {!map && <div className="maploading"><span className="spinner" />Loading neighborhood map…</div>}
+      {!map && <div className="maploading"><span className="spinner" />Loading neighbourhood map…</div>}
       {note && <div className="mapnote glass">{note}</div>}
       {sim && <div className="simbanner glass">SIMULATION: estimates from simple assumptions, not real outcomes</div>}
       {picking && !pick && <div className="pickhint glass"><Crosshair size={14} /> Click the map to choose a location</div>}
@@ -365,7 +365,7 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
           {here.status === "error" && <span>{tr("Could not get your location. Try again.")}</span>}
           {hi && <>
             <i className="herepoint" />
-            <span><b>{tr("You are here")}</b> · {hi.inside ? tr("inside this neighborhood") : `${fmtDist(hi.dist)} ${tr("from the center of this neighborhood")}`}{here.acc != null && here.acc > 50 ? ` · ±${Math.round(here.acc)} m` : ""}</span>
+            <span><b>{tr("You are here")}</b> · {hi.inside ? tr("inside this neighbourhood") : `${fmtDist(hi.dist)} ${tr("from the center of this neighbourhood")}`}{here.acc != null && here.acc > 50 ? ` · ±${Math.round(here.acc)} m` : ""}</span>
             {!hi.inside && app.mode === "live" && <button className="go" disabled={opening} onClick={openMine}>{tr("Open my area")}</button>}
             {!hi.inside && app.mode !== "live" && <span className="dim">{tr("This demo area is simulated, so you will not appear on it.")}</span>}
           </>}

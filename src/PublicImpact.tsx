@@ -7,7 +7,7 @@ export default function PublicImpact({ id }: { id: string }) {
   return (
     <div className="gate">
       <div className="gcard glass">
-        <h1 className="brand">NEIGHBORHOOD OS</h1>
+        <h1 className="brand">NEIGHBOURHOOD OS</h1>
         {err && <p className="errtext">{err}</p>}
         {!d && !err && <p className="dim">Loading…</p>}
         {d && (
@@ -22,7 +22,7 @@ export default function PublicImpact({ id }: { id: string }) {
             </div>
           </>
         )}
-        <a className="dim" href="/">Open NEIGHBORHOOD OS</a>
+        <a className="dim" href="/">Open NEIGHBOURHOOD OS</a>
       </div>
     </div>
   );

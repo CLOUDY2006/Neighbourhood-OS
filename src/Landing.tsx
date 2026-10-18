@@ -80,13 +80,13 @@ function Nav({ me }: { me: boolean }) {
   return (
     <header className={`ln-nav ${scrolled ? "scrolled" : ""}`}>
       <div className="ln-wrap ln-navin">
-        <a className="ln-brand" href="/" onClick={e => { e.preventDefault(); window.scrollTo({ top: 0, behavior: prefersCalm() ? "auto" : "smooth" }); }}><span className="logo" aria-hidden="true">N</span><span>NEIGHBORHOOD OS</span></a>
+        <a className="ln-brand" href="/" onClick={e => { e.preventDefault(); window.scrollTo({ top: 0, behavior: prefersCalm() ? "auto" : "smooth" }); }}><span className="logo" aria-hidden="true">N</span><span>NEIGHBOURHOOD OS</span></a>
         <nav className="ln-links" aria-label="Page sections">
           {[["how", "How it works"], ["features", "Features"], ["crisis", "Crisis mode"], ["roles", "Roles"], ["trust", "Trust"]].map(([id, l]) => <a key={id} href={`#${id}`} onClick={jump(id)}>{l}</a>)}
         </nav>
         <div className="ln-actions">
           <button className="iconbtn ln-ghosticon" onClick={toggleTheme} aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}>{theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}</button>
-          <button className="ghost ln-signin" onClick={() => go("/signin")}>{me ? "My neighborhoods" : "Sign in"}</button>
+          <button className="ghost ln-signin" onClick={() => go("/signin")}>{me ? "My neighbourhoods" : "Sign in"}</button>
           <button className="go" onClick={S.enterDemo}><Play size={14} /> Try the demo</button>
         </div>
       </div>
@@ -220,13 +220,13 @@ function HeroVisual() {
         <span className="fi green"><CircleCheck size={15} /></span>
         <div><small>Proof of fix</small><b>Approved by a moderator</b><em>The pin turns green</em></div>
       </Float>
-      <span className="ln-viscap">Live preview · simulated neighborhood</span>
+      <span className="ln-viscap">Live preview · simulated neighbourhood</span>
     </motion.div>
   );
 }
 
 function Hero() {
-  const words = ["Every", "neighborhood,", "live", "in", "3D."];
+  const words = ["Every", "neighbourhood,", "live", "in", "3D."];
   return (
     <section className="ln-hero">
       <div className="ln-aurora" aria-hidden="true"><i /><i /><i /></div>
@@ -237,14 +237,14 @@ function Hero() {
             <span className="pd" /> Civic platform · English &amp; <span lang="hi">हिन्दी</span> · Works offline
           </motion.div>
           <h1 className="ln-h1">
-            <span className="sr">Every neighborhood, live in 3D. Report it. Fix it. Prove it.</span>
+            <span className="sr">Every neighbourhood, live in 3D. Report it. Fix it. Prove it.</span>
             <span aria-hidden="true">
               {words.map((w, i) => <motion.span key={i} className="w" initial={{ opacity: 0, y: "0.5em", filter: "blur(10px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }} transition={{ delay: 0.12 + i * 0.08, duration: 0.8, ease: EASE }}>{w}&nbsp;</motion.span>)}
               <motion.span className="l2" initial={{ opacity: 0, y: "0.4em" }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6, duration: 0.9, ease: EASE }}>Report it. Fix it. <em>Prove it.</em></motion.span>
             </span>
           </h1>
           <motion.p className="ln-lead" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8, duration: 0.8, ease: EASE }}>
-            NEIGHBORHOOD OS turns your streets into a live isometric map. Residents report problems, neighbors confirm them, coordinators verify and assign them, volunteers fix them, and proof of the fix goes back on the map.
+            NEIGHBOURHOOD OS turns your streets into a live isometric map. Residents report problems, neighbors confirm them, coordinators verify and assign them, volunteers fix them, and proof of the fix goes back on the map.
           </motion.p>
           <motion.div className="ln-ctas" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.95, duration: 0.8, ease: EASE }}>
             <button className="go xl ln-shine" onClick={S.enterDemo}><Play size={16} /> Try the live demo</button>
@@ -427,7 +427,7 @@ function Features() {
   return (
     <section id="features" className="ln-sec">
       <div className="ln-wrap">
-        <Head eyebrow="Features" title={<>Everything a neighborhood needs. <em>Nothing</em> it doesn't.</>} sub="From a single pothole to a regional flood, the same calm interface: a live map, a clear queue of work, and honest records." />
+        <Head eyebrow="Features" title={<>Everything a neighbourhood needs. <em>Nothing</em> it doesn't.</>} sub="From a single pothole to a regional flood, the same calm interface: a live map, a clear queue of work, and honest records." />
         <div className="ln-bento">
           <Spot className="b-agent">
             <div className="ln-ct"><span className="ln-ic violet"><Sparkles size={18} /></span><div><h3>An AI agent that drafts the complaint</h3><p>It understands the report, picks the complaint route and authority, drafts in English or Hindi, and tracks reference numbers. You approve every step; nothing is ever sent automatically.</p></div></div>
@@ -523,7 +523,7 @@ function Crisis() {
         <div>
           <Head eyebrow="Crisis Mode" title={<>When the ground shakes, the map <em>changes mode</em>.</>} />
           <ul className="ln-crlist">{rows.map(([I, t, d], i) => <Reveal key={t} d={0.1 + i * 0.08}><li><span className="ln-ic red"><I size={17} /></span><div><b>{t}</b><p>{d}</p></div></li></Reveal>)}</ul>
-          <Reveal d={0.35}><p className="ln-warnbox"><AlertTriangle size={16} /> This layer only informs; it never starts a rescue by itself. NEIGHBORHOOD OS is not an emergency service. Call your local emergency number first.</p></Reveal>
+          <Reveal d={0.35}><p className="ln-warnbox"><AlertTriangle size={16} /> This layer only informs; it never starts a rescue by itself. NEIGHBOURHOOD OS is not an emergency service. Call your local emergency number first.</p></Reveal>
         </div>
         <Reveal d={0.15}><CrisisDemo /></Reveal>
       </div>
@@ -537,7 +537,7 @@ const ROLES: { k: string; Icon: LucideIcon; who: string; can: string[] }[] = [
   { k: "Resident", Icon: UserCheck, who: "Every member", can: ["Report problems and confirm others' reports", "Flag, withdraw and add updates", "Say whether a fix looks done", "Ask for help with SOS and answer check-ins", "Use the neighbor exchange", "Draft and approve the agent's complaint for your own report"] },
   { k: "Volunteer", Icon: Wrench, who: "Residents who opt in", can: ["Everything a resident can do", "Join missions; set availability, skills and abilities", "Share an approximate area, rounded to about 100 m", "Post proof of a fix", "Update the status of an SOS you are assigned to"] },
   { k: "Moderator", Icon: BadgeCheck, who: "Set by a coordinator", can: ["Verify or dispute reports", "Hide and restore reports", "Approve or reject resolutions, never your own", "See the volunteer overlay on the map"] },
-  { k: "Coordinator", Icon: ShieldCheck, who: "Creator of a named neighborhood, or approved by one", can: ["Everything above, plus advancing status", "Create missions and assign volunteers", "Approve action plans, resources and deliveries", "Acknowledge and assign SOS; run safety check-ins", "Post notices and write the preparedness plan", "Hand off to authorities, run What-if and council reports"] },
+  { k: "Coordinator", Icon: ShieldCheck, who: "Creator of a named neighbourhood, or approved by one", can: ["Everything above, plus advancing status", "Create missions and assign volunteers", "Approve action plans, resources and deliveries", "Acknowledge and assign SOS; run safety check-ins", "Post notices and write the preparedness plan", "Hand off to authorities, run What-if and council reports"] },
 ];
 function Roles() {
   const [r, setR] = useState(0), role = ROLES[r];
@@ -645,11 +645,11 @@ function FinalCta({ me }: { me: boolean }) {
       <div className="ln-wrap">
         <Reveal className="ln-cta">
           <div className="ln-ctaglow" aria-hidden="true" />
-          <h2>See your neighborhood <em>come alive</em>.</h2>
+          <h2>See your neighbourhood <em>come alive</em>.</h2>
           <p>Open the simulated demo, switch between the four roles, run the guided AI agent and simulate an earthquake alert. No account needed.</p>
           <div className="ln-ctas">
             <button className="xl ln-white ln-shine" onClick={S.enterDemo}><Play size={16} /> Try the live demo</button>
-            <button className="xl ln-outline" onClick={() => go("/signin")}>{me ? "Open my neighborhoods" : "Sign in or create an account"} <ArrowRight size={16} /></button>
+            <button className="xl ln-outline" onClick={() => go("/signin")}>{me ? "Open my neighbourhoods" : "Sign in or create an account"} <ArrowRight size={16} /></button>
           </div>
         </Reveal>
       </div>
@@ -660,12 +660,12 @@ function Footer() {
   return (
     <footer className="ln-foot">
       <div className="ln-wrap ln-footgrid">
-        <div><a className="ln-brand" href="/"><span className="logo" aria-hidden="true">N</span><span>NEIGHBORHOOD OS</span></a><p>A live isometric map for every neighborhood. Report it, fix it, prove it.</p></div>
+        <div><a className="ln-brand" href="/"><span className="logo" aria-hidden="true">N</span><span>NEIGHBOURHOOD OS</span></a><p>A live isometric map for every neighbourhood. Report it, fix it, prove it.</p></div>
         <div><b>Product</b><button className="ln-flink" onClick={S.enterDemo}>Live demo</button><button className="ln-flink" onClick={() => go("/signin")}>Sign in</button><a href="#how">How it works</a><a href="#features">Features</a></div>
         <div><b>Principles</b><a href="#trust">Trust &amp; honest limits</a><a href="#roles">Roles &amp; permissions</a><a href="#crisis">Crisis mode</a></div>
       </div>
       <div className="ln-wrap ln-footnote">
-        <p><Siren size={14} /> NEIGHBORHOOD OS is not an emergency service. In an emergency, call your local emergency number (112 in India).</p>
+        <p><Siren size={14} /> NEIGHBOURHOOD OS is not an emergency service. In an emergency, call your local emergency number (112 in India).</p>
         <p>Map data © OpenStreetMap contributors · Hazard data from USGS, NASA EONET and GDACS · Official complaint pages found with TinyFish</p>
       </div>
     </footer>
@@ -674,7 +674,7 @@ function Footer() {
 
 export default function Landing() {
   const app = S.useApp(), me = !!app.me;
-  useEffect(() => { document.title = "NEIGHBORHOOD OS · Report it. Fix it. Prove it."; return () => { document.title = "NEIGHBORHOOD OS"; }; }, []);
+  useEffect(() => { document.title = "NEIGHBOURHOOD OS · Report it. Fix it. Prove it."; return () => { document.title = "NEIGHBOURHOOD OS"; }; }, []);
   return (
     <MotionConfig reducedMotion="user">
       <div className="ln">

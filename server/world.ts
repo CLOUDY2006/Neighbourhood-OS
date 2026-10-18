@@ -1,7 +1,7 @@
 import type { HazardType, Sev, WorldEvent } from "../src/world";
 import { SEV_RANK } from "../src/world";
 
-const UA = `NeighborhoodOS/1.0 (${process.env.CONTACT_EMAIL || "contact not set"})`;
+const UA = `NeighbourhoodOS/1.0 (${process.env.CONTACT_EMAIL || "contact not set"})`;
 export interface Snapshot { events: WorldEvent[]; sources: { name: string; ok: boolean; n: number }[]; updated: number }
 
 async function getJson(url: string): Promise<any> {

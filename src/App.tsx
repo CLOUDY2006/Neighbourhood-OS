@@ -37,18 +37,18 @@ const ago = (t: number) => {
   return m < 1 ? "now" : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`;
 };
 const TAB_INFO: Record<Tab, [string, string]> = {
-  feed: ["Command", "Live overview of the neighborhood: alerts, notices, how much work is in each stage, and every issue. Pick an issue to see its details."],
+  feed: ["Command", "Live overview of the neighbourhood: alerts, notices, how much work is in each stage, and every issue. Pick an issue to see its details."],
   report: ["Report a problem", "Click the map to place a pin, describe what is wrong and submit. A coordinator reviews every report."],
   missions: ["Missions", "Volunteer work that fixes reported problems. Join a mission, or set your skills and availability."],
   pulse: ["Pulse", "How fast problems get fixed. Actual numbers are tagged green and estimates amber."],
   sos: ["SOS", "Ask neighbors for help. If anyone is in danger, call your local emergency number first."],
   resources: ["Resources", "Shelters, water points and supplies on the map, plus the neighbor exchange."],
   prepare: ["Prepare", "Safety check-ins, the emergency plan and the optional extra-help register."],
-  world: ["World", "Official hazard feeds. An alert near this neighborhood can switch on Crisis Mode."],
+  world: ["World", "Official hazard feeds. An alert near this neighbourhood can switch on Crisis Mode."],
   sim: ["What-if", "Try different numbers of volunteers and hours. Everything is an estimate and nothing real changes."],
   reports: ["Council reports", "Summaries for local offices: trends, hotspots and hand-offs, with CSV and PDF export."],
   people: ["People", "Members and their roles. Every coordinator action is recorded in the log."],
-  account: ["Account", "Your profile, neighborhoods, notifications, display settings and privacy."],
+  account: ["Account", "Your profile, neighbourhoods, notifications, display settings and privacy."],
 };
 const PIPE: [S.Status, string, string, string][] = [
   ["reported", "Reported", "red", "A neighbor reported it. Others can confirm with “I see this too”."],
@@ -123,7 +123,7 @@ function Feed({ st, app, sel, setSel, act, demo, goReport, alerts, onWorld }: { 
       )}
       {!demo && st.issues.length === 0 && (
         <div className="card">
-          <b>This neighborhood is just getting started</b>
+          <b>This neighbourhood is just getting started</b>
           <p className="dim">Nothing has been reported yet. Report the first problem, invite your neighbors from the Account tab, and ask a trusted neighbor to become a coordinator so reports can be reviewed.</p>
           <button className="go" onClick={goReport}>Report a problem</button>
         </div>
@@ -298,18 +298,18 @@ function Account({ st, app, act }: { st: S.State; app: S.AppState; act: Act }) {
           <b>{app.me?.handle}</b>
           <small className="dim">{app.me?.email} · {RL[st.role]} in {n.name}</small>
           {st.role !== "admin" && <button onClick={() => act(() => S.setMyRole(st.role === "volunteer" ? "resident" : "volunteer"), "Role updated")}>{st.role === "volunteer" ? "Stop volunteering" : "I want to volunteer"}</button>}
-          {st.role !== "admin" && <button onClick={() => act(() => S.requestCoordinator(), "Request sent to this neighborhood's coordinators")}>Ask to become a coordinator</button>}
+          {st.role !== "admin" && <button onClick={() => act(() => S.requestCoordinator(), "Request sent to this neighbourhood's coordinators")}>Ask to become a coordinator</button>}
           <button onClick={() => act(async () => { await navigator.clipboard.writeText(invite); }, "Invite link copied")}>Copy invite link</button>
         </div>
       ) : (
-        <div className="card"><b>Simulated demo</b><small className="dim">Nothing here is real. Create an account to join your own neighborhood.</small><button className="go" onClick={() => { S.leave(); go("/signin"); }}>Create an account or sign in</button></div>
+        <div className="card"><b>Simulated demo</b><small className="dim">Nothing here is real. Create an account to join your own neighbourhood.</small><button className="go" onClick={() => { S.leave(); go("/signin"); }}>Create an account or sign in</button></div>
       )}
       {live && (
         <div className="card">
-          <b>My neighborhoods</b>
+          <b>My neighbourhoods</b>
           {app.mine.map(m => <button key={m.id} className={m.id === n.id ? "go" : ""} onClick={() => act(() => S.enter(m))}>{m.name}</button>)}
-          <button onClick={() => { S.leave(); go("/signin"); }}>Find another neighborhood</button>
-          <button className="warn" onClick={() => { if (confirm("Leave this neighborhood?")) act(() => S.leaveNeighborhood()); }}>Leave this neighborhood</button>
+          <button onClick={() => { S.leave(); go("/signin"); }}>Find another neighbourhood</button>
+          <button className="warn" onClick={() => { if (confirm("Leave this neighbourhood?")) act(() => S.leaveNeighbourhood()); }}>Leave this neighbourhood</button>
         </div>
       )}
       <MyImpact st={st} />
@@ -318,8 +318,8 @@ function Account({ st, app, act }: { st: S.State; app: S.AppState; act: Act }) {
       <div className="card">
         <b>Safety and privacy</b>
         <small className="dim">This is not an emergency service. In an emergency, call your local emergency number first.</small>
-        <small className="dim">Your exact location is never stored. A neighborhood is a roughly 1 km area, or a named area you join. The pin on a report is only the spot someone chose on the map.</small>
-        <small className="dim">Photos are re-encoded in your browser, which removes location data from the file, and only members of the neighborhood can see them.</small>
+        <small className="dim">Your exact location is never stored. A neighbourhood is a roughly 1 km area, or a named area you join. The pin on a report is only the spot someone chose on the map.</small>
+        <small className="dim">Photos are re-encoded in your browser, which removes location data from the file, and only members of the neighbourhood can see them.</small>
         <small className="dim">Reports start as unverified. Only a human coordinator can mark one verified, and every coordinator action is logged. Several flags from neighbors hide a report until a coordinator reviews it.</small>
         <small className="dim">Your display name is visible to your neighbors on reports and missions.</small>
       </div>
@@ -398,7 +398,7 @@ function Main({ app }: { app: S.AppState }) {
       </nav>
       {more && <div className="scrim" onClick={() => setMore(false)} />}
       <header className="top">
-        <div className="brand">NEIGHBORHOOD OS<small>{demo ? "Simulated demo" : `${n.kind === "named" ? "Named neighborhood" : "Area neighborhood"}`} · {n.name}</small></div>
+        <div className="brand">NEIGHBOURHOOD OS<small>{demo ? "Simulated demo" : `${n.kind === "named" ? "Named neighbourhood" : "Area neighbourhood"}`} · {n.name}</small></div>
         <span className={`mode ${demo ? "" : "live"}`}>{demo ? t("Demo mode") : `${t("Live")} · ${t(RL[st.role])}`}</span>
         {!demo && (!app.online || app.stale) && <span className="mode off">{t("Offline")}</span>}
         {app.queued > 0 && <span className="mode off">{app.queued} {t("waiting to send")}</span>}
@@ -425,7 +425,7 @@ function Main({ app }: { app: S.AppState }) {
             <button onClick={() => act(async () => { await S.reset(); setSel(null); setPick(null); }, "Demo reset")}><RotateCcw size={14} /> {t("Reset demo")}</button>
             <button className="ghost" onClick={() => { S.leave(); go("/"); }}><LogOut size={14} /> {t("Exit demo")}</button>
           </>
-        ) : <button onClick={() => { S.leave(); go("/signin"); }}>{t("Switch neighborhood")}</button>}
+        ) : <button onClick={() => { S.leave(); go("/signin"); }}>{t("Switch neighbourhood")}</button>}
       </header>
       <main className="center">
         <div className="layer" hidden={tabNow === "world" || view === "list"}>

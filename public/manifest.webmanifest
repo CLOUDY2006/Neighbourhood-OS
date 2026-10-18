@@ -1,6 +1,6 @@
 {
-  "name": "NEIGHBORHOOD OS",
-  "short_name": "Neighborhood OS",
+  "name": "NEIGHBOURHOOD OS",
+  "short_name": "Neighbourhood OS",
   "description": "A live map where neighbors report problems, help each other and prepare for emergencies.",
   "start_url": "/",
   "display": "standalone",

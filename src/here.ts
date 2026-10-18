@@ -5,7 +5,7 @@ export type HereStatus = "off" | "asking" | "on" | "denied" | "unsupported" | "e
 export interface Here { status: HereStatus; lat: number | null; lng: number | null; acc: number | null }
 const OFF: Here = { status: "off", lat: null, lng: null, acc: null };
 
-/** Straight-line distance in meters and whether the point is inside a neighborhood circle. */
+/** Straight-line distance in meters and whether the point is inside a neighbourhood circle. */
 export function hereInfo(lat: number, lng: number, center: LL, r: number) {
   const { x, y } = toXY(center, lat, lng), dist = Math.hypot(x, y);
   return { dist, inside: dist <= r };

@@ -60,8 +60,8 @@ async function authenticate(req: express.Request): Promise<User> {
 
 type Q = { query: (sql: string, p?: unknown[]) => Promise<{ rows: any[] }> };
 async function memberRole(c: Q, nid: string, u: User): Promise<Role> {
-  const r = await c.query("select role from members where neighborhood_id = $1 and user_id = $2", [nid, u.id]);
-  if (!r.rows[0]) { if (u.platformAdmin) return "admin"; throw new HttpError(403, "Join this neighborhood first"); }
+  const r = await c.query("select role from members where neighbourhood_id = $1 and user_id = $2", [nid, u.id]);
+  if (!r.rows[0]) { if (u.platformAdmin) return "admin"; throw new HttpError(403, "Join this neighbourhood first"); }
   return u.platformAdmin ? "admin" : (r.rows[0].role as Role);
 }
 const info = (n: any, role: Role) => ({ id: n.id, kind: n.kind, name: n.name, lat: n.center_lat, lng: n.center_lng, r: n.radius_m, role });
@@ -80,7 +80,7 @@ const viewDoc = (d: Doc, role: Role, handle: string, memberCount = 0): Doc => {
     checkin: d.checkin ? { ...d.checkin, replies: Object.fromEntries(Object.entries(d.checkin.replies).filter(([n]) => n === handle)) } : undefined,
   };
 };
-const countMembers = async (c: Q, id: string) => (await c.query("select count(*)::int as n from members where neighborhood_id = $1", [id])).rows[0].n as number;
+const countMembers = async (c: Q, id: string) => (await c.query("select count(*)::int as n from members where neighbourhood_id = $1", [id])).rows[0].n as number;
 const alertsOf = (n: { center_lat: number; center_lng: number; radius_m: number }): Alert[] => {
   const c = { lat: n.center_lat, lng: n.center_lng };
   return [...capAlertsFor(capSnapshot(), c, n.radius_m), ...alertsFor(worldSnapshot().events, c)].sort((a, b) => SEV_RANK[b.sev] - SEV_RANK[a.sev]).slice(0, 6);
@@ -88,11 +88,11 @@ const alertsOf = (n: { center_lat: number; center_lng: number; radius_m: number 
 const isId = (s: string) => /^[A-Za-z0-9:_-]{1,40}$/.test(s);
 
 async function ensureMember(nid: string, u: User, role: Role = "resident"): Promise<Role> {
-  const ex = await pool.query("select role from members where neighborhood_id = $1 and user_id = $2", [nid, u.id]);
+  const ex = await pool.query("select role from members where neighbourhood_id = $1 and user_id = $2", [nid, u.id]);
   if (ex.rows[0]) return ex.rows[0].role;
   const cnt = await pool.query("select count(*)::int as n from members where user_id = $1", [u.id]);
-  if (cnt.rows[0].n >= 5) throw new HttpError(400, "You can belong to up to 5 neighborhoods. Leave one first");
-  await pool.query("insert into members (neighborhood_id, user_id, display_name, role) values ($1, $2, $3, $4) on conflict do nothing", [nid, u.id, u.handle, role]);
+  if (cnt.rows[0].n >= 5) throw new HttpError(400, "You can belong to up to 5 neighbourhoods. Leave one first");
+  await pool.query("insert into members (neighbourhood_id, user_id, display_name, role) values ($1, $2, $3, $4) on conflict do nothing", [nid, u.id, u.handle, role]);
   return role;
 }
 
@@ -120,28 +120,28 @@ app.get("/api/me", ah(async (req, res) => {
   res.json({ id: u.id, email: u.email, handle: u.handle, platformAdmin: u.platformAdmin });
 }));
 
-app.get("/api/neighborhoods/mine", ah(async (req, res) => {
+app.get("/api/neighbourhoods/mine", ah(async (req, res) => {
   const u = await authenticate(req);
-  const r = await pool.query("select n.*, m.role from members m join neighborhoods n on n.id = m.neighborhood_id where m.user_id = $1 order by m.joined_at", [u.id]);
+  const r = await pool.query("select n.*, m.role from members m join neighbourhoods n on n.id = m.neighbourhood_id where m.user_id = $1 order by m.joined_at", [u.id]);
   res.json(r.rows.map(n => info(n, u.platformAdmin ? "admin" : n.role)));
 }));
 
-app.post("/api/neighborhoods/cell", ah(async (req, res) => {
+app.post("/api/neighbourhoods/cell", ah(async (req, res) => {
   const u = await authenticate(req); rl(`cell:${u.id}`, 30, 3600000);
   const cell = parseCell(String(req.body?.cell ?? ""));
   if (!cell) throw new HttpError(400, "Invalid area");
-  let n = (await pool.query("select * from neighborhoods where id = $1", [cell.id])).rows[0];
+  let n = (await pool.query("select * from neighbourhoods where id = $1", [cell.id])).rows[0];
   if (!n) {
     const name = await placeName(cell.lat, cell.lng);
     n = (await pool.query(
-      "insert into neighborhoods (id, kind, name, center_lat, center_lng, radius_m, doc) values ($1, 'cell', $2, $3, $4, $5, $6) on conflict (id) do update set id = excluded.id returning *",
+      "insert into neighbourhoods (id, kind, name, center_lat, center_lng, radius_m, doc) values ($1, 'cell', $2, $3, $4, $5, $6) on conflict (id) do update set id = excluded.id returning *",
       [cell.id, name, cell.lat, cell.lng, CELL_R, JSON.stringify(emptyDoc())],
     )).rows[0];
   }
   res.json(info(n, await ensureMember(n.id, u)));
 }));
 
-app.post("/api/neighborhoods", ah(async (req, res) => {
+app.post("/api/neighbourhoods", ah(async (req, res) => {
   const u = await authenticate(req); rl(`create:${u.id}`, 3, 86400000);
   const name = String(req.body?.name ?? "").replace(/[\u0000-\u001f<>]/g, "").trim().slice(0, 60);
   const lat = Number(req.body?.lat), lng = Number(req.body?.lng), r = Math.round(Number(req.body?.r));
@@ -149,35 +149,35 @@ app.post("/api/neighborhoods", ah(async (req, res) => {
   if (!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) throw new HttpError(400, "Invalid location");
   if (!(r >= 200 && r <= 2000)) throw new HttpError(400, "The radius must be between 200 and 2000 meters");
   const id = "n_" + randomUUID().replace(/-/g, "").slice(0, 12);
-  const n = (await pool.query("insert into neighborhoods (id, kind, name, center_lat, center_lng, radius_m, created_by, doc) values ($1, 'named', $2, $3, $4, $5, $6, $7) returning *", [id, name, lat, lng, r, u.id, JSON.stringify(emptyDoc())])).rows[0];
+  const n = (await pool.query("insert into neighbourhoods (id, kind, name, center_lat, center_lng, radius_m, created_by, doc) values ($1, 'named', $2, $3, $4, $5, $6, $7) returning *", [id, name, lat, lng, r, u.id, JSON.stringify(emptyDoc())])).rows[0];
   res.json(info(n, await ensureMember(id, u, "admin")));
 }));
 
-app.post("/api/neighborhoods/:id/join", ah(async (req, res) => {
+app.post("/api/neighbourhoods/:id/join", ah(async (req, res) => {
   const u = await authenticate(req); const id = String(req.params.id); rl(`join:${u.id}`, 30, 3600000);
-  if (!isId(id)) throw new HttpError(400, "Invalid neighborhood");
-  let n = (await pool.query("select * from neighborhoods where id = $1", [id])).rows[0];
+  if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
+  let n = (await pool.query("select * from neighbourhoods where id = $1", [id])).rows[0];
   if (!n) {
     const cell = parseCell(id);
-    if (!cell) throw new HttpError(404, "Neighborhood not found");
-    n = (await pool.query("insert into neighborhoods (id, kind, name, center_lat, center_lng, radius_m, doc) values ($1, 'cell', $2, $3, $4, $5, $6) on conflict (id) do update set id = excluded.id returning *", [cell.id, await placeName(cell.lat, cell.lng), cell.lat, cell.lng, CELL_R, JSON.stringify(emptyDoc())])).rows[0];
+    if (!cell) throw new HttpError(404, "Neighbourhood not found");
+    n = (await pool.query("insert into neighbourhoods (id, kind, name, center_lat, center_lng, radius_m, doc) values ($1, 'cell', $2, $3, $4, $5, $6) on conflict (id) do update set id = excluded.id returning *", [cell.id, await placeName(cell.lat, cell.lng), cell.lat, cell.lng, CELL_R, JSON.stringify(emptyDoc())])).rows[0];
   }
   res.json(info(n, await ensureMember(id, u)));
 }));
 
 const near = (rows: any[]) => rows.map(n => ({ id: n.id, name: n.name, r: n.radius_m, lat: n.center_lat, lng: n.center_lng, members: n.members }));
-app.get("/api/neighborhoods/nearby", ah(async (req, res) => {
+app.get("/api/neighbourhoods/nearby", ah(async (req, res) => {
   const u = await authenticate(req); rl(`nearby:${u.id}`, 60, 3600000);
   const lat = Number(req.query.lat), lng = Number(req.query.lng);
   if (!isFinite(lat) || !isFinite(lng)) throw new HttpError(400, "Invalid location");
-  const r = await pool.query("select n.*, (select count(*)::int from members m where m.neighborhood_id = n.id) as members from neighborhoods n where kind = 'named' and center_lat between $1 and $2 and center_lng between $3 and $4 limit 20", [lat - 0.03, lat + 0.03, lng - 0.04, lng + 0.04]);
+  const r = await pool.query("select n.*, (select count(*)::int from members m where m.neighbourhood_id = n.id) as members from neighbourhoods n where kind = 'named' and center_lat between $1 and $2 and center_lng between $3 and $4 limit 20", [lat - 0.03, lat + 0.03, lng - 0.04, lng + 0.04]);
   res.json(near(r.rows));
 }));
-app.get("/api/neighborhoods/search", ah(async (req, res) => {
+app.get("/api/neighbourhoods/search", ah(async (req, res) => {
   const u = await authenticate(req); rl(`search:${u.id}`, 60, 3600000);
   const q = String(req.query.q ?? "").trim().replace(/[%_\\]/g, m => "\\" + m).slice(0, 60);
   if (q.length < 2) return res.json([]);
-  const r = await pool.query("select n.*, (select count(*)::int from members m where m.neighborhood_id = n.id) as members from neighborhoods n where kind = 'named' and name ilike $1 limit 10", [`%${q}%`]);
+  const r = await pool.query("select n.*, (select count(*)::int from members m where m.neighbourhood_id = n.id) as members from neighbourhoods n where kind = 'named' and name ilike $1 limit 10", [`%${q}%`]);
   res.json(near(r.rows));
 }));
 
@@ -190,13 +190,13 @@ app.get("/api/geocode", ah(async (req, res) => {
 
 app.get("/api/n/:id/state", ah(async (req, res) => {
   const u = await authenticate(req); const id = String(req.params.id);
-  if (!isId(id)) throw new HttpError(400, "Invalid neighborhood");
+  if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
   const role = await memberRole(pool, id, u);
-  const v = (await pool.query("select version, center_lat, center_lng, radius_m from neighborhoods where id = $1", [id])).rows[0];
-  if (!v) throw new HttpError(404, "Neighborhood not found");
+  const v = (await pool.query("select version, center_lat, center_lng, radius_m from neighbourhoods where id = $1", [id])).rows[0];
+  if (!v) throw new HttpError(404, "Neighbourhood not found");
   const alerts = alertsOf(v);
   if (Number(req.query.v) === v.version) return res.json({ unchanged: true, version: v.version, role, alerts });
-  const d = (await pool.query("select doc, version from neighborhoods where id = $1", [id])).rows[0];
+  const d = (await pool.query("select doc, version from neighbourhoods where id = $1", [id])).rows[0];
   res.json({ version: d.version, doc: viewDoc(d.doc, role, u.handle, await countMembers(pool, id)), role, alerts });
 }));
 
@@ -215,19 +215,19 @@ async function runAction(id: string, u: Actor, a: Action) {
   const out = await tx(async c => {
     const role = await memberRole(c, id, u as User);
     if (!can(role, a.t)) throw new HttpError(403, `The ${role} role is not allowed to do this`);
-    if (a.t === "demo" || a.t === "reset") throw new HttpError(403, "Demo actions are not available in real neighborhoods");
+    if (a.t === "demo" || a.t === "reset") throw new HttpError(403, "Demo actions are not available in real neighbourhoods");
     if (a.t === "agentSend" && a.via === "simulated") throw new HttpError(400, "Simulated sending is only for the demo");
-    const n = (await c.query("select name, center_lat, center_lng, radius_m, doc, version from neighborhoods where id = $1 for update", [id])).rows[0];
-    if (!n) throw new HttpError(404, "Neighborhood not found");
+    const n = (await c.query("select name, center_lat, center_lng, radius_m, doc, version from neighbourhoods where id = $1 for update", [id])).rows[0];
+    if (!n) throw new HttpError(404, "Neighbourhood not found");
     if ("photo" in a && a.photo != null) {
       if (!/^[0-9a-f-]{36}$/.test(String(a.photo))) throw new HttpError(400, "Upload the photo first");
-      if (!(await c.query("select 1 from photos where id = $1 and neighborhood_id = $2 and user_id = $3", [a.photo, id, u.id])).rows[0]) throw new HttpError(400, "Photo not found");
+      if (!(await c.query("select 1 from photos where id = $1 and neighbourhood_id = $2 and user_id = $3", [a.photo, id, u.id])).rows[0]) throw new HttpError(400, "Photo not found");
     }
     let r;
     try { r = reduce(n.doc, { role, name: u.handle }, a, { lat: n.center_lat, lng: n.center_lng, r: n.radius_m, name: n.name }); } catch (e) { throw new HttpError(400, (e as Error).message); }
     const version = n.version + 1;
-    await c.query("update neighborhoods set doc = $2, version = version + 1 where id = $1", [id, JSON.stringify(r.doc)]);
-    if (ADMIN_ACTIONS.has(a.t)) await c.query("insert into audit_log (neighborhood_id, user_id, who, action, detail) values ($1, $2, $3, $4, $5)", [id, u.id, u.handle, a.t, JSON.stringify({ id: (a as any).id ?? (a as any).mid ?? null }).slice(0, 200)]);
+    await c.query("update neighbourhoods set doc = $2, version = version + 1 where id = $1", [id, JSON.stringify(r.doc)]);
+    if (ADMIN_ACTIONS.has(a.t)) await c.query("insert into audit_log (neighbourhood_id, user_id, who, action, detail) values ($1, $2, $3, $4, $5)", [id, u.id, u.handle, a.t, JSON.stringify({ id: (a as any).id ?? (a as any).mid ?? null }).slice(0, 200)]);
     return { raw: r.doc, doc: viewDoc(r.doc, role, u.handle, await countMembers(c, id)), result: r.result, version, role };
   });
   void afterAction(id, a, out.raw, u.handle);
@@ -265,7 +265,7 @@ async function afterAction(id: string, a: Action, raw: Doc, actor: string) {
       const i = raw.issues.find(x => x.id === a.id);
       if (i?.handoff?.email) {
         const url = `https://www.openstreetmap.org/?mlat=${i.lat}&mlon=${i.lng}#map=18/${i.lat}/${i.lng}`;
-        await sendEmail(i.handoff.email, `Community report: ${i.title}`, `A neighborhood coordinator is forwarding a community-reported issue.\n\nTitle: ${i.title}\nType: ${i.cat}\nPriority: ${i.priority}\nReports from neighbors: ${i.reports}\nDetails: ${i.desc || "none"}\nLocation: ${url}\nReference: ${i.handoff.ref || "none"}\n\nThis message was sent through NEIGHBORHOOD OS. It contains no personal details of the people who reported it. This issue is community-reported and has been reviewed by a human coordinator.`).catch(e => console.warn("Handoff email failed:", e.message));
+        await sendEmail(i.handoff.email, `Community report: ${i.title}`, `A neighbourhood coordinator is forwarding a community-reported issue.\n\nTitle: ${i.title}\nType: ${i.cat}\nPriority: ${i.priority}\nReports from neighbors: ${i.reports}\nDetails: ${i.desc || "none"}\nLocation: ${url}\nReference: ${i.handoff.ref || "none"}\n\nThis message was sent through NEIGHBOURHOOD OS. It contains no personal details of the people who reported it. This issue is community-reported and has been reviewed by a human coordinator.`).catch(e => console.warn("Handoff email failed:", e.message));
       }
     }
   } catch (e) { console.error("afterAction failed:", e); }
@@ -273,7 +273,7 @@ async function afterAction(id: string, a: Action, raw: Doc, actor: string) {
 
 app.post("/api/n/:id/action", ah(async (req, res) => {
   const u = await authenticate(req); const id = String(req.params.id);
-  if (!isId(id)) throw new HttpError(400, "Invalid neighborhood");
+  if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
   const a = req.body as Action;
   if (a && a.t === "sos") delete (a as { contact?: string }).contact;
   const out = await runAction(id, u, a);
@@ -291,17 +291,17 @@ const MISS_TTL = { sparse: 600000, unavailable: 45000 };
 const noMap = (res: express.Response, reason: "sparse" | "unavailable") => { res.setHeader("X-Map-Status", "none"); res.json({ source: "none", reason }); };
 app.get("/api/n/:id/map", ah(async (req, res) => {
   const u = await authenticate(req); const id = String(req.params.id);
-  if (!isId(id)) throw new HttpError(400, "Invalid neighborhood");
+  if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
   await memberRole(pool, id, u);
-  const n = (await pool.query("select center_lat, center_lng, radius_m, map, map_fetched_at from neighborhoods where id = $1", [id])).rows[0];
-  if (!n) throw new HttpError(404, "Neighborhood not found");
+  const n = (await pool.query("select center_lat, center_lng, radius_m, map, map_fetched_at from neighbourhoods where id = $1", [id])).rows[0];
+  if (!n) throw new HttpError(404, "Neighbourhood not found");
   if (n.map && n.map_fetched_at && Date.now() - new Date(n.map_fetched_at).getTime() < 30 * 86400000) return res.json(n.map);
   const miss = mapMisses.get(id);
   if (miss && Date.now() - miss.at < MISS_TTL[miss.reason]) return noMap(res, miss.reason);
   try {
     const m = await fetchMap(n.center_lat, n.center_lng, n.radius_m);
     if (m.roads.length < 8) { mapMisses.set(id, { at: Date.now(), reason: "sparse" }); return noMap(res, "sparse"); }
-    await pool.query("update neighborhoods set map = $2, map_fetched_at = now() where id = $1", [id, JSON.stringify(m)]);
+    await pool.query("update neighbourhoods set map = $2, map_fetched_at = now() where id = $1", [id, JSON.stringify(m)]);
     res.json(m);
   } catch (e) { console.warn("Map fetch failed for", id, (e as Error).message); mapMisses.set(id, { at: Date.now(), reason: "unavailable" }); noMap(res, "unavailable"); }
 }));
@@ -309,7 +309,7 @@ app.get("/api/n/:id/map", ah(async (req, res) => {
 const MAGIC = (b: Buffer) => (b[0] === 0xff && b[1] === 0xd8 ? "image/jpeg" : b.subarray(1, 4).toString() === "PNG" ? "image/png" : b.subarray(0, 4).toString() === "RIFF" && b.subarray(8, 12).toString() === "WEBP" ? "image/webp" : null);
 app.post("/api/n/:id/photos", ah(async (req, res) => {
   const u = await authenticate(req); const id = String(req.params.id);
-  if (!isId(id)) throw new HttpError(400, "Invalid neighborhood");
+  if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
   rl(`photo:${u.id}`, 30, 86400000);
   await memberRole(pool, id, u);
   const m = /^data:image\/(?:jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.photo ?? ""));
@@ -318,28 +318,28 @@ app.post("/api/n/:id/photos", ah(async (req, res) => {
   if (buf.length > 300000) throw new HttpError(400, "That image is too large");
   const mime = MAGIC(buf);
   if (!mime) throw new HttpError(400, "That file is not a valid image");
-  const r = await pool.query("insert into photos (neighborhood_id, user_id, mime, data) values ($1, $2, $3, $4) returning id", [id, u.id, mime, buf]);
+  const r = await pool.query("insert into photos (neighbourhood_id, user_id, mime, data) values ($1, $2, $3, $4) returning id", [id, u.id, mime, buf]);
   res.json({ id: r.rows[0].id });
 }));
 app.get("/api/photos/:pid", ah(async (req, res) => {
   const u = await authenticate(req); const pid = String(req.params.pid);
   if (!/^[0-9a-f-]{36}$/.test(pid)) throw new HttpError(400, "Invalid photo");
-  const p = (await pool.query("select neighborhood_id, mime, data from photos where id = $1", [pid])).rows[0];
+  const p = (await pool.query("select neighbourhood_id, mime, data from photos where id = $1", [pid])).rows[0];
   if (!p) throw new HttpError(404, "Photo not found");
-  await memberRole(pool, p.neighborhood_id, u);
+  await memberRole(pool, p.neighbourhood_id, u);
   res.setHeader("Content-Type", p.mime); res.setHeader("Cache-Control", "private, max-age=3600");
   res.send(p.data);
 }));
 
 const needAdmin = async (req: express.Request) => {
   const u = await authenticate(req); const id = String(req.params.id);
-  if (!isId(id)) throw new HttpError(400, "Invalid neighborhood");
+  if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
   if ((await memberRole(pool, id, u)) !== "admin") throw new HttpError(403, "Only coordinators can do this");
   return { u, id };
 };
 app.get("/api/n/:id/members", ah(async (req, res) => {
   const { id } = await needAdmin(req);
-  const r = await pool.query("select user_id, display_name, role, coordinator_requested_at, joined_at from members where neighborhood_id = $1 order by joined_at limit 500", [id]);
+  const r = await pool.query("select user_id, display_name, role, coordinator_requested_at, joined_at from members where neighbourhood_id = $1 order by joined_at limit 500", [id]);
   res.json(r.rows.map(m => ({ userId: m.user_id, name: m.display_name, role: m.role, requested: !!m.coordinator_requested_at, joined: m.joined_at })));
 }));
 app.post("/api/n/:id/members/:uid/role", ah(async (req, res) => {
@@ -347,50 +347,50 @@ app.post("/api/n/:id/members/:uid/role", ah(async (req, res) => {
   if (!["resident", "volunteer", "moderator", "admin"].includes(role)) throw new HttpError(400, "Invalid role");
   if (!/^[0-9a-f-]{36}$/.test(uid)) throw new HttpError(400, "Invalid member");
   await tx(async c => {
-    const t = (await c.query("select role from members where neighborhood_id = $1 and user_id = $2 for update", [id, uid])).rows[0];
+    const t = (await c.query("select role from members where neighbourhood_id = $1 and user_id = $2 for update", [id, uid])).rows[0];
     if (!t) throw new HttpError(404, "Member not found");
     if (t.role === "admin" && role !== "admin") {
-      const n = (await c.query("select count(*)::int as n from members where neighborhood_id = $1 and role = 'admin'", [id])).rows[0].n;
-      if (n <= 1) throw new HttpError(400, "A neighborhood needs at least one coordinator");
+      const n = (await c.query("select count(*)::int as n from members where neighbourhood_id = $1 and role = 'admin'", [id])).rows[0].n;
+      if (n <= 1) throw new HttpError(400, "A neighbourhood needs at least one coordinator");
     }
-    await c.query("update members set role = $3, coordinator_requested_at = null where neighborhood_id = $1 and user_id = $2", [id, uid, role]);
-    await c.query("insert into audit_log (neighborhood_id, user_id, who, action, detail) values ($1, $2, $3, 'role', $4)", [id, u.id, u.handle, JSON.stringify({ member: uid, role })]);
+    await c.query("update members set role = $3, coordinator_requested_at = null where neighbourhood_id = $1 and user_id = $2", [id, uid, role]);
+    await c.query("insert into audit_log (neighbourhood_id, user_id, who, action, detail) values ($1, $2, $3, 'role', $4)", [id, u.id, u.handle, JSON.stringify({ member: uid, role })]);
   });
   res.json({ ok: true });
 }));
 app.get("/api/n/:id/audit", ah(async (req, res) => {
   const { id } = await needAdmin(req);
-  const r = await pool.query("select at, who, action, detail from audit_log where neighborhood_id = $1 order by at desc limit 30", [id]);
+  const r = await pool.query("select at, who, action, detail from audit_log where neighbourhood_id = $1 order by at desc limit 30", [id]);
   res.json(r.rows.map(a => ({ at: a.at, who: a.who, action: a.action, detail: a.detail ? Object.values(a.detail).filter(Boolean).join(" ") : "" })));
 }));
 app.post("/api/n/:id/me/role", ah(async (req, res) => {
   const u = await authenticate(req); const id = String(req.params.id), role = String(req.body?.role);
-  if (!isId(id)) throw new HttpError(400, "Invalid neighborhood");
+  if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
   if (!["resident", "volunteer"].includes(role)) throw new HttpError(400, "Invalid role");
   const cur = await memberRole(pool, id, u);
   if (cur === "admin" || cur === "moderator") throw new HttpError(400, "Ask a coordinator to change your role");
-  await pool.query("update members set role = $3 where neighborhood_id = $1 and user_id = $2", [id, u.id, role]);
+  await pool.query("update members set role = $3 where neighbourhood_id = $1 and user_id = $2", [id, u.id, role]);
   res.json({ role });
 }));
 app.post("/api/n/:id/coordinator-request", ah(async (req, res) => {
   const u = await authenticate(req); const id = String(req.params.id); rl(`coord:${u.id}`, 5, 86400000);
-  if (!isId(id)) throw new HttpError(400, "Invalid neighborhood");
+  if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
   await memberRole(pool, id, u);
-  await pool.query("update members set coordinator_requested_at = now() where neighborhood_id = $1 and user_id = $2 and role <> 'admin'", [id, u.id]);
+  await pool.query("update members set coordinator_requested_at = now() where neighbourhood_id = $1 and user_id = $2 and role <> 'admin'", [id, u.id]);
   res.json({ ok: true });
 }));
 app.post("/api/n/:id/leave", ah(async (req, res) => {
   const u = await authenticate(req); const id = String(req.params.id);
-  if (!isId(id)) throw new HttpError(400, "Invalid neighborhood");
+  if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
   await tx(async c => {
-    const m = (await c.query("select role from members where neighborhood_id = $1 and user_id = $2 for update", [id, u.id])).rows[0];
+    const m = (await c.query("select role from members where neighbourhood_id = $1 and user_id = $2 for update", [id, u.id])).rows[0];
     if (!m) return;
     if (m.role === "admin") {
-      const k = (await c.query("select count(*)::int as n from members where neighborhood_id = $1", [id])).rows[0].n;
-      const a = (await c.query("select count(*)::int as n from members where neighborhood_id = $1 and role = 'admin'", [id])).rows[0].n;
+      const k = (await c.query("select count(*)::int as n from members where neighbourhood_id = $1", [id])).rows[0].n;
+      const a = (await c.query("select count(*)::int as n from members where neighbourhood_id = $1 and role = 'admin'", [id])).rows[0].n;
       if (a <= 1 && k > 1) throw new HttpError(400, "Promote another coordinator before leaving");
     }
-    await c.query("delete from members where neighborhood_id = $1 and user_id = $2", [id, u.id]);
+    await c.query("delete from members where neighbourhood_id = $1 and user_id = $2", [id, u.id]);
   });
   res.json({ ok: true });
 }));
@@ -404,9 +404,9 @@ const KINDS_CH = ["push", "email", "sms", "whatsapp"];
 const mask = (k: string, t: string) => (k === "push" ? "This device" : k === "email" ? t.replace(/^(.).*(@.*)$/, "$1***$2") : `***${t.slice(-4)}`);
 app.get("/api/n/:id/channels", ah(async (req, res) => {
   const u = await authenticate(req); const id = String(req.params.id);
-  if (!isId(id)) throw new HttpError(400, "Invalid neighborhood");
+  if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
   await memberRole(pool, id, u);
-  const r = await pool.query("select kind, target, verified from channels where user_id = $1 and neighborhood_id = $2", [u.id, id]);
+  const r = await pool.query("select kind, target, verified from channels where user_id = $1 and neighbourhood_id = $2", [u.id, id]);
   res.json(r.rows.map(c => ({ kind: c.kind, target: mask(c.kind, c.target), verified: c.verified })));
 }));
 app.post("/api/n/:id/channels/:kind", ah(async (req, res) => {
@@ -415,7 +415,7 @@ app.post("/api/n/:id/channels/:kind", ah(async (req, res) => {
   rl(`chan:${u.id}`, 20, 3600000);
   await memberRole(pool, id, u);
   const put = (target: string, verified: boolean, code: string | null) => pool.query(
-    "insert into channels (user_id, neighborhood_id, kind, target, verified, code, code_at) values ($1, $2, $3, $4, $5, $6, now()) on conflict (user_id, neighborhood_id, kind) do update set target = excluded.target, verified = excluded.verified, code = excluded.code, code_at = now()",
+    "insert into channels (user_id, neighbourhood_id, kind, target, verified, code, code_at) values ($1, $2, $3, $4, $5, $6, now()) on conflict (user_id, neighbourhood_id, kind) do update set target = excluded.target, verified = excluded.verified, code = excluded.code, code_at = now()",
     [u.id, id, kind, target, verified, code]);
   if (kind === "push") {
     const sub = b.subscription;
@@ -433,14 +433,14 @@ app.post("/api/n/:id/channels/:kind", ah(async (req, res) => {
     rl(`code:${u.id}`, 3, 3600000);
     const code = String(Math.floor(100000 + Math.random() * 900000));
     await put(b.phone, false, code);
-    await sendText(b.phone, `NEIGHBORHOOD OS code: ${code}`, kind === "whatsapp").catch(() => { throw new HttpError(502, "Could not send the code. Check the number"); });
+    await sendText(b.phone, `NEIGHBOURHOOD OS code: ${code}`, kind === "whatsapp").catch(() => { throw new HttpError(502, "Could not send the code. Check the number"); });
     return res.json({ sent: true });
   }
   if (typeof b.code === "string") {
     rl(`verify:${u.id}`, 10, 3600000);
-    const r = (await pool.query("select code, code_at from channels where user_id = $1 and neighborhood_id = $2 and kind = $3", [u.id, id, kind])).rows[0];
+    const r = (await pool.query("select code, code_at from channels where user_id = $1 and neighbourhood_id = $2 and kind = $3", [u.id, id, kind])).rows[0];
     if (!r || !r.code || Date.now() - new Date(r.code_at).getTime() > 600000 || r.code !== b.code.trim()) throw new HttpError(400, "That code is wrong or expired");
-    await pool.query("update channels set verified = true, code = null where user_id = $1 and neighborhood_id = $2 and kind = $3", [u.id, id, kind]);
+    await pool.query("update channels set verified = true, code = null where user_id = $1 and neighbourhood_id = $2 and kind = $3", [u.id, id, kind]);
     return res.json({ ok: true });
   }
   throw new HttpError(400, "Invalid request");
@@ -448,7 +448,7 @@ app.post("/api/n/:id/channels/:kind", ah(async (req, res) => {
 app.delete("/api/n/:id/channels/:kind", ah(async (req, res) => {
   const u = await authenticate(req); const id = String(req.params.id);
   if (!isId(id) || !KINDS_CH.includes(String(req.params.kind))) throw new HttpError(400, "Invalid request");
-  await pool.query("delete from channels where user_id = $1 and neighborhood_id = $2 and kind = $3", [u.id, id, req.params.kind]);
+  await pool.query("delete from channels where user_id = $1 and neighbourhood_id = $2 and kind = $3", [u.id, id, req.params.kind]);
   res.json({ ok: true });
 }));
 
@@ -461,25 +461,25 @@ app.post("/api/sms", ah(async (req, res) => {
   if (given.length !== want.length || !timingSafeEqual(Buffer.from(given), Buffer.from(want))) throw new HttpError(403, "Invalid signature");
   const from = String(req.body.From || "").replace(/^whatsapp:/, ""), words = String(req.body.Body || "").trim().split(/\s+/);
   rl(`sms:${from}`, 10, 3600000);
-  const ch = (await pool.query("select c.user_id, c.neighborhood_id, m.display_name, n.center_lat, n.center_lng from channels c join members m on m.user_id = c.user_id and m.neighborhood_id = c.neighborhood_id join neighborhoods n on n.id = c.neighborhood_id where c.kind in ('sms', 'whatsapp') and c.target = $1 and c.verified order by c.created_at desc limit 1", [from])).rows[0];
-  if (!ch) return reply("This number is not linked. Link it in NEIGHBORHOOD OS under Account, Notifications.");
+  const ch = (await pool.query("select c.user_id, c.neighbourhood_id, m.display_name, n.center_lat, n.center_lng from channels c join members m on m.user_id = c.user_id and m.neighbourhood_id = c.neighbourhood_id join neighbourhoods n on n.id = c.neighbourhood_id where c.kind in ('sms', 'whatsapp') and c.target = $1 and c.verified order by c.created_at desc limit 1", [from])).rows[0];
+  if (!ch) return reply("This number is not linked. Link it in NEIGHBOURHOOD OS under Account, Notifications.");
   const actor: Actor = { id: ch.user_id, handle: ch.display_name, platformAdmin: false }, cmd = (words[0] || "").toUpperCase();
   try {
-    if (cmd === "SAFE") { await runAction(ch.neighborhood_id, actor, { t: "checkinReply", ok: true }); return reply("Thanks. You are marked safe."); }
-    if (cmd === "NEED" || cmd === "HELP" && (words[1] || "").toUpperCase() === "ME") { await runAction(ch.neighborhood_id, actor, { t: "checkinReply", ok: false }); return reply("Noted. Coordinators can see that you need help. If in danger call your local emergency number."); }
+    if (cmd === "SAFE") { await runAction(ch.neighbourhood_id, actor, { t: "checkinReply", ok: true }); return reply("Thanks. You are marked safe."); }
+    if (cmd === "NEED" || cmd === "HELP" && (words[1] || "").toUpperCase() === "ME") { await runAction(ch.neighbourhood_id, actor, { t: "checkinReply", ok: false }); return reply("Noted. Coordinators can see that you need help. If in danger call your local emergency number."); }
     if (cmd === "FIXED" || cmd === "NOTFIXED" || (cmd === "NOT" && (words[1] || "").toUpperCase() === "FIXED")) {
-      const ok = cmd === "FIXED", n = (await pool.query("select doc from neighborhoods where id = $1", [ch.neighborhood_id])).rows[0];
+      const ok = cmd === "FIXED", n = (await pool.query("select doc from neighbourhoods where id = $1", [ch.neighbourhood_id])).rows[0];
       const mine = ((n?.doc?.issues ?? []) as Doc["issues"]).filter(i => i.status === "pending" && !i.hidden && i.pendingBy !== actor.handle && reportersOf(i).includes(actor.handle));
       if (!mine.length) return reply("No fix is waiting for your answer right now.");
-      if (mine.length > 1) return reply(`${mine.length} fixes are waiting for your answer. Please open NEIGHBORHOOD OS and answer each one.`);
-      await runAction(ch.neighborhood_id, actor, { t: "reporterConfirm", id: mine[0].id, ok, note: "[via text message]" });
+      if (mine.length > 1) return reply(`${mine.length} fixes are waiting for your answer. Please open NEIGHBOURHOOD OS and answer each one.`);
+      await runAction(ch.neighbourhood_id, actor, { t: "reporterConfirm", id: mine[0].id, ok, note: "[via text message]" });
       return reply(ok ? `Thanks. "${mine[0].title}" is marked as fixed.` : `Thanks. "${mine[0].title}" is back in progress.`);
     }
-    if (cmd === "STATUS") { const n = (await pool.query("select doc, center_lat, center_lng, radius_m from neighborhoods where id = $1", [ch.neighborhood_id])).rows[0]; const al = alertsOf(n).filter(a => SEV_RANK[a.sev] >= 2); return reply(`${n.doc.issues.filter((i: any) => i.status !== "resolved" && !i.hidden).length} open issues. ${al.length ? `ALERT: ${al[0].title}` : "No official alerts."}`); }
+    if (cmd === "STATUS") { const n = (await pool.query("select doc, center_lat, center_lng, radius_m from neighbourhoods where id = $1", [ch.neighbourhood_id])).rows[0]; const al = alertsOf(n).filter(a => SEV_RANK[a.sev] >= 2); return reply(`${n.doc.issues.filter((i: any) => i.status !== "resolved" && !i.hidden).length} open issues. ${al.length ? `ALERT: ${al[0].title}` : "No official alerts."}`); }
     if (cmd === "SOS") {
       const need = ({ MEDICAL: "medical", RESCUE: "rescue", SHELTER: "shelter", FOOD: "food_water", WATER: "food_water" } as Record<string, string>)[(words[1] || "").toUpperCase()] ?? "other";
       const people = /^\d+$/.test(words[2] || "") ? Number(words[2]) : 1, note = words.slice(/^\d+$/.test(words[2] || "") ? 3 : 2).join(" ");
-      await runAction(ch.neighborhood_id, actor, { t: "sos", need: need as any, people, note: `[via text message] ${note}`.slice(0, 300), lat: ch.center_lat, lng: ch.center_lng, consent: true, contact: from } as any);
+      await runAction(ch.neighbourhood_id, actor, { t: "sos", need: need as any, people, note: `[via text message] ${note}`.slice(0, 300), lat: ch.center_lat, lng: ch.center_lng, consent: true, contact: from } as any);
       return reply("SOS received. A coordinator will review it. It is unverified. If anyone is in danger call your local emergency number now.");
     }
     return reply("Commands: SAFE, NEED HELP, FIXED, NOT FIXED, STATUS, SOS <medical|rescue|shelter|food> <people> <where you are and what you need>. Call your local emergency number first in danger.");
@@ -489,15 +489,15 @@ app.post("/api/sms", ah(async (req, res) => {
 app.get("/api/public/:id/summary", ah(async (req, res) => {
   rl(`pub:${req.ip}`, 30, 60000);
   const id = String(req.params.id);
-  if (!isId(id)) throw new HttpError(400, "Invalid neighborhood");
-  const n = (await pool.query("select name, doc from neighborhoods where id = $1", [id])).rows[0];
-  if (!n) throw new HttpError(404, "Neighborhood not found");
+  if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
+  const n = (await pool.query("select name, doc from neighbourhoods where id = $1", [id])).rows[0];
+  if (!n) throw new HttpError(404, "Neighbourhood not found");
   res.json({ name: n.name, summary: publicSummary(n.doc) });
 }));
 
 app.post("/api/n/:id/agent/analyze", ah(async (req, res) => {
   const u = await authenticate(req); const id = String(req.params.id);
-  if (!isId(id)) throw new HttpError(400, "Invalid neighborhood");
+  if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
   rl(`analyze:${u.id}`, 40, 3600000);
   await memberRole(pool, id, u);
   const text = String(req.body?.text ?? "").trim().slice(0, 1000);
@@ -507,24 +507,24 @@ app.post("/api/n/:id/agent/analyze", ah(async (req, res) => {
 
 app.post("/api/n/:id/ai/compare", ah(async (req, res) => {
   const u = await authenticate(req); const id = String(req.params.id);
-  if (!isId(id)) throw new HttpError(400, "Invalid neighborhood");
+  if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
   rl(`ai:${u.id}`, 20, 3600000);
   await memberRole(pool, id, u);
-  const n = (await pool.query("select doc from neighborhoods where id = $1", [id])).rows[0];
+  const n = (await pool.query("select doc from neighbourhoods where id = $1", [id])).rows[0];
   const i = n?.doc.issues.find((x: any) => x.id === req.body?.issueId && !x.hidden);
   if (!i?.photo || !/^[0-9a-f-]{36}$/.test(i.photo)) throw new HttpError(400, "This issue has no original photo to compare with");
-  const p = (await pool.query("select mime, data from photos where id = $1 and neighborhood_id = $2", [i.photo, id])).rows[0];
+  const p = (await pool.query("select mime, data from photos where id = $1 and neighbourhood_id = $2", [i.photo, id])).rows[0];
   if (!p) throw new HttpError(404, "Original photo not found");
   try { res.json(await aiCompare({ mime: p.mime, b64: p.data.toString("base64") }, String(req.body?.photo ?? ""), i.cat)); } catch (e) { throw new HttpError(400, (e as Error).message); }
 }));
 
 const aiRoute = (fn: (doc: Doc, body: any) => Promise<unknown>, max: number) => ah(async (req, res) => {
   const u = await authenticate(req); const id = String(req.params.id);
-  if (!isId(id)) throw new HttpError(400, "Invalid neighborhood");
+  if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
   rl(`ai:${u.id}`, max, 3600000);
   const role = await memberRole(pool, id, u);
-  const n = (await pool.query("select doc from neighborhoods where id = $1", [id])).rows[0];
-  if (!n) throw new HttpError(404, "Neighborhood not found");
+  const n = (await pool.query("select doc from neighbourhoods where id = $1", [id])).rows[0];
+  if (!n) throw new HttpError(404, "Neighbourhood not found");
   try { res.json(await fn(viewDoc(n.doc, role, u.handle), req.body ?? {})); } catch (e) { throw new HttpError(400, (e as Error).message); }
 });
 app.post("/api/n/:id/ai/suggest", aiRoute((doc, b) => {
@@ -538,7 +538,7 @@ const CATS = ["pothole", "garbage", "streetlight", "water", "unsafe", "blocked",
 const tfFail = (e: unknown): never => { if (e instanceof TinyFishError) throw new HttpError(e.status, e.message); throw e; };
 const tfAdmin = async (req: express.Request) => {
   const u = await authenticate(req); const id = String(req.params.id);
-  if (!isId(id)) throw new HttpError(400, "Invalid neighborhood");
+  if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
   if (!tfEnabled()) throw new HttpError(503, "TinyFish is not set up on this server");
   if ((await memberRole(pool, id, u)) !== "admin") throw new HttpError(403, "Only a coordinator can run a status check");
   return { u, id };
@@ -546,7 +546,7 @@ const tfAdmin = async (req: express.Request) => {
 
 app.post("/api/n/:id/tinyfish/route", ah(async (req, res) => {
   const u = await authenticate(req); const id = String(req.params.id);
-  if (!isId(id)) throw new HttpError(400, "Invalid neighborhood");
+  if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
   if (!tfEnabled()) throw new HttpError(503, "TinyFish is not set up on this server");
   rl(`tfroute:${u.id}`, 20, 3600000);
   await memberRole(pool, id, u);
@@ -554,8 +554,8 @@ app.post("/api/n/:id/tinyfish/route", ah(async (req, res) => {
   if (!CATS.includes(cat)) throw new HttpError(400, "Invalid category");
   let city = String(req.body?.city ?? "").trim().slice(0, 80);
   if (!city) {
-    const n = (await pool.query("select center_lat, center_lng from neighborhoods where id = $1", [id])).rows[0];
-    if (!n) throw new HttpError(404, "Neighborhood not found");
+    const n = (await pool.query("select center_lat, center_lng from neighbourhoods where id = $1", [id])).rows[0];
+    if (!n) throw new HttpError(404, "Neighbourhood not found");
     city = await cityOf(n.center_lat, n.center_lng);
   }
   if (!city) throw new HttpError(400, "Could not tell the city. Type it in and try again");
@@ -566,7 +566,7 @@ app.post("/api/n/:id/tinyfish/status", ah(async (req, res) => {
   const { u, id } = await tfAdmin(req);
   rl(`tfstatus:${u.id}`, 10, 3600000);
   rl("tfstatus:all", 100, 86400000);
-  const n = (await pool.query("select doc from neighborhoods where id = $1", [id])).rows[0];
+  const n = (await pool.query("select doc from neighbourhoods where id = $1", [id])).rows[0];
   const issueId = String(req.body?.issueId ?? "");
   const i = n?.doc.issues.find((x: any) => x.id === issueId && !x.hidden);
   if (!i) throw new HttpError(404, "Issue not found");
@@ -601,12 +601,12 @@ app.post("/api/public/tinyfish/route", ah(async (req, res) => {
 app.delete("/api/me", ah(async (req, res) => {
   const u = await authenticate(req);
   await tx(async c => {
-    const ms = (await c.query("select neighborhood_id from members where user_id = $1", [u.id])).rows;
-    for (const { neighborhood_id } of ms) {
-      const n = (await c.query("select doc from neighborhoods where id = $1 for update", [neighborhood_id])).rows[0];
+    const ms = (await c.query("select neighbourhood_id from members where user_id = $1", [u.id])).rows;
+    for (const { neighbourhood_id } of ms) {
+      const n = (await c.query("select doc from neighbourhoods where id = $1 for update", [neighbourhood_id])).rows[0];
       if (!n) continue;
       const doc = JSON.stringify(n.doc).split(u.handle).join("Former member");
-      await c.query("update neighborhoods set doc = $2, version = version + 1 where id = $1", [neighborhood_id, doc]);
+      await c.query("update neighbourhoods set doc = $2, version = version + 1 where id = $1", [neighbourhood_id, doc]);
     }
     await c.query("delete from photos where user_id = $1", [u.id]);
     await c.query("delete from members where user_id = $1", [u.id]);
@@ -619,24 +619,24 @@ app.delete("/api/me", ah(async (req, res) => {
 
 async function purgeAll() {
   try {
-    const r = await pool.query("select id from neighborhoods where jsonb_array_length(coalesce(doc->'sos', '[]'::jsonb)) > 0");
+    const r = await pool.query("select id from neighbourhoods where jsonb_array_length(coalesce(doc->'sos', '[]'::jsonb)) > 0");
     for (const { id } of r.rows) {
       await tx(async c => {
-        const n = (await c.query("select doc from neighborhoods where id = $1 for update", [id])).rows[0];
-        if (n && purgeSos(n.doc)) await c.query("update neighborhoods set doc = $2, version = version + 1 where id = $1", [id, JSON.stringify(n.doc)]);
+        const n = (await c.query("select doc from neighbourhoods where id = $1 for update", [id])).rows[0];
+        if (n && purgeSos(n.doc)) await c.query("update neighbourhoods set doc = $2, version = version + 1 where id = $1", [id, JSON.stringify(n.doc)]);
       });
     }
   } catch (e) { console.error("SOS purge failed:", e); }
 }
 async function escalationJob() {
   try {
-    const rows = (await pool.query("select id from neighborhoods where position('\"escalateAt\"' in doc::text) > 0")).rows;
+    const rows = (await pool.query("select id from neighbourhoods where position('\"escalateAt\"' in doc::text) > 0")).rows;
     for (const { id } of rows) {
       const titles = await tx(async c => {
-        const n = (await c.query("select name, doc from neighborhoods where id = $1 for update", [id])).rows[0];
+        const n = (await c.query("select name, doc from neighbourhoods where id = $1 for update", [id])).rows[0];
         if (!n) return [] as string[];
         const t = dueEscalations(n.doc, Date.now(), n.name);
-        if (t.length) await c.query("update neighborhoods set doc = $2, version = version + 1 where id = $1", [id, JSON.stringify(n.doc)]);
+        if (t.length) await c.query("update neighbourhoods set doc = $2, version = version + 1 where id = $1", [id, JSON.stringify(n.doc)]);
         return t;
       });
       if (titles.length) await notify(id, "admins", { title: "Escalation draft ready", body: `${titles.slice(0, 3).join("; ")}. Review and approve it in the app.`, urgent: true });
@@ -646,30 +646,30 @@ async function escalationJob() {
 const alerted = new Set<string>();
 async function alertWatcher() {
   try {
-    const rows = (await pool.query("select id, center_lat, center_lng, radius_m from neighborhoods where exists (select 1 from channels c where c.neighborhood_id = neighborhoods.id and c.verified)")).rows;
+    const rows = (await pool.query("select id, center_lat, center_lng, radius_m from neighbourhoods where exists (select 1 from channels c where c.neighbourhood_id = neighbourhoods.id and c.verified)")).rows;
     if (!rows.length) return;
     await getWorld().catch(() => undefined); await getCap().catch(() => undefined);
     if (alerted.size > 5000) alerted.clear();
     for (const n of rows) for (const a of alertsOf(n).filter(x => SEV_RANK[x.sev] >= 2)) {
       const k = `${n.id}:${a.id}`; if (alerted.has(k)) continue; alerted.add(k);
-      await notify(n.id, "all", { title: "Official alert near your neighborhood", body: `${a.title}${a.km ? ` (${a.km} km away)` : ""}. Follow your national authorities.`, urgent: true });
+      await notify(n.id, "all", { title: "Official alert near your neighbourhood", body: `${a.title}${a.km ? ` (${a.km} km away)` : ""}. Follow your national authorities.`, urgent: true });
     }
   } catch (e) { console.error("Alert watcher failed:", e); }
 }
 async function digestJob() {
   try {
-    const ids = (await pool.query("select id from neighborhoods where (doc->>'digestAt') is null or (doc->>'digestAt')::bigint < $1", [Date.now() - 7 * 86400000])).rows;
+    const ids = (await pool.query("select id from neighbourhoods where (doc->>'digestAt') is null or (doc->>'digestAt')::bigint < $1", [Date.now() - 7 * 86400000])).rows;
     for (const { id } of ids) {
       const posted = await tx(async c => {
-        const n = (await c.query("select doc from neighborhoods where id = $1 for update", [id])).rows[0];
+        const n = (await c.query("select doc from neighbourhoods where id = $1 for update", [id])).rows[0];
         if (!n) return null;
         const d: Doc = n.doc; d.digestAt = Date.now();
-        if (!d.issues.length) { await c.query("update neighborhoods set doc = $2 where id = $1", [id, JSON.stringify(d)]); return null; }
+        if (!d.issues.length) { await c.query("update neighbourhoods set doc = $2 where id = $1", [id, JSON.stringify(d)]); return null; }
         const ins = await aiInsights(d), base = weeklyDigest(d);
         const body = `${ins.source === "ai" ? ins.summary : base.body.split("\n")[0]}\n${ins.bullets.map(b => `- ${b.title}: ${b.detail}`).join("\n")}`.slice(0, 1000);
-        (d.notices ??= []).unshift({ id: "n" + Date.now().toString(36), title: base.title, body, author: "NEIGHBORHOOD OS (automated)", created: Date.now(), pinned: false, urgent: false });
+        (d.notices ??= []).unshift({ id: "n" + Date.now().toString(36), title: base.title, body, author: "NEIGHBOURHOOD OS (automated)", created: Date.now(), pinned: false, urgent: false });
         d.notices = d.notices.slice(0, 50);
-        await c.query("update neighborhoods set doc = $2, version = version + 1 where id = $1", [id, JSON.stringify(d)]);
+        await c.query("update neighbourhoods set doc = $2, version = version + 1 where id = $1", [id, JSON.stringify(d)]);
         return { title: base.title, body };
       });
       if (posted) await notify(id, "all", { title: posted.title, body: posted.body, kinds: ["email"] });

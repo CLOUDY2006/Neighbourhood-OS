@@ -1,4 +1,24 @@
-create table if not exists neighborhoods (
+-- Older installs used the "neighborhood" spelling. Rename those tables, columns, constraints and indexes in place so existing data is kept.
+do $$
+declare t text; r record;
+begin
+  if to_regclass('public.neighborhoods') is not null and to_regclass('public.neighbourhoods') is null then
+    alter table public.neighborhoods rename to neighbourhoods;
+  end if;
+  foreach t in array array['members', 'photos', 'audit_log', 'channels'] loop
+    if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = t and column_name = 'neighborhood_id') then
+      execute format('alter table public.%I rename column neighborhood_id to neighbourhood_id', t);
+    end if;
+  end loop;
+  for r in select conrelid::regclass as tbl, conname from pg_constraint where connamespace = 'public'::regnamespace and conname like '%neighborhood%' loop
+    execute format('alter table %s rename constraint %I to %I', r.tbl, r.conname, replace(r.conname, 'neighborhood', 'neighbourhood'));
+  end loop;
+  for r in select relname from pg_class where relnamespace = 'public'::regnamespace and relkind = 'i' and relname like '%neighborhood%' loop
+    execute format('alter index public.%I rename to %I', r.relname, replace(r.relname, 'neighborhood', 'neighbourhood'));
+  end loop;
+end $$;
+
+create table if not exists neighbourhoods (
   id text primary key,
   kind text not null check (kind in ('cell', 'named')),
   name text not null,
@@ -12,23 +32,23 @@ create table if not exists neighborhoods (
   map jsonb,
   map_fetched_at timestamptz
 );
-create index if not exists neighborhoods_center_idx on neighborhoods (center_lat, center_lng);
-create index if not exists neighborhoods_name_idx on neighborhoods (lower(name));
+create index if not exists neighbourhoods_center_idx on neighbourhoods (center_lat, center_lng);
+create index if not exists neighbourhoods_name_idx on neighbourhoods (lower(name));
 
 create table if not exists members (
-  neighborhood_id text not null references neighborhoods(id) on delete cascade,
+  neighbourhood_id text not null references neighbourhoods(id) on delete cascade,
   user_id uuid not null,
   display_name text not null,
   role text not null default 'resident' check (role in ('resident', 'volunteer', 'moderator', 'admin')),
   coordinator_requested_at timestamptz,
   joined_at timestamptz not null default now(),
-  primary key (neighborhood_id, user_id)
+  primary key (neighbourhood_id, user_id)
 );
 create index if not exists members_user_idx on members (user_id);
 
 create table if not exists photos (
   id uuid primary key default gen_random_uuid(),
-  neighborhood_id text not null references neighborhoods(id) on delete cascade,
+  neighbourhood_id text not null references neighbourhoods(id) on delete cascade,
   user_id uuid not null,
   mime text not null,
   data bytea not null,
@@ -38,30 +58,30 @@ create index if not exists photos_user_idx on photos (user_id);
 
 create table if not exists audit_log (
   id bigserial primary key,
-  neighborhood_id text not null references neighborhoods(id) on delete cascade,
+  neighbourhood_id text not null references neighbourhoods(id) on delete cascade,
   user_id uuid,
   who text not null,
   action text not null,
   detail jsonb,
   at timestamptz not null default now()
 );
-create index if not exists audit_neighborhood_idx on audit_log (neighborhood_id, at desc);
+create index if not exists audit_neighbourhood_idx on audit_log (neighbourhood_id, at desc);
 
-alter table neighborhoods enable row level security;
+alter table neighbourhoods enable row level security;
 alter table members enable row level security;
 alter table photos enable row level security;
 alter table audit_log enable row level security;
 
 create table if not exists channels (
   user_id uuid not null,
-  neighborhood_id text not null references neighborhoods(id) on delete cascade,
+  neighbourhood_id text not null references neighbourhoods(id) on delete cascade,
   kind text not null check (kind in ('push', 'email', 'sms', 'whatsapp')),
   target text not null,
   verified boolean not null default true,
   code text,
   code_at timestamptz,
   created_at timestamptz not null default now(),
-  primary key (user_id, neighborhood_id, kind)
+  primary key (user_id, neighbourhood_id, kind)
 );
 create index if not exists channels_target_idx on channels (target) where kind in ('sms', 'whatsapp');
 alter table channels enable row level security;

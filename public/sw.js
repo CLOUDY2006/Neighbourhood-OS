@@ -10,7 +10,7 @@ self.addEventListener("activate", e => e.waitUntil(
   caches.keys().then(keys => Promise.all(keys.filter(k => (k.startsWith("nos-shell-") && k !== SHELL) || (k.startsWith("nos-maps-") && k !== MAPS)).map(k => caches.delete(k)))).then(() => self.clients.claim())
 ));
 
-const OFFLINE = '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NEIGHBORHOOD OS</title>' +
+const OFFLINE = '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NEIGHBOURHOOD OS</title>' +
   '<body style="font-family:system-ui,sans-serif;max-width:32rem;margin:15vh auto;padding:0 1.25rem;line-height:1.5"><h1>Cannot reach the server</h1>' +
   '<p>Check your connection, or wait a few seconds if the site was asleep, then reload this page.</p>';
 
@@ -51,7 +51,7 @@ self.addEventListener("fetch", e => {
 self.addEventListener("push", e => {
   let d = {};
   try { d = e.data.json(); } catch (err) { d = {}; }
-  e.waitUntil(self.registration.showNotification(d.title || "NEIGHBORHOOD OS", { body: d.body || "", icon: "/icon-192.png", badge: "/icon-192.png", data: { url: d.url || "/" } }));
+  e.waitUntil(self.registration.showNotification(d.title || "NEIGHBOURHOOD OS", { body: d.body || "", icon: "/icon-192.png", badge: "/icon-192.png", data: { url: d.url || "/" } }));
 });
 self.addEventListener("notificationclick", e => {
   e.notification.close();

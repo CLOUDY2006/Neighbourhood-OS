@@ -39,7 +39,7 @@ plan = {
 };
 const m = await fetchMap(28.6, 77.0, 700);
 check("servers are tried in order until one works", seen.map(s => s.split(" ")[0]).join(",") === "/a,/b,/c", seen.join(" | "));
-check("the request identifies the app and a contact", seen.every(s => s.includes("NeighborhoodOS/1.0 (test@example.com)")));
+check("the request identifies the app and a contact", seen.every(s => s.includes("NeighbourhoodOS/1.0 (test@example.com)")));
 check("a 200 reply with a remark and no data is treated as a failure, not as empty", m.source === "osm" && m.roads.length === 1);
 check("the road, two buildings and a park are read", m.roads.length === 1 && m.blds.length === 2 && m.areas.length === 1 && m.areas[0].k === "park", JSON.stringify({ r: m.roads.length, b: m.blds.length, a: m.areas.length }));
 const heights = m.blds.map(b => b.h).sort((x, y) => x - y);

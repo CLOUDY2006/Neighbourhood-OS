@@ -25,7 +25,7 @@ const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 export const LIVE_AVAILABLE = !!(SB_URL && SB_KEY);
 const sb = LIVE_AVAILABLE ? createClient(SB_URL!, SB_KEY!) : null;
 
-const DEMO_KEY = "neighborhood-os-demo-v4";
+const DEMO_KEY = "neighbourhood-os-demo-v4";
 export const DEMO_N: NInfo = { id: "demo", kind: "demo", name: "Maple Nagar (fictional demo)", lat: 28.5663, lng: 77.2115, r: 650, role: "resident" };
 const enc = encodeURIComponent;
 
@@ -150,7 +150,7 @@ export function enterDemo() {
   stopPoll();
   try { const r = localStorage.getItem(DEMO_KEY); doc = r ? JSON.parse(r) : L.seed(); } catch { doc = L.seed(); }
   role = "resident";
-  setApp({ mode: "demo", nbhd: DEMO_N, map: genCity(650), mapNote: "Simulated neighborhood. The streets and buildings are made up.", alerts: [] });
+  setApp({ mode: "demo", nbhd: DEMO_N, map: genCity(650), mapNote: "Simulated neighbourhood. The streets and buildings are made up.", alerts: [] });
   commit();
 }
 export async function loadWorld() {
@@ -191,11 +191,11 @@ async function onSignedIn() {
   signingIn = true;
   try {
     const me = await api<Me>("/api/me");
-    const mine = await api<NInfo[]>("/api/neighborhoods/mine");
+    const mine = await api<NInfo[]>("/api/neighbourhoods/mine");
     setApp({ me, mine, ready: true, error: "" });
     if (pendingN) {
       const id = pendingN; pendingN = null; localStorage.removeItem("nos-pending-n");
-      try { await enter(await api<NInfo>(`/api/neighborhoods/${enc(id)}/join`, {})); await refreshMine(); } catch (e) { setApp({ error: (e as Error).message }); }
+      try { await enter(await api<NInfo>(`/api/neighbourhoods/${enc(id)}/join`, {})); await refreshMine(); } catch (e) { setApp({ error: (e as Error).message }); }
     } else if (app.mode === "none") {
       const last = localStorage.getItem("nos-last-n"), n = mine.find(x => x.id === last);
       if (n) await enter(n);
@@ -222,14 +222,14 @@ export async function signIn(email: string, password: string) { const { error } 
 export async function resetPassword(email: string) { const { error } = await sb!.auth.resetPasswordForEmail(email, { redirectTo: location.origin }); if (error) throw new Error(error.message); }
 export async function signOut() { await sb?.auth.signOut(); localStorage.removeItem("nos-last-n"); wipeLocal(); onSignedOut(); }
 
-export async function refreshMine() { setApp({ mine: await api<NInfo[]>("/api/neighborhoods/mine") }); }
-export async function joinCell(cellId: string) { const n = await api<NInfo>("/api/neighborhoods/cell", { cell: cellId }); await refreshMine(); await enter(n); }
-export async function joinById(id: string) { const n = await api<NInfo>(`/api/neighborhoods/${enc(id)}/join`, {}); await refreshMine(); await enter(n); }
-export async function createNamed(i: { name: string; lat: number; lng: number; r: number }) { const n = await api<NInfo>("/api/neighborhoods", i); await refreshMine(); await enter(n); }
-export const nearbyNamed = (lat: number, lng: number) => api<NearNamed[]>(`/api/neighborhoods/nearby?lat=${lat}&lng=${lng}`);
-export const searchNamed = (q: string) => api<NearNamed[]>(`/api/neighborhoods/search?q=${enc(q)}`);
+export async function refreshMine() { setApp({ mine: await api<NInfo[]>("/api/neighbourhoods/mine") }); }
+export async function joinCell(cellId: string) { const n = await api<NInfo>("/api/neighbourhoods/cell", { cell: cellId }); await refreshMine(); await enter(n); }
+export async function joinById(id: string) { const n = await api<NInfo>(`/api/neighbourhoods/${enc(id)}/join`, {}); await refreshMine(); await enter(n); }
+export async function createNamed(i: { name: string; lat: number; lng: number; r: number }) { const n = await api<NInfo>("/api/neighbourhoods", i); await refreshMine(); await enter(n); }
+export const nearbyNamed = (lat: number, lng: number) => api<NearNamed[]>(`/api/neighbourhoods/nearby?lat=${lat}&lng=${lng}`);
+export const searchNamed = (q: string) => api<NearNamed[]>(`/api/neighbourhoods/search?q=${enc(q)}`);
 export const geocode = (q: string) => api<Place[]>(`/api/geocode?q=${enc(q)}`);
-export async function leaveNeighborhood() { if (!app.nbhd) return; await api(`/api/n/${enc(app.nbhd.id)}/leave`, {}); localStorage.removeItem("nos-last-n"); await refreshMine(); leave(); }
+export async function leaveNeighbourhood() { if (!app.nbhd) return; await api(`/api/n/${enc(app.nbhd.id)}/leave`, {}); localStorage.removeItem("nos-last-n"); await refreshMine(); leave(); }
 export async function deleteAccount() { await api("/api/me", undefined, "DELETE"); await sb?.auth.signOut(); localStorage.removeItem("nos-last-n"); wipeLocal(); onSignedOut(); }
 
 export const members = () => api<Member[]>(`/api/n/${enc(app.nbhd!.id)}/members`);
@@ -351,7 +351,7 @@ export async function tfVerifyRoute(cat: L.Cat, city?: string): Promise<TfRouteC
       sources: [{ title: "Example municipal grievance portal (simulated)", url: "https://example.org/", official: false, snippet: "Simulated example. No real website was read in demo mode." }],
       helplines: [{ value: "1800 000 0000", url: "https://example.org/" }], emails: [],
       links: [{ label: "Register a complaint (simulated)", url: "https://example.org/complaint", kind: "complaint" }, { label: "Track a complaint (simulated)", url: "https://example.org/track", kind: "track" }],
-      note: "This is a simulated example. Type a real city above to run it live, or sign in to a real neighborhood.",
+      note: "This is a simulated example. Type a real city above to run it live, or sign in to a real neighbourhood.",
     };
   }
   return api<TfRouteCheck>(`${tfBase()}/route`, { cat, city: city || undefined });

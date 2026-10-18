@@ -132,7 +132,7 @@ export function AlertBanner({ alerts, onWorld }: { alerts: S.Alert[]; onWorld: (
   const official = S.isOfficial(alerts);
   return (
     <div className={`card alertcard ${official ? "official" : ""}`}>
-      <b>{official ? t("Official alert near this neighborhood") : t("Heads up: hazard activity nearby")}</b>
+      <b>{official ? t("Official alert near this neighbourhood") : t("Heads up: hazard activity nearby")}</b>
       {alerts.slice(0, 3).map(a => (
         <div key={a.id}>
           <p>{a.title}{a.km ? `: about ${a.km} km away` : a.area ? `: ${a.area}` : ""}. <small className="dim">{a.src === "CAP" ? "Official alert" : a.src} · {ago(a.time)}</small></p>

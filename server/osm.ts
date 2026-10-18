@@ -1,4 +1,4 @@
-const UA = `NeighborhoodOS/1.0 (${process.env.CONTACT_EMAIL || "contact not set"})`;
+const UA = `NeighbourhoodOS/1.0 (${process.env.CONTACT_EMAIL || "contact not set"})`;
 // Several public servers, tried in order. The main one is often overloaded, so the others are a safety net.
 const OVERPASS_LIST = (process.env.OVERPASS_URL || "https://overpass-api.de/api/interpreter,https://overpass.private.coffee/api/interpreter,https://maps.mail.ru/osm/tools/overpass/api/interpreter").split(",").map(x => x.trim()).filter(Boolean);
 const GAP = Number(process.env.OVERPASS_GAP_MS ?? 1500);

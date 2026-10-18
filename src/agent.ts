@@ -77,7 +77,7 @@ export function draftComplaint(a: DraftInput): { subject: string; body: string }
     `Location: ${map}`, `First reported: ${fmt(a.created)}`, `Residents who confirmed the problem: ${a.reports}`,
   ];
   if (a.hasPhoto) lines.push("A photo is available and can be shared on request.");
-  if (a.verified) lines.push("A neighborhood coordinator has reviewed this report.");
+  if (a.verified) lines.push("A neighbourhood coordinator has reviewed this report.");
   lines.push("", `We request you to inspect the site, resolve the problem within ${route.deadlineDays} days, and share the complaint number and the action taken.`);
   if (a.prev) lines.push("", `This is a follow-up. Our earlier complaint to ${a.prev.to} on ${fmt(a.prev.sentAt)}${a.prev.ref ? ` (reference ${a.prev.ref})` : ""} has not been resolved.`);
   lines.push("", "Thank you.", `Community coordinators, ${a.nbhd}`);

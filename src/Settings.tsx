@@ -44,7 +44,7 @@ export function NotifySettings({ act }: { act: Act }) {
   return (
     <div className="card">
       <b>Notifications</b>
-      <small className="dim">Choose how to hear about alerts, SOS assignments, check-ins and urgent notices for this neighborhood.</small>
+      <small className="dim">Choose how to hear about alerts, SOS assignments, check-ins and urgent notices for this neighbourhood.</small>
       {caps && (
         <>
           <div className="row between"><span>Push on this device</span>

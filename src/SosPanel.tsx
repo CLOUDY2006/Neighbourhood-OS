@@ -24,9 +24,9 @@ export default function SosPanel({ st, app, pick, setPick, act }: { st: S.State;
       <div className="card alertcard official">
         <b>{t("Call your local emergency number first")}</b>
         <p>{t("If anyone is in immediate danger, call emergency services (for example 112, 911 or 999) before anything else. Neighbors and volunteers may not see a request in time.")}</p>
-        {official && <p>{t("An official hazard alert is active near this neighborhood, so Crisis Mode is on.")}</p>}
+        {official && <p>{t("An official hazard alert is active near this neighbourhood, so Crisis Mode is on.")}</p>}
       </div>
-      {st.role !== "admin" && (st.sosActive ?? 0) > 0 && <small className="dim">{st.sosActive} active SOS request{st.sosActive === 1 ? "" : "s"} in this neighborhood. Locations are only shown to coordinators and assigned volunteers.</small>}
+      {st.role !== "admin" && (st.sosActive ?? 0) > 0 && <small className="dim">{st.sosActive} active SOS request{st.sosActive === 1 ? "" : "s"} in this neighbourhood. Locations are only shown to coordinators and assigned volunteers.</small>}
 
       {!mineActive && (
         <div className="form">
@@ -37,7 +37,7 @@ export default function SosPanel({ st, app, pick, setPick, act }: { st: S.State;
           <VoiceButton onText={x => setF({ ...f, note: `${f.note} ${x}`.trim() })} />
           <p className="dim">{pick ? `(${pick.lat.toFixed(5)}, ${pick.lng.toFixed(5)})` : t("Click the map to choose where you are, or use your current location.")}</p>
           <button onClick={locate} disabled={!f.consent}>{t("Use my current location")}</button>
-          <label className="check"><input type="checkbox" checked={f.consent} onChange={e => setF({ ...f, consent: e.target.checked })} /> {t("I agree to share this exact location and note with this neighborhood's coordinators and any volunteer they assign. It is deleted when the request is closed, or after 24 hours.")}</label>
+          <label className="check"><input type="checkbox" checked={f.consent} onChange={e => setF({ ...f, consent: e.target.checked })} /> {t("I agree to share this exact location and note with this neighbourhood's coordinators and any volunteer they assign. It is deleted when the request is closed, or after 24 hours.")}</label>
           <button className="sosbtn" onClick={() => act(async () => {
             if (!pick) throw new Error("Choose your location on the map first");
             await S.sos({ ...f, lat: pick.lat, lng: pick.lng });

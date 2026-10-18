@@ -45,7 +45,7 @@ export function Pulse({ st, app, act, demo }: { st: S.State; app: S.AppState; ac
 
       <Box title="Before and after" tag="Actual">
         <div className="row between"><span>Open at the start: <b>{d.openThen}</b></span><span>Open now: <b>{d.openNow}</b></span><span className={d.openNow <= d.openThen ? "oktext" : "errtext"}>{d.openNow - d.openThen > 0 ? "+" : ""}{d.openNow - d.openThen}</span></div>
-        <small className="dim">Use the Then vs Now button on the map to see the neighborhood at an earlier date.</small>
+        <small className="dim">Use the Then vs Now button on the map to see the neighbourhood at an earlier date.</small>
       </Box>
 
       <Box title="Reported and resolved" tag="Actual">
