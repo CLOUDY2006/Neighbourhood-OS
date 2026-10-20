@@ -121,17 +121,22 @@ async function refresh() {
   } catch { if (!app.stale) setApp({ stale: true }); }
 }
 
-async function loadMap(n: NInfo, retried = false) {
+async function loadMap(n: NInfo, tries = 0) {
   try {
-    const m = await api<MapData | { source: "none"; reason?: "sparse" | "unavailable" }>(`/api/n/${enc(n.id)}/map`);
+    const m = await api<MapData | { source: "none"; reason?: "sparse" | "unavailable" | "loading" }>(`/api/n/${enc(n.id)}/map`);
     if (app.nbhd?.id !== n.id) return;
     if (m.source === "none") {
-      const down = (m as { reason?: string }).reason === "unavailable";
-      setApp({ map: genCity(n.r), mapNote: down ? "The OpenStreetMap server did not answer, so a sample map is shown for now. Trying again soon." : "OpenStreetMap has little data for this area, so a schematic view is shown." });
-      if (down && !retried) setTimeout(() => { if (app.nbhd?.id === n.id && app.map?.source === "generated") void loadMap(n, true); }, 50000);
+      const why = (m as { reason?: string }).reason;
+      const note = why === "loading" ? "Loading the real map from OpenStreetMap. A sample map is shown until it arrives."
+        : why === "unavailable" ? "The OpenStreetMap server did not answer, so a sample map is shown for now. Trying again soon."
+        : "OpenStreetMap has little data for this area, so a schematic view is shown.";
+      setApp({ map: { ...genCity(n.r), places: [] }, mapNote: note });
+      // The server keeps downloading in the background, so ask again until the real map is there.
+      const again = why === "loading" ? (tries < 40 ? 6000 : 0) : why === "unavailable" && tries < 2 ? 50000 : 0;
+      if (again) setTimeout(() => { if (app.nbhd?.id === n.id && app.map?.source === "generated") void loadMap(n, tries + 1); }, again);
     }
     else setApp({ map: m as MapData, mapNote: (m as MapData).sparse ? "Few buildings are mapped here on OpenStreetMap." : "" });
-  } catch { if (app.nbhd?.id === n.id) setApp({ map: genCity(n.r), mapNote: "Could not load map data, so a schematic view is shown." }); }
+  } catch { if (app.nbhd?.id === n.id) setApp({ map: { ...genCity(n.r), places: [] }, mapNote: "Could not load map data, so a schematic view is shown." }); }
 }
 
 export async function enter(n: NInfo) {

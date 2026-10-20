@@ -11,7 +11,7 @@ import { can, dueEscalations, reportersOf, emptyDoc, publicSummary, purgeSos, re
 import { alertsFor, SEV_RANK, type Alert } from "../src/world";
 import { CELL_R, parseCell } from "../src/geo";
 import { pool, tx } from "./db";
-import { cityOf, fetchMap, geocode, placeName } from "./osm";
+import { cityOf, fetchMap, geocode, NAMES_ON, placeName } from "./osm";
 import { aiAnalyze, aiCompare, aiEnabled, aiImage, aiInsights, aiLabel, aiSuggest } from "./ai";
 import { getStatusRun, runOwner, startStatusRun, tfEnabled, tfLabel, TinyFishError, trackRun, verifyRoute } from "./tinyfish";
 import { getWorld, worldSnapshot } from "./world";
@@ -150,6 +150,7 @@ app.post("/api/neighbourhoods", ah(async (req, res) => {
   if (!(r >= 200 && r <= 2000)) throw new HttpError(400, "The radius must be between 200 and 2000 meters");
   const id = "n_" + randomUUID().replace(/-/g, "").slice(0, 12);
   const n = (await pool.query("insert into neighbourhoods (id, kind, name, center_lat, center_lng, radius_m, created_by, doc) values ($1, 'named', $2, $3, $4, $5, $6, $7) returning *", [id, name, lat, lng, r, u.id, JSON.stringify(emptyDoc())])).rows[0];
+  prefetchMap(n);
   res.json(info(n, await ensureMember(id, u, "admin")));
 }));
 
@@ -162,6 +163,7 @@ app.post("/api/neighbourhoods/:id/join", ah(async (req, res) => {
     if (!cell) throw new HttpError(404, "Neighbourhood not found");
     n = (await pool.query("insert into neighbourhoods (id, kind, name, center_lat, center_lng, radius_m, doc) values ($1, 'cell', $2, $3, $4, $5, $6) on conflict (id) do update set id = excluded.id returning *", [cell.id, await placeName(cell.lat, cell.lng), cell.lat, cell.lng, CELL_R, JSON.stringify(emptyDoc())])).rows[0];
   }
+  prefetchMap(n);
   res.json(info(n, await ensureMember(id, u)));
 }));
 
@@ -286,24 +288,52 @@ app.get("/api/world", ah(async (req, res) => {
   res.json({ events: w.events, sources: w.sources, updated: w.updated });
 }));
 
+const MAP_WAIT = Number(process.env.MAP_WAIT_MS ?? 10000); // how long a visit waits for a fresh download before answering "loading"
 const mapMisses = new Map<string, { at: number; reason: "sparse" | "unavailable" }>();
 const MISS_TTL = { sparse: 600000, unavailable: 45000 };
-const noMap = (res: express.Response, reason: "sparse" | "unavailable") => { res.setHeader("X-Map-Status", "none"); res.json({ source: "none", reason }); };
+const noMap = (res: express.Response, reason: "sparse" | "unavailable" | "loading") => { res.setHeader("X-Map-Status", "none"); res.json({ source: "none", reason }); };
+
+// One download per neighbourhood at a time, however many people ask. It keeps running in the background and saves the result.
+const mapJobs = new Map<string, Promise<any | null>>();
+function startMapJob(id: string, lat: number, lng: number, r: number): Promise<any | null> {
+  const running = mapJobs.get(id); if (running) return running;
+  const job = (async () => {
+    try {
+      const m = await fetchMap(lat, lng, r);
+      if (m.roads.length < 8) { mapMisses.set(id, { at: Date.now(), reason: "sparse" }); return null; }
+      await pool.query("update neighbourhoods set map = $2, map_fetched_at = now() where id = $1", [id, JSON.stringify(m)]);
+      mapMisses.delete(id);
+      return m;
+    } catch (e) { console.warn("Map fetch failed for", id, (e as Error).message); mapMisses.set(id, { at: Date.now(), reason: "unavailable" }); return null; }
+  })().finally(() => mapJobs.delete(id));
+  mapJobs.set(id, job);
+  return job;
+}
+const recentMiss = (id: string) => { const m = mapMisses.get(id); return m && Date.now() - m.at < MISS_TTL[m.reason] ? m : null; };
+/** Start downloading the real map early, so the first visit finds it ready. Never waits and never throws. */
+const prefetchMap = (n: any) => { if (n && !n.map && !recentMiss(n.id)) void startMapJob(n.id, n.center_lat, n.center_lng, n.radius_m).catch(() => undefined); };
+
 app.get("/api/n/:id/map", ah(async (req, res) => {
   const u = await authenticate(req); const id = String(req.params.id);
   if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
   await memberRole(pool, id, u);
   const n = (await pool.query("select center_lat, center_lng, radius_m, map, map_fetched_at from neighbourhoods where id = $1", [id])).rows[0];
   if (!n) throw new HttpError(404, "Neighbourhood not found");
-  if (n.map && n.map_fetched_at && Date.now() - new Date(n.map_fetched_at).getTime() < 30 * 86400000) return res.json(n.map);
-  const miss = mapMisses.get(id);
-  if (miss && Date.now() - miss.at < MISS_TTL[miss.reason]) return noMap(res, miss.reason);
-  try {
-    const m = await fetchMap(n.center_lat, n.center_lng, n.radius_m);
-    if (m.roads.length < 8) { mapMisses.set(id, { at: Date.now(), reason: "sparse" }); return noMap(res, "sparse"); }
-    await pool.query("update neighbourhoods set map = $2, map_fetched_at = now() where id = $1", [id, JSON.stringify(m)]);
-    res.json(m);
-  } catch (e) { console.warn("Map fetch failed for", id, (e as Error).message); mapMisses.set(id, { at: Date.now(), reason: "unavailable" }); noMap(res, "unavailable"); }
+  const fresh = !!(n.map && n.map_fetched_at && Date.now() - new Date(n.map_fetched_at).getTime() < 30 * 86400000);
+  // A map saved before place names existed has no "places" list, and an old one may be out of date. Show it now and refresh in the background.
+  const old = n.map && n.map.source === "osm" ? n.map : null;
+  const needsNames = NAMES_ON && fresh && old && old.places === undefined;
+  const shape = (m: any) => (NAMES_ON || !m?.places?.length ? m : { ...m, places: [] }); // names switched off: never send saved names
+  if (fresh && !needsNames) return res.json(shape(n.map));
+  const miss = recentMiss(id);
+  if (miss) return old ? res.json(shape(old)) : noMap(res, miss.reason);
+  const job = startMapJob(id, n.center_lat, n.center_lng, n.radius_m);
+  // Give the download a short head start. If it is still running, answer now and let the app ask again.
+  const wait = old ? Math.min(3000, MAP_WAIT) : MAP_WAIT;
+  const got = await Promise.race([job, new Promise<undefined>(r => setTimeout(() => r(undefined), wait))]);
+  if (got) return res.json(shape(got));
+  if (old) return res.json(shape(old));
+  noMap(res, got === null ? (recentMiss(id)?.reason ?? "unavailable") : "loading");
 }));
 
 const MAGIC = (b: Buffer) => (b[0] === 0xff && b[1] === 0xd8 ? "image/jpeg" : b.subarray(1, 4).toString() === "PNG" ? "image/png" : b.subarray(0, 4).toString() === "RIFF" && b.subarray(8, 12).toString() === "WEBP" ? "image/webp" : null);

@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Flag } from "lucide-react";
+import { Flag, MapPin } from "lucide-react";
 import * as S from "./store";
 import { useT } from "./i18n";
 import { AgentPanel } from "./AgentPanel";
 import { HandoffBox } from "./Reports";
 import { ago, grp, VL, type Act } from "./ui";
+import { osmLink } from "./geo";
 
 export function readPhoto(f: File): Promise<string> {
   return new Promise((res, rej) => {
@@ -156,6 +157,13 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
         {i.hidden && <span className="chip red">Hidden</span>}
         {S.can(r, "hide") && i.flags.length > 0 && <span className="chip amber">{i.flags.length} flag(s)</span>}
       </div>
+      {(r === "admin" || r === "moderator") && (
+        <div className="row wrap">
+          <button className="x" onClick={() => window.open(osmLink(i.lat, i.lng), "_blank", "noopener,noreferrer")} title={t("Opens the exact spot on OpenStreetMap in a new tab. It is the same link as in the complaint draft.")}>
+            <MapPin size={14} aria-hidden="true" /> {t("Open location in OpenStreetMap")}
+          </button>
+        </div>
+      )}
       {!mine && !i.hidden && (
         i.flags.includes(me)
           ? <small className="dim">{t("Thanks. You reported this one.")}</small>

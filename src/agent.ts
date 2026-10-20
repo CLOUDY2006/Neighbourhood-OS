@@ -1,5 +1,6 @@
 import type { Cat, Doc, Issue, Priority } from "./logic";
 import { routeFor } from "./routes";
+import { osmLink } from "./geo";
 
 export const CAT_EN: Record<Cat, string> = { pothole: "Road damage", garbage: "Garbage problem", streetlight: "Faulty street light", water: "Water leak or supply problem", unsafe: "Safety hazard", blocked: "Blocked road", other: "Civic problem" };
 export const CAT_HI: Record<Cat, string> = { pothole: "सड़क पर गड्ढा", garbage: "कचरे और गंदगी की समस्या", streetlight: "खराब स्ट्रीट लाइट", water: "पानी के रिसाव या आपूर्ति की समस्या", unsafe: "असुरक्षित और खतरनाक स्थिति", blocked: "रास्ता अवरुद्ध", other: "नागरिक समस्या" };
@@ -56,7 +57,7 @@ export interface DraftInput {
 const fmt = (t: number) => new Date(t).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 
 export function draftComplaint(a: DraftInput): { subject: string; body: string } {
-  const route = routeFor(a.cat), map = `https://www.openstreetmap.org/?mlat=${a.lat.toFixed(6)}&mlon=${a.lng.toFixed(6)}#map=18/${a.lat.toFixed(6)}/${a.lng.toFixed(6)}`;
+  const route = routeFor(a.cat), map = osmLink(a.lat, a.lng);
   if (a.lang === "hi") {
     const problem = a.original && /[\u0900-\u097F]/.test(a.original) ? a.original : a.summaryEn;
     const lines = [

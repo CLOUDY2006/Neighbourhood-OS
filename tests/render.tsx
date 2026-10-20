@@ -33,6 +33,12 @@ let bad = 0;
   if (!okTop) { bad++; console.log("FAIL spam button is missing or buried"); } else console.log("ok spam button is near the top");
   const own = renderToString(<Detail i={{ ...other, author: S.myName() }} st={st} act={act} close={() => undefined} />);
   if (own.includes("Report spam or wrong report")) { bad++; console.log("FAIL author can flag own report"); } else console.log("ok author does not see the spam button");
+  // The "Open location in OpenStreetMap" button is for coordinators and moderators only.
+  for (const [role, expected] of [["admin", true], ["moderator", true], ["resident", false], ["volunteer", false]] as const) {
+    const out = renderToString(<Detail i={other} st={{ ...st, role }} act={act} close={() => undefined} />);
+    const has = out.includes("Open location in OpenStreetMap");
+    if (has !== expected) { bad++; console.log(`FAIL location button for ${role}: expected ${expected}`); } else console.log(`ok location button ${expected ? "shown" : "hidden"} for ${role}`);
+  }
   const hid = renderToString(<Detail i={{ ...other, hidden: true }} st={st} act={act} close={() => undefined} />);
   if (hid.includes("Report spam or wrong report")) { bad++; console.log("FAIL hidden report still offers spam button"); } else console.log("ok hidden report does not offer the spam button");
 }

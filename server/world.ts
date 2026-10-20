@@ -39,8 +39,14 @@ async function eonet(): Promise<WorldEvent[]> {
 
 const GD: Record<string, HazardType> = { TC: "storm", FL: "flood", VO: "volcano", WF: "wildfire" };
 async function gdacs(): Promise<WorldEvent[]> {
-  const d = await getJson("https://www.gdacs.org/gdacsapi/api/events/geteventlist/MAP");
-  if (!Array.isArray(d.features)) throw new Error("unexpected format");
+  // GDACS now documents the SEARCH address with dates and alert levels. The older MAP address is kept as a fallback.
+  const day = (n: number) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+  const urls = [`https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH?eventlist=TC;FL;VO;WF&fromdate=${day(14)}&todate=${day(-1)}&alertlevel=green;orange;red`, "https://www.gdacs.org/gdacsapi/api/events/geteventlist/MAP"];
+  let d: any, last: unknown;
+  for (const u of urls) {
+    try { const j = await getJson(u); if (Array.isArray(j?.features)) { d = j; break; } last = new Error("unexpected format"); } catch (e) { last = e; }
+  }
+  if (!d) throw last instanceof Error ? last : new Error("unexpected format");
   const out: WorldEvent[] = [], seen = new Set<string>();
   for (const f of d.features) {
     const p = f.properties ?? {}, type = GD[p.eventtype], c = f.geometry?.coordinates;

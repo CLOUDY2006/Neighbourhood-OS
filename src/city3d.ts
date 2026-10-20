@@ -1,4 +1,5 @@
-import type { MapData } from "./mapdata";
+import type { MapData, Place } from "./mapdata";
+import { labelBudget, layoutPlaceLabels, type Slot } from "./places";
 import type { City, RGB } from "./theme";
 
 /* Canvas renderer for the 3D neighbourhood: a floating diorama slab, lit buildings with cast shadows,
@@ -77,7 +78,7 @@ interface Bld { p: number[]; n: number; h: number; cx: number; cy: number; mat: 
 interface Tree { x: number; y: number; r: number; h: number }
 interface Car { p: number[]; cum: number[]; len: number; dur: number; phase: number; rev: boolean }
 interface Label { x: number; y: number; ax: number; ay: number; bx: number; by: number; text: string }
-export interface Model { R: number; slabR: number; blds: Bld[]; trees: Tree[]; lamps: number[]; cars: Car[]; labels: Label[]; roads: MapData["roads"]; areas: MapData["areas"] }
+export interface Model { R: number; slabR: number; blds: Bld[]; trees: Tree[]; lamps: number[]; cars: Car[]; labels: Label[]; places: Place[]; roads: MapData["roads"]; areas: MapData["areas"] }
 
 const plen = (p: number[]) => { let s = 0; for (let q = 2; q < p.length; q += 2) s += Math.hypot(p[q] - p[q - 2], p[q + 1] - p[q - 1]); return s; };
 
@@ -154,7 +155,8 @@ export function buildModel(map: MapData): Model {
     const m = Math.floor(r.p.length / 4) * 2, a = Math.max(0, m - 2), b = Math.min(r.p.length - 2, m + 2);
     return { x: r.p[m], y: r.p[m + 1], ax: r.p[a], ay: r.p[a + 1], bx: r.p[b], by: r.p[b + 1], text: (r.n ?? "").toUpperCase() };
   });
-  return { R, slabR, blds, trees, lamps, cars, labels, roads: map.roads, areas: map.areas };
+  const places = (map.places ?? []).filter(p => p.k === "society");
+  return { R, slabR, blds, trees, lamps, cars, labels, places, roads: map.roads, areas: map.areas };
 }
 
 /* ---------- drawing ---------- */
@@ -331,6 +333,30 @@ export function drawObjects(ctx: CanvasRenderingContext2D, m: Model, pr: Proj, p
     ctx.fillStyle = pal.label; ctx.fillText(l.text, 0, 0); ctx.restore();
   }
   if ("letterSpacing" in ctx) (ctx as unknown as { letterSpacing: string }).letterSpacing = "0px";
+  drawPlaces(ctx, m, pr, pal, view);
+}
+
+/** Society names: small, soft text with a dot, kept the same size on screen at any zoom. Hidden when zoomed out. */
+function drawPlaces(ctx: CanvasRenderingContext2D, m: Model, pr: Proj, pal: City, view: View) {
+  const limit = labelBudget(view.k);
+  if (!limit || !m.places.length) return;
+  const { P } = pr, k = view.k, size = 10.5 / k, pad = 8 / k, lift = 11 / k;
+  const x0 = -view.x / k, x1 = (view.w - view.x) / k, y0 = -view.y / k, y1 = (view.h - view.y) / k;
+  ctx.save();
+  ctx.font = `600 ${size}px Sora, system-ui, sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.lineJoin = "round";
+  const slots: Slot[] = [];
+  for (const p of m.places) {
+    const a = P(p.x, p.y);
+    if (a.x < x0 || a.x > x1 || a.y < y0 + lift || a.y > y1) continue;
+    slots.push({ p, x: a.x, y: a.y - lift, w: ctx.measureText(p.n).width + pad, h: size + pad });
+  }
+  for (const s of layoutPlaceLabels(slots, limit)) {
+    ctx.globalAlpha = 0.88;
+    ctx.lineWidth = 3 / k; ctx.strokeStyle = pal.halo; ctx.strokeText(s.p.n, s.x, s.y);
+    ctx.fillStyle = pal.label; ctx.fillText(s.p.n, s.x, s.y);
+    ctx.globalAlpha = 0.7; ctx.beginPath(); ctx.arc(s.x, s.y + lift, 2.2 / k, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
 }
 
 export function drawCars(ctx: CanvasRenderingContext2D, m: Model, pr: Proj, pal: City, time: number) {

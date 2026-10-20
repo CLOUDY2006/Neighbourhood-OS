@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Ban, Box, Construction, Cross, Crosshair, Droplets, Flag, Flame, Hammer, HeartHandshake, History, Home, Info, Layers, Lightbulb, List, Map as MapIcon, Minus, Navigation2, Plus, Rotate3d, RotateCcw, RotateCw, Search, Siren, Trash2, User, Users, Wrench, X, LocateFixed } from "lucide-react";
+import { AlertTriangle, Ban, Box, Construction, Cross, Crosshair, Droplets, Flag, Flame, Hammer, HeartHandshake, History, Home, Info, Layers, Lightbulb, List, Map as MapIcon, MapPin, Minus, Navigation2, Plus, Rotate3d, RotateCcw, RotateCw, Search, Siren, Trash2, User, Users, Wrench, X, LocateFixed } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import * as S from "./store";
 import { cellOf, fromXY, toXY } from "./geo";
 import { fmtDist, hereInfo, useHere } from "./here";
 import { useT } from "./i18n";
 import type { MapData } from "./mapdata";
+import { nearestPlace } from "./places";
 import { buildModel, drawCars, drawGround, drawObjects, K, KF, KZ, makeProj, TILT0, TILT_MAX, TILT_MIN, type Cam } from "./city3d";
 import { useA11y, useTheme } from "./a11y";
 import { palette } from "./theme";
@@ -81,6 +82,12 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
   const proj = useMemo(() => makeProj(R, flat, cam), [R, flat, cam]);
   const { P } = proj, t = proj.t, lift = flat ? 72 : 120 * (proj.zf / KZ);
   const model = useMemo(() => (map ? buildModel(map) : null), [map]);
+  // The society (or area name) nearest to the middle of what you are looking at. Helps you place yourself without sharing location.
+  const nearPlace = useMemo(() => {
+    if (!map?.places?.length || size.w < 2) return null;
+    const c = proj.inv((size.w / 2 - v.x) / v.k, (size.h / 2 - v.y) / v.k);
+    return nearestPlace(map.places, c.x, c.y);
+  }, [map, proj, v, size]);
 
   // canvas city: two cached layers (ground, objects) drawn with some margin around the view. Panning only shifts the
   // cached images; zoom, camera, theme or data changes redraw them. Cars animate between the two layers.
@@ -357,6 +364,11 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
         </label>
       </div>
       <ViewSwitch view={view} setView={setView} />
+      {nearPlace && !picking && (
+        <div className="hud hud-near glass" role="status" aria-live="off">
+          <MapPin size={13} aria-hidden="true" /> <span className="dim">{tr("Near")}</span> <b>{nearPlace.place.n}</b>
+        </div>
+      )}
       {here.status !== "off" && (
         <div className="hud hud-here glass" role="status" aria-live="polite">
           {here.status === "asking" && <span>{tr("Finding your location…")}</span>}

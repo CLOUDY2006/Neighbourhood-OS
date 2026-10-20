@@ -1,3 +1,6 @@
+/** The link used in complaint drafts and by the "Open location" button: a pin on OpenStreetMap, zoomed in close. */
+export const osmLink = (lat: number, lng: number) => `https://www.openstreetmap.org/?mlat=${lat.toFixed(6)}&mlon=${lng.toFixed(6)}#map=18/${lat.toFixed(6)}/${lng.toFixed(6)}`;
+
 export const CELL = 0.009;
 export const CELL_R = 700;
 export interface LL { lat: number; lng: number }

@@ -230,7 +230,7 @@ Values starting with `VITE_` are read when the web app starts or is built, so re
 | `TINYFISH_COUNTRY` | `IN` | Two-letter country code that TinyFish searches are limited to. With the default (India), only `gov.in` and `nic.in` sites count as official, and pages from other countries' governments are dropped. Set it empty for worldwide results. |
 | `TRUST_PROXY` | `1` | How many proxies sit in front of the server, so per-visitor rate limits see the real visitor address. `1` is right for Render, Railway and Fly. Use `0` if the server is reached directly. |
 | `TINYFISH_SEARCH_URL`, `TINYFISH_FETCH_URL`, `TINYFISH_AGENT_URL` | TinyFish public servers | Endpoint overrides, used by the tests. Not listed in `.env.example`. |
-| `OVERPASS_URL`, `NOMINATIM_URL` | public servers | Override the OpenStreetMap map-data and place-search servers. `OVERPASS_URL` can list several addresses separated by commas. They are tried in order, so one busy server does not leave the map empty. Three public servers are used by default. Not listed in `.env.example`. |
+| `OVERPASS_URL`, `NOMINATIM_URL` | public servers | Override the OpenStreetMap map-data and place-search servers. `OVERPASS_URL` can list several addresses separated by commas. They are tried in order, so one busy server does not leave the map empty. Three public servers are used by default (the main overpass-api.de one is listed last because it is often overloaded). For more reliability, add a free NextGIS Overpass key as a fourth address, for example `OVERPASS_URL=https://overpass.private.coffee/api/interpreter,https://maps.mail.ru/osm/tools/overpass/api/interpreter,https://overpass.nextgis.com/YOUR_KEY/api/interpreter`. Not listed in `.env.example`. |
 
 ### Official local alerts: `CAP_FEEDS`
 
@@ -388,3 +388,5 @@ These were found while writing the design brief (section 9 has the full list and
 - On phones, the header wraps to three rows and takes about a quarter of the screen.
 - Some copy is out of date: a few labels say only a moderator approves fixes, the landing page says "Claude AI suggestions" although Gemini is the default, the Account text-command help leaves out FIXED and NOT FIXED, and the app manifest still uses the old navy colour.
 - The landing page is English only, and the World panel cannot filter by severity.
+
+**Society names on the map.** When OpenStreetMap has them, named residential areas and apartment buildings are shown as small, soft labels, and a "Near ..." chip shows the society nearest to the middle of the view, so you can place yourself without sharing your location. Labels appear only when zoomed in, never overlap, and do not change the 3D buildings. Maps saved before this feature are fetched once more to add names (the old map is kept if OpenStreetMap is down). Where OpenStreetMap has no name, nothing is shown. The demo city uses made-up names.
