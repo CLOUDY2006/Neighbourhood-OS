@@ -277,7 +277,8 @@ CAP (Common Alerting Protocol) is the standard format national warning agencies 
 | Fake or spam reports | Rate limits per user, a cap of 15 open reports each, the location must fall inside the neighbourhood, a person cannot confirm their own report or confirm twice, and three neighbor flags hide a report until a coordinator reviews it. Authors can withdraw. |
 | Fake "verified" claims | Only a human coordinator or moderator can mark a report verified. AI output is always labelled a suggestion. |
 | Coordinator abuse | Every coordinator action is written to an audit log shown to other coordinators. Platform admins can step in. |
-| Who becomes a coordinator? | The creator of a named neighbourhood. Otherwise people ask to coordinate, and an existing coordinator (or platform admin) approves in the People tab. |
+| Who becomes a coordinator? | The first 3 people to join any neighbourhood (named or automatic area), including the creator of a named one. After that, people ask to coordinate, and an existing coordinator (or platform admin) approves in the People tab. |
+| Is there a coordinator ranking? | Yes, per neighbourhood (Coordinators tab, visible to every member, names shown). Fixed visible point rules, and it restarts on the 1st of every month (UTC). Only in-app activity counts. Neighbour feedback shows only after 5 ratings. The rules live in `COORD_POINTS` in `src/logic.ts`. |
 | Empty neighbourhoods | A guided empty state explains how to report, invite neighbors and ask for a coordinator. |
 | Data and accounts | Accounts through Supabase Auth. Roles are enforced on the server. Deleting an account removes memberships and photos and replaces the person's name with "Former member". |
 | Emergencies | The app states in several places that it is not an emergency service. SOS locations are consent-based, restricted and deleted automatically. |

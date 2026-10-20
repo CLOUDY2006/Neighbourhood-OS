@@ -123,7 +123,7 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
   const [reason, setReason] = useState(""), [fb, setFb] = useState(""), [rnote, setRnote] = useState(""), [askSpam, setAskSpam] = useState(false);
   const m = st.missions.find(x => x.id === i.missionId), mine = i.author === me;
   const next = S.STATUSES[S.STATUSES.indexOf(i.status) + 1], idx = S.STATUSES.indexOf(i.status);
-  const ps = S.priorityScore(st, i), plan = S.actionPlan(st, i), after = i.proof.find(p => p.photo)?.photo;
+  const ps = S.priorityScore(st, i), plan = S.actionPlan(st, i), after = S.afterPhoto(i);
   const fbs = Object.values(i.feedback ?? {}), good = fbs.filter(f => f.ok).length, bad = fbs.length - good;
   const hasMore = (S.can(r, "flag") && i.status !== "resolved") || (mine && i.status === "reported" && !i.hidden) || (S.can(r, "verify") && i.status !== "resolved" && i.verif !== "disputed") || S.can(r, "hide");
   const hasVol = (S.can(r, "assign") && i.status !== "resolved" && st.volunteers.length > 0) || r === "admin" || !!i.handoff;
@@ -263,8 +263,8 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
           <b>Does it look fixed?</b>
           <input placeholder="Optional comment" maxLength={200} value={fb} onChange={e => setFb(e.target.value)} aria-label="Feedback comment" />
           <div className="row wrap">
-            <button onClick={() => act(async () => { await S.feedback(i.id, true, fb); setFb(""); }, "Thanks for the feedback")}>It looks fixed</button>
-            <button className="warn" onClick={() => act(async () => { await S.feedback(i.id, false, fb); setFb(""); }, "Thanks. Reviewers will see this")}>Not fully fixed</button>
+            <button className={`choice ${i.feedback?.[me]?.ok === true ? "on" : ""}`} aria-pressed={i.feedback?.[me]?.ok === true} onClick={() => act(async () => { await S.feedback(i.id, true, fb); setFb(""); }, "Thanks for the feedback")}>It looks fixed</button>
+            <button className={`choice ${i.feedback?.[me]?.ok === false ? "on" : ""}`} aria-pressed={i.feedback?.[me]?.ok === false} onClick={() => act(async () => { await S.feedback(i.id, false, fb); setFb(""); }, "Thanks. Reviewers will see this")}>Not fully fixed</button>
           </div>
           {fbs.length > 0 && <small className="dim">{good} say fixed · {bad} say not fully fixed</small>}
         </div>

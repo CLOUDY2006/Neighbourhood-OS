@@ -15,6 +15,8 @@ export const UNCONFIRMED_AFTER_MS = 7 * 24 * 3600 * 1000;
 export const reportersOf = (i: Pick<Issue, "author" | "confirmedBy">) => [...new Set([i.author, ...i.confirmedBy])].filter(n => n && n !== "Former member");
 /** True when this person may answer "Is it fixed?" for a fix that is waiting for confirmation. */
 export const canConfirmFix = (i: Issue, name: string) => i.status === "pending" && !i.hidden && i.pendingBy !== name && reportersOf(i).includes(name);
+/** The photo shown as "After" in the before/after slider: the newest proof photo, so new evidence after a rejected fix replaces the old one. Older proof stays in the evidence list. */
+export const afterPhoto = (i: Pick<Issue, "proof">) => [...i.proof].reverse().find(p => p.photo)?.photo;
 /** When the fix was submitted for review. Older reports without a timestamp fall back to the activity log. */
 export const pendingSince = (i: Issue) => i.pendingAt ?? [...i.log].reverse().find(l => l.text === "Status moved to pending")?.t ?? i.created;
 export const STATUS_LABEL: Record<Status, string> = { reported: "Reported", review: "Under review", assigned: "Assigned", progress: "In progress", pending: "Resolution pending review", resolved: "Resolved" };
@@ -54,7 +56,9 @@ export interface Sos {
   id: string; author: string; lat: number | null; lng: number | null; need: SosNeed; people: number; note: string;
   status: SosStatus; assigned: string[]; contact?: string; created: number; expires: number; closedAt?: number; log: { t: number; by: string; text: string }[];
 }
-export interface Doc { issues: Issue[]; missions: Mission[]; resources: Resource[]; volunteers: Volunteer[]; events: Ev[]; demo: number; sos?: Sos[]; sosActive?: number; checkin?: Checkin; care?: Care[]; plan?: Plan; shares?: Share[]; notices?: Notice[]; authorities?: Authority[]; digestAt?: number; memberCount?: number }
+export type CoordKind = "verify" | "step" | "submit" | "approve" | "sendback" | "mission" | "assign" | "escalate" | "notice" | "reopened";
+export interface CoordEntry { t: number; by: string; k: CoordKind; id?: string }
+export interface Doc { issues: Issue[]; missions: Mission[]; resources: Resource[]; volunteers: Volunteer[]; events: Ev[]; demo: number; sos?: Sos[]; sosActive?: number; checkin?: Checkin; care?: Care[]; plan?: Plan; shares?: Share[]; notices?: Notice[]; authorities?: Authority[]; digestAt?: number; memberCount?: number; coordLog?: CoordEntry[] }
 export interface Who { role: Role; name: string }
 export interface Insights { source: "rules" | "ai"; summary: string; bullets: { title: string; detail: string }[] }
 export interface SuggestInput { title: string; desc: string; cat?: Cat; lat: number; lng: number }
@@ -186,6 +190,10 @@ export function seed(): Doc {
       { id: "sh2", kind: "request", cat: "food", title: "Need dry rations for 2 days", note: "Simulated request.", author: "Neighbor B (demo)", created: ago(120), expires: Date.now() + 10 * 86400000, status: "open", thread: [] },
     ],
     authorities: [{ id: "au1", name: "Municipal ward office (demo)", email: "", phone: "" }],
+    coordLog: [
+      { t: ago(50), by: "Coordinator (demo)", k: "verify", id: "i1" }, { t: ago(45), by: "Coordinator (demo)", k: "step", id: "i1" }, { t: ago(40), by: "Coordinator (demo)", k: "mission", id: "i1" },
+      { t: ago(30), by: "Asha K. (demo coordinator)", k: "verify", id: "i2" }, { t: ago(20), by: "Asha K. (demo coordinator)", k: "approve", id: "i5" },
+    ],
   };
 }
 
@@ -314,8 +322,11 @@ export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; ln
   if (!a || !can(who.role, a.t)) throw new Error(`The ${who.role} role is not allowed to do this`);
   let d = structuredClone(doc), result: string | undefined;
   purgeSos(d); purgeOld(d); dueEscalations(d, Date.now(), bounds?.name);
+  if (d.coordLog) d.coordLog = d.coordLog.filter(e => e.t >= prevMonthStart(Date.now())).slice(-800);
   const ev = (text: string, tone = "info", to?: string) => { d.events.unshift({ t: Date.now(), text, tone, to }); d.events = d.events.slice(0, 60); };
   const tell = (i: Issue, text: string) => { if (i.author !== who.name) ev(text, "info", i.author); };
+  // Work credit for the monthly coordinator table. Only coordinators and moderators earn it; the table itself dedupes and caps it.
+  const cred = (k: CoordKind, id?: string, by?: string) => { const n = by ?? (who.role === "admin" || who.role === "moderator" ? who.name : undefined); if (n) (d.coordLog ??= []).push({ t: Date.now(), by: n, k, id }); };
   const tellAll = (i: Issue, text: string) => reportersOf(i).forEach(n => { if (n !== who.name) ev(text, "info", n); });
   const assigned = (i: Issue | undefined, text: string) => { if (i) (i.assignments ??= []).push({ t: Date.now(), by: who.name, text }); };
   const issue = (id: string) => { const i = d.issues.find(x => x.id === id); if (!i) throw new Error("Issue not found"); return i; };
@@ -383,14 +394,14 @@ export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; ln
     case "verify": {
       const i = issue(a.id);
       if (!["verified", "disputed", "review"].includes(a.v)) throw new Error("Invalid verification state");
-      i.verif = a.v; log(i, `Marked ${a.v} by a coordinator`, a.v === "verified" ? "ok" : "info"); break;
+      i.verif = a.v; if (a.v === "verified") cred("verify", i.id); log(i, `Marked ${a.v} by a coordinator`, a.v === "verified" ? "ok" : "info"); break;
     }
     case "advance": {
       const i = issue(a.id), next = STATUSES[STATUSES.indexOf(i.status) + 1];
       if (!next) throw new Error("Already resolved");
       if (next === "resolved") throw new Error("A moderator must review and approve the fix");
       if (next === "pending" && !i.proof.length) throw new Error("Add proof of fix before asking for review");
-      i.status = next;
+      i.status = next; cred(next === "pending" ? "submit" : "step", i.id);
       if (next === "review") i.verif = "review";
       if (next === "pending") { i.pendingBy = who.name; i.pendingAt = Date.now(); i.closure = undefined; }
       if (next === "pending") reportersOf(i).forEach(n => { if (n !== who.name) ev(`Is the problem fixed? "${i.title}" was marked as done. Please check and answer Yes or Not fully.`, "alert", n); });
@@ -406,12 +417,14 @@ export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; ln
       i.status = "resolved"; i.verif = "resolved"; i.resolvedAt = Date.now(); i.reviewedBy = who.name; i.closure = "reviewer";
       if (i.agent) i.agent.escalateAt = undefined;
       const m = d.missions.find(x => x.id === i.missionId); if (m) m.done = true;
+      cred("approve", i.id);
       tellAll(i, `The report "${i.title}" was verified as resolved`);
       log(i, `Resolution approved${txt(a.note, 200) ? `: ${txt(a.note, 200)}` : ""}`, "ok"); break;
     }
     case "rejectResolution": {
       const i = issue(a.id);
       if (i.status !== "pending") throw new Error("This fix is not waiting for review");
+      cred("sendback", i.id); if (i.pendingBy) cred("reopened", i.id, i.pendingBy);
       i.status = "progress"; i.verif = "disputed"; i.rejections = (i.rejections ?? 0) + 1; i.pendingBy = undefined;
       tellAll(i, `The fix for "${i.title}" needs more work`);
       log(i, `Fix not approved: ${str(a.reason, 200, "Reason")}`, "alert"); break;
@@ -425,6 +438,7 @@ export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; ln
       const note = txt(a.note, 200);
       const m = d.missions.find(x => x.id === i.missionId);
       if (!a.ok) {
+        if (i.pendingBy) cred("reopened", i.id, i.pendingBy);
         i.status = "progress"; i.verif = "disputed"; i.rejections = (i.rejections ?? 0) + 1;
         i.pendingBy = undefined; i.pendingAt = undefined; i.resolvedAt = undefined; i.closure = undefined; i.reviewedBy = undefined; i.feedback = {};
         if (m) m.done = false;
@@ -488,10 +502,10 @@ export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; ln
       if (need < 1 || need > 200) throw new Error("Volunteers needed must be between 1 and 200");
       const m: Mission = { id: uid("m"), title, need, joined: [], hours: 0, done: false };
       if (a.issueId) {
-        const i = issue(a.issueId); m.issueId = i.id; i.missionId = m.id;
+        const i = issue(a.issueId); m.issueId = i.id; i.missionId = m.id; cred("mission", i.id);
         if (i.status === "reported" || i.status === "review") i.status = "assigned";
         assigned(i, `Mission created: ${m.title}`); log(i, "Cleanup mission created and assigned", "ok");
-      } else ev(`New community mission: ${title}`, "ok");
+      } else { cred("mission", m.id); ev(`New community mission: ${title}`, "ok"); }
       d.missions.push(m); result = m.id; break;
     }
     case "join": {
@@ -506,7 +520,7 @@ export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; ln
       if (!m) throw new Error("Mission not found");
       if (!d.volunteers.some(v => v.name === a.name)) throw new Error("Volunteer not found");
       if (m.joined.includes(a.name)) throw new Error("Already on this mission");
-      m.joined.push(a.name); assigned(d.issues.find(x => x.missionId === m.id), `${a.name} assigned by ${who.name}`); ev(`${a.name} assigned to "${m.title}" by ${who.name}`, "ok"); break;
+      cred("assign", m.id); m.joined.push(a.name); assigned(d.issues.find(x => x.missionId === m.id), `${a.name} assigned by ${who.name}`); ev(`${a.name} assigned to "${m.title}" by ${who.name}`, "ok"); break;
     }
     case "proof": {
       const i = issue(a.id), text = typeof a.text === "string" ? a.text.trim().slice(0, 500) : "", photo = img(a.photo);
@@ -606,7 +620,7 @@ export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; ln
       const now = Date.now(), ref = txt(a.ref, 60), wait = routeFor(i.cat).ladder[A.draft.level]?.waitDays;
       A.draft.sentAt = now; A.draft.via = a.via; A.history.push({ level: A.draft.level, to: A.draft.to, sentAt: now, ref: ref || undefined });
       i.handoff = { to: A.draft.to, ref, sentAt: now, by: who.name, status: "sent" };
-      A.escalateAt = wait ? now + wait * 86400000 : undefined;
+      A.escalateAt = wait ? now + wait * 86400000 : undefined; cred("escalate", i.id);
       log(i, `Complaint sent to ${A.draft.to}${a.via === "simulated" ? " (simulated)" : ""}${ref ? `. Reference ${ref}` : ""}`, "ok"); break;
     }
     case "agentRef": {
@@ -684,7 +698,7 @@ export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; ln
     }
     case "noticeAdd": {
       const n: Notice = { id: uid("n"), title: str(a.title, 100, "Title"), body: txt(a.body, 1000), author: who.name, created: Date.now(), pinned: !!a.pinned, urgent: !!a.urgent };
-      (d.notices ??= []).unshift(n); d.notices = d.notices.slice(0, 50); ev(`${n.urgent ? "Urgent notice" : "Notice"}: ${n.title}`, n.urgent ? "alert" : "info"); result = n.id; break;
+      cred("notice", n.id); (d.notices ??= []).unshift(n); d.notices = d.notices.slice(0, 50); ev(`${n.urgent ? "Urgent notice" : "Notice"}: ${n.title}`, n.urgent ? "alert" : "info"); result = n.id; break;
     }
     case "noticeRemove": { d.notices = (d.notices ?? []).filter(n => n.id !== a.id); break; }
     case "authoritySet": {
@@ -699,7 +713,7 @@ export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; ln
       const i = issue(a.id), au = (d.authorities ?? []).find(x => x.id === a.authorityId);
       if (!au) throw new Error("Choose an authority from the directory");
       i.handoff = { to: au.name, email: au.email || undefined, ref: txt(a.ref, 60), sentAt: Date.now(), by: who.name, status: "sent" };
-      log(i, `Handed off to ${au.name}`, "ok"); break;
+      cred("escalate", i.id); log(i, `Handed off to ${au.name}`, "ok"); break;
     }
     case "handoffStatus": {
       const i = issue(a.id);
@@ -759,6 +773,43 @@ export const BADGES: { id: string; label: string; test: (s: Stats) => boolean }[
   { id: "responder", label: "Responder", test: s => s.sos >= 1 },
   { id: "neighbor", label: "Good neighbor", test: s => s.shares >= 3 },
 ];
+// ---- Monthly coordinator table. Fixed visible rules; it restarts on the 1st of every month (UTC), so old work never competes with new work. ----
+export const COORD_POINTS: Record<CoordKind | "resolved" | "confirmedBonus", number> = { verify: 2, step: 1, submit: 2, approve: 3, sendback: 1, mission: 2, assign: 1, escalate: 2, notice: 1, reopened: -2, resolved: 5, confirmedBonus: 2 };
+export const COORD_NOTICE_CAP = 3;
+export const COORD_MIN_RATINGS = 5;
+export const monthStart = (t: number) => { const d = new Date(t); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1); };
+export const nextMonthStart = (t: number) => { const d = new Date(t); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1); };
+export const prevMonthStart = (t: number) => { const d = new Date(t); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1); };
+export interface CoordRow { name: string; role: string; score: number; fixes: number; reviews: number; missions: number; escalations: number; reopened: number; rating: { ok: number; total: number } | null; rank: number }
+export function coordinatorBoard(d: Doc, coords: { name: string; role: string }[], now = Date.now()) {
+  const from = monthStart(now), to = nextMonthStart(now), inMonth = (t?: number) => t != null && t >= from && t < to;
+  const rows = new Map<string, CoordRow & { ok: number; bad: number }>();
+  coords.forEach(c => { if (!rows.has(c.name)) rows.set(c.name, { name: c.name, role: c.role, score: 0, fixes: 0, reviews: 0, missions: 0, escalations: 0, reopened: 0, rating: null, rank: 0, ok: 0, bad: 0 }); });
+  const seen = new Set<string>(), notices = new Map<string, number>();
+  for (const e of d.coordLog ?? []) {
+    const r = rows.get(e.by);
+    if (!r || !inMonth(e.t)) continue;
+    const key = `${e.by}|${e.k}|${e.id ?? ""}`;
+    if (seen.has(key)) continue; // one credit per person, kind and item, so repeating clicks earns nothing
+    if (e.k === "notice") { const n = (notices.get(e.by) ?? 0) + 1; notices.set(e.by, n); if (n > COORD_NOTICE_CAP) continue; }
+    seen.add(key);
+    r.score += COORD_POINTS[e.k];
+    if (e.k === "approve" || e.k === "sendback") r.reviews++;
+    if (e.k === "mission" || e.k === "assign") r.missions++;
+    if (e.k === "escalate") r.escalations++;
+    if (e.k === "reopened") r.reopened++;
+  }
+  d.issues.forEach(i => {
+    const r = i.pendingBy ? rows.get(i.pendingBy) : undefined;
+    if (!r || i.hidden) return;
+    if (i.status === "resolved" && inMonth(i.resolvedAt)) { r.fixes++; r.score += COORD_POINTS.resolved + (i.closure === "reporter" ? COORD_POINTS.confirmedBonus : 0); }
+    if (inMonth(i.resolvedAt) || inMonth(i.pendingAt)) Object.entries(i.feedback ?? {}).forEach(([n, f]) => { if (n === r.name) return; if (f.ok) r.ok++; else r.bad++; });
+  });
+  const list = [...rows.values()].map(r => ({ ...r, rating: r.ok + r.bad >= COORD_MIN_RATINGS ? { ok: r.ok, total: r.ok + r.bad } : null }))
+    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+  list.forEach((r, n) => { r.rank = n > 0 && list[n - 1].score === r.score ? list[n - 1].rank : n + 1; });
+  return { rows: list.map(({ ok: _o, bad: _b, ...r }) => r as CoordRow), from, resetsAt: to };
+}
 export const myStats = (d: Doc, name: string): Stats => statsFor(d).get(name) ?? blank();
 export const leaderboard = (d: Doc) => [...statsFor(d)].map(([name, s]) => ({ name, s, pts: points(s) })).filter(x => x.pts > 0).sort((a, b) => b.pts - a.pts).slice(0, 10);
 

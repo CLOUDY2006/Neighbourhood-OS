@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Bell, Radar, PlusCircle, Users, Package, BarChart3, RotateCcw, Play, ShieldAlert, UserCog, User, Globe, Siren, ShieldCheck, FileText, FlaskConical, Sun, Moon, Ellipsis, LogOut } from "lucide-react";
+import { Bell, Radar, PlusCircle, Users, Package, BarChart3, RotateCcw, Play, ShieldAlert, UserCog, User, Globe, Siren, ShieldCheck, FileText, FlaskConical, Sun, Moon, Ellipsis, LogOut, Trophy } from "lucide-react";
 import * as S from "./store";
 import IsoMap, { ViewSwitch, type MapView } from "./IsoMap";
 import { toggleTheme, useTheme } from "./a11y";
@@ -25,7 +25,7 @@ import { LANGS, setLang, useLang, useT } from "./i18n";
 import { AlertBanner, WorldMap, WorldPanel } from "./WorldView";
 
 type Act = (fn: () => unknown, ok?: string) => Promise<void>;
-type Tab = "feed" | "report" | "missions" | "resources" | "people" | "account" | "world" | "sos" | "prepare" | "reports" | "pulse" | "sim";
+type Tab = "feed" | "report" | "missions" | "resources" | "people" | "account" | "world" | "sos" | "prepare" | "reports" | "pulse" | "sim" | "board";
 type Pt = { lat: number; lng: number } | null;
 
 const grp = (s: S.Status) => (s === "resolved" ? "green" : s === "assigned" || s === "progress" || s === "pending" ? "amber" : "red");
@@ -47,6 +47,7 @@ const TAB_INFO: Record<Tab, [string, string]> = {
   world: ["World", "Official hazard feeds. An alert near this neighbourhood can switch on Crisis Mode."],
   sim: ["What-if", "Try different numbers of volunteers and hours. Everything is an estimate and nothing real changes."],
   reports: ["Council reports", "Summaries for local offices: trends, hotspots and hand-offs, with CSV and PDF export."],
+  board: ["Coordinators", "This month's ranking of coordinators in this neighbourhood, scored by verified work. It starts again on the 1st of every month."],
   people: ["People", "Members and their roles. Every coordinator action is recorded in the log."],
   account: ["Account", "Your profile, neighbourhoods, notifications, display settings and privacy."],
 };
@@ -266,6 +267,36 @@ function Resources({ st, pick, act }: { st: S.State; pick: Pt; act: Act }) {
   );
 }
 
+function CoordBoard({ st, demo }: { st: S.State; demo: boolean }) {
+  const [list, setList] = useState<{ name: string; role: string }[] | null>(demo ? [] : null), [bad, setBad] = useState(false);
+  useEffect(() => { if (!demo) S.coordinators().then(setList).catch(() => { setList([]); setBad(true); }); }, [demo]);
+  const coords = demo ? [...new Set((st.coordLog ?? []).map(e => e.by))].map(name => ({ name, role: "admin" })) : list ?? [];
+  const b = S.coordinatorBoard(st, coords), me = S.myName();
+  const month = new Date(b.from).toLocaleString(undefined, { month: "long", year: "numeric", timeZone: "UTC" });
+  return (
+    <>
+      <div className="card">
+        <b>{month}</b>
+        <small className="dim">Counts work done in this neighbourhood only. The table starts again on {new Date(b.resetsAt).toLocaleDateString(undefined, { day: "numeric", month: "long", timeZone: "UTC" })} (UTC), so old work never competes with new work.{demo ? " Demo: simulated names and numbers." : ""}</small>
+      </div>
+      {list === null && <small className="dim">Loading…</small>}
+      {bad && <small className="dim">Could not load the coordinator list. Try again later.</small>}
+      {b.rows.map(r => (
+        <div key={r.name} className="card">
+          <div className="row between"><b>#{r.rank} {r.name}{r.name === me ? " (you)" : ""}</b><span className="chip green">{r.score} points</span></div>
+          <div className="chips">
+            <span className="chip">{r.fixes} fixes approved</span><span className="chip">{r.reviews} reviews</span><span className="chip">{r.missions} missions</span><span className="chip">{r.escalations} escalations</span>
+            {r.reopened > 0 && <span className="chip amber">{r.reopened} sent back</span>}
+          </div>
+          <small className="dim">{r.role === "moderator" ? "Moderator" : "Coordinator"} · Neighbour feedback: {r.rating ? `${Math.round((r.rating.ok / r.rating.total) * 100)}% say fixed (${r.rating.total} ratings)` : `shown after ${S.COORD_MIN_RATINGS} ratings`}</small>
+        </div>
+      ))}
+      {list !== null && !b.rows.length && <small className="dim">No coordinators yet.</small>}
+      <small className="dim">How points work: verifying a report 2, moving it forward 1, asking for review 2, a fix approved by someone else 5 (plus 2 if a reporter confirms it), reviewing someone else's fix 3, sending a weak fix back 1, creating or assigning a mission 2 or 1, sending a complaint to an authority 2, posting a notice 1 (max 3). A fix that is sent back or reopened costs the person who submitted it 2. Each kind of action counts once per report. Only activity inside this app is counted; work done by phone or in person is not.</small>
+    </>
+  );
+}
+
 function People({ act }: { act: Act }) {
   const [ms, setMs] = useState<S.Member[]>([]), [au, setAu] = useState<{ at: string; who: string; action: string; detail: string }[]>([]);
   const load = () => { S.members().then(setMs).catch(() => setMs([])); S.auditLog().then(setAu).catch(() => setAu([])); };
@@ -366,7 +397,7 @@ function Main({ app }: { app: S.AppState }) {
   const asOf = tt.on && tt.days > 0 ? Date.now() - tt.days * 86400000 : null;
   const stView: S.State = asOf ? { ...S.docAsOf(st, asOf), role: st.role } : st;
   const NAV: [Tab, string, typeof Radar][] = [["feed", "Command", Radar], ["report", "Report", PlusCircle], ["missions", "Missions", Users], ["pulse", "Pulse", BarChart3], ["sos", "SOS", Siren]];
-  const MORE: [Tab, string, typeof Radar][] = [["resources", "Resources", Package], ["prepare", "Prepare", ShieldCheck], ["world", "World", Globe]];
+  const MORE: [Tab, string, typeof Radar][] = [["resources", "Resources", Package], ["board", "Coordinators", Trophy], ["prepare", "Prepare", ShieldCheck], ["world", "World", Globe]];
   if (st.role === "admin") MORE.push(["sim", "What-if", FlaskConical], ["reports", "Reports", FileText]);
   if (!demo && st.role === "admin") MORE.push(["people", "People", UserCog]);
   const tabNow: Tab = (tab === "people" || tab === "reports" || tab === "sim") && st.role !== "admin" ? "feed" : tab;
@@ -462,6 +493,7 @@ function Main({ app }: { app: S.AppState }) {
         {tabNow === "sim" && <Simulator st={st} onOverlay={setSimMap} />}
         {tabNow === "prepare" && <Prepare st={st} app={app} act={act} />}
         {tabNow === "reports" && <Reports st={st} app={app} act={act} />}
+        {tabNow === "board" && <CoordBoard st={st} demo={demo} />}
         {tabNow === "people" && <People act={act} />}
         {tabNow === "account" && <Account st={st} app={app} act={act} />}
         </motion.div></AnimatePresence>

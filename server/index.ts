@@ -87,13 +87,22 @@ const alertsOf = (n: { center_lat: number; center_lng: number; radius_m: number 
 };
 const isId = (s: string) => /^[A-Za-z0-9:_-]{1,40}$/.test(s);
 
+// The first FOUNDING_COORDINATORS people to join any neighbourhood (named or automatic cell) become coordinators. Everyone after is a resident.
+const FOUNDING_COORDINATORS = 3;
 async function ensureMember(nid: string, u: User, role: Role = "resident"): Promise<Role> {
-  const ex = await pool.query("select role from members where neighbourhood_id = $1 and user_id = $2", [nid, u.id]);
-  if (ex.rows[0]) return ex.rows[0].role;
-  const cnt = await pool.query("select count(*)::int as n from members where user_id = $1", [u.id]);
-  if (cnt.rows[0].n >= 5) throw new HttpError(400, "You can belong to up to 5 neighbourhoods. Leave one first");
-  await pool.query("insert into members (neighbourhood_id, user_id, display_name, role) values ($1, $2, $3, $4) on conflict do nothing", [nid, u.id, u.handle, role]);
-  return role;
+  return tx(async c => {
+    // One join at a time per neighbourhood, so two people joining together cannot both take the same founding slot.
+    await c.query("select pg_advisory_xact_lock(hashtext($1))", [nid]);
+    const ex = await c.query("select role from members where neighbourhood_id = $1 and user_id = $2", [nid, u.id]);
+    if (ex.rows[0]) return ex.rows[0].role as Role;
+    const cnt = await c.query("select count(*)::int as n from members where user_id = $1", [u.id]);
+    if (cnt.rows[0].n >= 5) throw new HttpError(400, "You can belong to up to 5 neighbourhoods. Leave one first");
+    const size = (await c.query("select count(*)::int as n from members where neighbourhood_id = $1", [nid])).rows[0].n as number;
+    const finalRole: Role = role === "admin" || size < FOUNDING_COORDINATORS ? "admin" : role;
+    await c.query("insert into members (neighbourhood_id, user_id, display_name, role) values ($1, $2, $3, $4) on conflict do nothing", [nid, u.id, u.handle, finalRole]);
+    if (finalRole === "admin" && role !== "admin") await c.query("insert into audit_log (neighbourhood_id, user_id, who, action, detail) values ($1, $2, $3, 'role', $4)", [nid, u.id, u.handle, JSON.stringify({ member: u.id, role: "admin", reason: "founding member" })]);
+    return finalRole;
+  });
 }
 
 const fail = (res: express.Response, e: unknown) => {
@@ -367,6 +376,14 @@ const needAdmin = async (req: express.Request) => {
   if ((await memberRole(pool, id, u)) !== "admin") throw new HttpError(403, "Only coordinators can do this");
   return { u, id };
 };
+// Any member can see who the coordinators are. The monthly ranking itself is computed in the browser from the shared document.
+app.get("/api/n/:id/coordinators", ah(async (req, res) => {
+  const u = await authenticate(req); const id = String(req.params.id);
+  if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
+  await memberRole(pool, id, u);
+  const r = await pool.query("select display_name, role from members where neighbourhood_id = $1 and role in ('admin', 'moderator') order by joined_at limit 100", [id]);
+  res.json(r.rows.map(m => ({ name: m.display_name, role: m.role })));
+}));
 app.get("/api/n/:id/members", ah(async (req, res) => {
   const { id } = await needAdmin(req);
   const r = await pool.query("select user_id, display_name, role, coordinator_requested_at, joined_at from members where neighbourhood_id = $1 order by joined_at limit 500", [id]);

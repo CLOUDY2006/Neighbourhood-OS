@@ -22,8 +22,8 @@ export function CheckinCard({ st, app, act, compact }: { st: S.State; app: S.App
           <small className="dim">Started {ago(c.started)} by {c.by}</small>
           {!admin && <p><b>{t("Are you safe?")}</b></p>}
           <div className="row wrap">
-            <button className={mine?.ok === true ? "go" : ""} onClick={() => act(() => S.checkinReply(true), "Thanks. You are marked safe")}>{t("I am safe")}</button>
-            <button className={mine?.ok === false ? "sosbtn" : "warn"} onClick={() => act(() => S.checkinReply(false), "Coordinators can see that you need help. Call emergency services if you are in danger")}>{t("I need help")}</button>
+            <button className={`choice ${mine?.ok === true ? "go" : ""}`} aria-pressed={mine?.ok === true} onClick={() => act(() => S.checkinReply(true), "Thanks. You are marked safe")}>{t("I am safe")}</button>
+            <button className={mine?.ok === false ? "sosbtn" : "choice"} aria-pressed={mine?.ok === false} onClick={() => act(() => S.checkinReply(false), "Coordinators can see that you need help. Call emergency services if you are in danger")}>{t("I need help")}</button>
           </div>
           {admin && (
             <>

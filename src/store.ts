@@ -239,6 +239,7 @@ export async function deleteAccount() { await api("/api/me", undefined, "DELETE"
 
 export const members = () => api<Member[]>(`/api/n/${enc(app.nbhd!.id)}/members`);
 export const setMemberRole = (userId: string, r: L.Role) => api(`/api/n/${enc(app.nbhd!.id)}/members/${enc(userId)}/role`, { role: r });
+export const coordinators = () => api<{ name: string; role: L.Role }[]>(`/api/n/${enc(app.nbhd!.id)}/coordinators`);
 export const auditLog = () => api<{ at: string; who: string; action: string; detail: string }[]>(`/api/n/${enc(app.nbhd!.id)}/audit`);
 export async function setMyRole(r: "resident" | "volunteer") { const j = await api<{ role: L.Role }>(`/api/n/${enc(app.nbhd!.id)}/me/role`, { role: r }); role = j.role; commit(); }
 export const requestCoordinator = () => api(`/api/n/${enc(app.nbhd!.id)}/coordinator-request`, {});

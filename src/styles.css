@@ -77,6 +77,10 @@ button.go{background:var(--primary);border-color:var(--primary);color:var(--on-p
 button.go:hover{background:var(--primary-hover);border-color:var(--primary-hover)}
 button.warn{background:var(--amber-soft);border-color:color-mix(in srgb,var(--amber) 45%,transparent);color:var(--amber-text);font-weight:600}
 button.warn:hover{background:color-mix(in srgb,var(--amber) 22%,var(--card));border-color:var(--amber)}
+/* Answer buttons (for example "It looks fixed" / "Not fully fixed"): both look the same until one is chosen, then the chosen one is highlighted. */
+button.choice.on{background:var(--amber-soft);border-color:color-mix(in srgb,var(--amber) 45%,transparent);color:var(--amber-text);font-weight:600}
+button.choice.on:hover{background:color-mix(in srgb,var(--amber) 22%,var(--card));border-color:var(--amber)}
+button.choice.on::before{content:"\2713";font-weight:700}
 button.ghost{background:transparent;border-color:transparent;color:var(--ink-2)}
 button.ghost:hover{background:var(--surface-3);color:var(--ink)}
 button.x{min-height:28px;padding:3px 10px;font-size:12px;border-radius:8px;background:transparent;color:var(--ink-2)}
