@@ -64,7 +64,7 @@ async function memberRole(c: Q, nid: string, u: User): Promise<Role> {
   if (!r.rows[0]) { if (u.platformAdmin) return "admin"; throw new HttpError(403, "Join this neighbourhood first"); }
   return u.platformAdmin ? "admin" : (r.rows[0].role as Role);
 }
-const info = (n: any, role: Role) => ({ id: n.id, kind: n.kind, name: n.name, lat: n.center_lat, lng: n.center_lng, r: n.radius_m, role });
+const info = (n: any, role: Role, members?: number) => ({ id: n.id, kind: n.kind, name: n.name, lat: n.center_lat, lng: n.center_lng, r: n.radius_m, role, ...(members == null ? {} : { members }) });
 const viewDoc = (d: Doc, role: Role, handle: string, memberCount = 0): Doc => {
   const mod = role === "admin" || role === "moderator";
   const base: Doc = {
@@ -131,8 +131,16 @@ app.get("/api/me", ah(async (req, res) => {
 
 app.get("/api/neighbourhoods/mine", ah(async (req, res) => {
   const u = await authenticate(req);
-  const r = await pool.query("select n.*, m.role from members m join neighbourhoods n on n.id = m.neighbourhood_id where m.user_id = $1 order by m.joined_at", [u.id]);
-  res.json(r.rows.map(n => info(n, u.platformAdmin ? "admin" : n.role)));
+  const r = await pool.query("select n.*, m.role, (select count(*)::int from members x where x.neighbourhood_id = n.id) as members from members m join neighbourhoods n on n.id = m.neighbourhood_id where m.user_id = $1 order by m.joined_at", [u.id]);
+  res.json(r.rows.map(n => info(n, u.platformAdmin ? "admin" : n.role, n.members)));
+}));
+
+// How many people have joined an automatic area, so a newcomer sees it before joining. Only a number is returned.
+app.get("/api/neighbourhoods/cell-count", ah(async (req, res) => {
+  const u = await authenticate(req); rl(`cellcount:${u.id}`, 60, 3600000);
+  const cell = parseCell(String(req.query.cell ?? ""));
+  if (!cell) throw new HttpError(400, "Invalid area");
+  res.json({ members: await countMembers(pool, cell.id) });
 }));
 
 app.post("/api/neighbourhoods/cell", ah(async (req, res) => {

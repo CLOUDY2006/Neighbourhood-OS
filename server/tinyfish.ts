@@ -74,9 +74,36 @@ export interface RouteCheck {
 }
 
 const WHAT: Record<Cat, string> = {
-  garbage: "garbage sanitation complaint", streetlight: "street light complaint", water: "water supply leakage complaint",
-  pothole: "road pothole complaint", unsafe: "public safety hazard complaint", blocked: "road obstruction complaint", other: "civic grievance complaint",
+  garbage: "garbage waste collection sanitation complaint", streetlight: "street light not working complaint electricity",
+  water: "water supply leakage complaint water board", pothole: "pothole road repair complaint PWD roads department",
+  unsafe: "unsafe public area hazard complaint", blocked: "road blockage obstruction encroachment complaint", other: "civic grievance complaint",
 };
+/** Words that show a page is about the problem itself, used so a pothole report prefers road and PWD pages over general city pages. */
+const TOPIC: Record<Cat, string[]> = {
+  garbage: ["garbage", "waste", "sanitation", "swachh", "sweeping", "solid waste", "dustbin", "cleanliness"],
+  streetlight: ["street light", "streetlight", "lighting", "lamp", "electric"],
+  water: ["water", "jal", "leak", "pipeline", "sewer", "supply"],
+  pothole: ["pothole", "road repair", "roads", "road", "pwd", "public works"],
+  unsafe: ["safety", "unsafe", "hazard", "disaster", "women", "emergency"],
+  blocked: ["obstruction", "blocked", "blockage", "encroachment", "road", "traffic"],
+  other: ["grievance", "complaint", "municipal", "civic"],
+};
+const GENERIC_PLACE = /^(colony|nagar|sector|sec|block|phase|extension|enclave|vihar|society|apartments?|road|market|village|town|city|area|ward|street)$/i;
+/** If the person typed a locality plus a city ("dwarka sec-13 delhi"), the last word is usually the city, which is what the department pages are named after. */
+export const cityOnly = (where: string): string | null => {
+  const words = where.split(/[ ,]+/).filter(Boolean);
+  const last = words[words.length - 1] ?? "";
+  return words.length >= 3 && last.length >= 4 && !/\d/.test(last) && !GENERIC_PLACE.test(last) ? last : null;
+};
+/** Order results: official government pages, pages about this kind of problem, pages that mention the place. Pure. */
+export function rankSources(found: RouteSource[], where: string, cat: Cat): RouteSource[] {
+  const uniq = [...new Map(found.map(r => [r.url, r])).values()];
+  const tok = where.split(/[ ,]+/)[0].toLowerCase(), words = TOPIC[cat] ?? TOPIC.other;
+  const mentions = (r: RouteSource) => tok.length >= 3 && `${r.title} ${r.snippet} ${r.url}`.toLowerCase().includes(tok);
+  const topical = (r: RouteSource) => { const h = `${r.title} ${r.snippet} ${r.url}`.toLowerCase(); return Math.min(2, words.filter(w => h.includes(w)).length); };
+  const score = (r: RouteSource) => (r.official ? 3 : 0) + topical(r) * 2 + (mentions(r) ? 1 : 0);
+  return [...uniq].sort((a, b) => score(b) - score(a));
+}
 
 const hostOf = (u: string) => { try { return new URL(u).hostname.toLowerCase(); } catch { return ""; } };
 const REGION: Record<string, string> = { IN: "India" };
@@ -157,16 +184,19 @@ export async function verifyRoute(city: string, cat: Cat): Promise<RouteCheck> {
   const what = WHAT[cat] ?? WHAT.other;
   // Naming the country in the query keeps a short name such as "Delhi" from matching places abroad.
   const place = region && !where.toLowerCase().includes(region.toLowerCase()) ? `${where}, ${region}` : where;
-  let found = await tfSearch(`${place} municipal ${what} online portal helpline number`);
+  const q = (w: string) => `${w} municipal ${what} online portal helpline number`;
+  const cityName = cityOnly(where), cityPlace = cityName && region ? `${cityName}, ${region}` : cityName;
+  let found: RouteSource[];
+  if (cityPlace) {
+    // Search the exact place and the city at the same time. The city-wide search finds the department pages for this kind of problem.
+    const both = await Promise.allSettled([tfSearch(q(place)), tfSearch(q(cityPlace))]);
+    found = both.flatMap(r => (r.status === "fulfilled" ? r.value : []));
+    if (!found.length) { const bad = both.find(r => r.status === "rejected") as PromiseRejectedResult | undefined; if (bad) throw bad.reason; }
+  } else found = await tfSearch(q(place));
   if (!found.some(r => r.official) && GOV_DOMAINS[country]) {
     try { found = [...found, ...(await tfSearch(`${place} ${what}`, GOV_DOMAINS[country]))]; } catch (e) { if (!found.length) throw e; }
   }
-  const uniq = [...new Map(found.map(r => [r.url, r])).values()];
-  // Government pages first, and within each group the ones that actually mention the place first.
-  const tok = where.split(/[ ,]+/)[0].toLowerCase();
-  const mentions = (r: RouteSource) => tok.length >= 3 && `${r.title} ${r.snippet} ${r.url}`.toLowerCase().includes(tok);
-  const score = (r: RouteSource) => (r.official ? 2 : 0) + (mentions(r) ? 1 : 0);
-  const ranked = [...uniq].sort((a, b) => score(b) - score(a)).slice(0, 5);
+  const ranked = rankSources(found, where, cat).slice(0, 5);
   if (!ranked.length) throw new TinyFishError(404, "No pages were found for that city. Check the spelling or try a larger nearby city");
 
   const toRead = ranked.slice(0, 3).map(r => r.url);

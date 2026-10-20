@@ -11,7 +11,7 @@
     "start": "tsx server/index.ts",
     "preview": "vite preview",
     "check": "tsc --noEmit && tsc -p tsconfig.server.json",
-    "test": "tsx tests/community.ts && tsx tests/sos.ts && tsx tests/cap.ts && tsx tests/agent.ts && tsx tests/review.ts && tsx tests/aiProvider.ts && tsx tests/hereCheck.ts && tsx tests/tinyfishCheck.ts && tsx tests/tinyfishRoutes.ts && tsx tests/osmCheck.ts && tsx tests/placesCheck.ts && tsx tests/reporterConfirm.ts && tsx tests/coordBoard.ts && tsx tests/afterPhoto.ts",
+    "test": "tsx tests/community.ts && tsx tests/sos.ts && tsx tests/cap.ts && tsx tests/agent.ts && tsx tests/review.ts && tsx tests/aiProvider.ts && tsx tests/hereCheck.ts && tsx tests/tinyfishCheck.ts && tsx tests/tinyfishRoutes.ts && tsx tests/tinyfishRank.ts && tsx tests/osmCheck.ts && tsx tests/placesCheck.ts && tsx tests/reporterConfirm.ts && tsx tests/coordBoard.ts && tsx tests/afterPhoto.ts && tsx tests/missionSpot.ts",
     "seed": "tsx server/seed.ts",
     "seed:sql": "tsx server/seed.ts --sql",
     "test:render": "esbuild tests/render.tsx --bundle --platform=node --format=cjs --define:import.meta.env={} --jsx=automatic --loader:.json=json \"--define:location={\\\"origin\\\":\\\"http://x\\\",\\\"search\\\":\\\"\\\"}\" --log-level=error --outfile=node_modules/.cache/render.cjs && node node_modules/.cache/render.cjs"

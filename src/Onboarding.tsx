@@ -59,7 +59,7 @@ export default function Onboarding() {
   const [f, setF] = useState({ email: "", password: "", name: "" });
   const [msg, setMsg] = useState(""), [bad, setBad] = useState(false), [busy, setBusy] = useState(false);
   const [spot, setSpot] = useState<Spot>(null);
-  const [near, setNear] = useState<S.NearNamed[]>([]);
+  const [near, setNear] = useState<S.NearNamed[]>([]), [cellN, setCellN] = useState<number | null>(null);
   const [q, setQ] = useState(""), [places, setPlaces] = useState<S.Place[]>([]);
   const [nm, setNm] = useState({ name: "", r: 500 });
   useEffect(() => { document.title = "Sign in · NEIGHBOURHOOD OS"; return () => { document.title = "NEIGHBOURHOOD OS"; }; }, []);
@@ -69,7 +69,7 @@ export default function Onboarding() {
     try { await fn(); if (ok) setMsg(ok); } catch (e) { setBad(true); setMsg((e as Error).message); }
     setBusy(false);
   };
-  const show = (s: Spot) => { setSpot(s); setNear([]); if (s) S.nearbyNamed(s.lat, s.lng).then(setNear).catch(() => setNear([])); };
+  const show = (s: Spot) => { setSpot(s); setNear([]); setCellN(null); if (s) { S.nearbyNamed(s.lat, s.lng).then(setNear).catch(() => setNear([])); S.cellCount(cellOf(s.lat, s.lng).id).then(r => setCellN(r.members)).catch(() => setCellN(null)); } };
   const locate = () => run(() => new Promise<void>((resolve, reject) => {
     if (!navigator.geolocation) return reject(new Error("Your browser does not support location. Search for a place instead"));
     navigator.geolocation.getCurrentPosition(p => {
@@ -153,7 +153,7 @@ export default function Onboarding() {
               {app.mine.length > 0 && (
                 <div className="form">
                   <h3>{t("Your neighbourhoods")}</h3>
-                  {app.mine.map(n => <button key={n.id} className="issue" onClick={() => run(() => S.enter(n))}><span className="auth-nic"><MapPin size={15} /></span><span className="grow">{n.name}<small>{n.kind === "named" ? "Named" : "Area"} · you are a {n.role === "admin" ? "coordinator" : n.role}</small></span></button>)}
+                  {app.mine.map(n => <button key={n.id} className="issue" onClick={() => run(() => S.enter(n))}><span className="auth-nic"><MapPin size={15} /></span><span className="grow">{n.name}<small>{n.kind === "named" ? "Named" : "Area"} · you are a {n.role === "admin" ? "coordinator" : n.role}{n.members != null ? ` · ${n.members} ${n.members === 1 ? "person" : "people"} joined` : ""}</small></span></button>)}
                 </div>
               )}
               <div className="form">
@@ -170,7 +170,8 @@ export default function Onboarding() {
                 <div className="card">
                   <b>{spot.label}</b>
                   <button className="go" disabled={busy} onClick={() => run(() => S.joinCell(cellOf(spot.lat, spot.lng).id))}>{t("Join this area's neighbourhood")}</button>
-                  {near.length > 0 && <><small className="dim">Named neighbourhoods nearby</small>{near.map(n => <button key={n.id} className="issue" onClick={() => run(() => S.joinById(n.id))}><span className="grow">{n.name}<small>{n.members} member{n.members === 1 ? "" : "s"} · {n.r} m radius</small></span></button>)}</>}
+                  {cellN != null && <small className="dim">{cellN === 0 ? "Nobody has joined yet." : `${cellN} ${cellN === 1 ? "person has" : "people have"} joined this neighbourhood.`}{cellN < 3 ? ` The first 3 people become coordinators: ${3 - cellN} spot${3 - cellN === 1 ? "" : "s"} left.` : ""}</small>}
+                  {near.length > 0 && <><small className="dim">Named neighbourhoods nearby</small>{near.map(n => <button key={n.id} className="issue" onClick={() => run(() => S.joinById(n.id))}><span className="grow">{n.name}<small>{n.members} {n.members === 1 ? "person has" : "people have"} joined · {n.r} m radius{n.members < 3 ? ` · ${3 - n.members} coordinator spot${3 - n.members === 1 ? "" : "s"} left` : ""}</small></span></button>)}</>}
                   <div className="form">
                     <small className="dim">Or start a named neighbourhood centered here</small>
                     <input placeholder="Name, e.g. Lakeview Colony" aria-label="Neighbourhood name" maxLength={60} value={nm.name} onChange={e => setNm({ ...nm, name: e.target.value })} />

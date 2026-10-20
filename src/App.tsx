@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Bell, Radar, PlusCircle, Users, Package, BarChart3, RotateCcw, Play, ShieldAlert, UserCog, User, Globe, Siren, ShieldCheck, FileText, FlaskConical, Sun, Moon, Ellipsis, LogOut, Trophy } from "lucide-react";
+import { Bell, Radar, PlusCircle, Users, Package, BarChart3, RotateCcw, Play, ShieldAlert, UserCog, User, Globe, Siren, ShieldCheck, FileText, FlaskConical, Sun, Moon, Ellipsis, LogOut, Trophy, MapPin } from "lucide-react";
 import * as S from "./store";
 import IsoMap, { ViewSwitch, type MapView } from "./IsoMap";
 import { toggleTheme, useTheme } from "./a11y";
@@ -194,7 +194,7 @@ function Report({ pick, act, done }: { pick: Pt; act: Act; done: (id: string) =>
   );
 }
 
-function Missions({ st, act, pick }: { st: S.State; act: Act; pick: Pt }) {
+function Missions({ st, act, pick, setPick, msel, onShow }: { st: S.State; act: Act; pick: Pt; setPick: (p: Pt) => void; msel: string | null; onShow: (m: S.Mission) => void }) {
   const [f, setF] = useState({ title: "", need: 5 });
   const me = st.volunteers.find(v => v.name === S.myName());
   return (
@@ -203,8 +203,9 @@ function Missions({ st, act, pick }: { st: S.State; act: Act; pick: Pt }) {
         <div className="card form">
           <b>New community mission</b>
           <input placeholder="e.g. Park cleanup this Sunday" maxLength={100} value={f.title} onChange={e => setF({ ...f, title: e.target.value })} />
-          <input type="number" min={1} max={200} value={f.need} onChange={e => setF({ ...f, need: Number(e.target.value) })} />
-          <button className="go" onClick={() => act(async () => { await S.mission(f.title, f.need); setF({ title: "", need: 5 }); }, "Mission created")}>Create mission</button>
+          <input type="number" min={1} max={200} value={f.need} onChange={e => setF({ ...f, need: Number(e.target.value) })} aria-label="Volunteers needed" />
+          <small className="dim">{pick ? "Meeting spot chosen on the map. Click the map again to change it." : "Click the map to mark where this mission happens. Volunteers will see it there."}</small>
+          <button className="go" disabled={!pick} onClick={() => act(async () => { await S.mission(f.title, f.need, undefined, pick); setF({ title: "", need: 5 }); setPick(null); }, "Mission created")}>Create mission</button>
         </div>
       )}
       {S.can(st.role, "availability") && (
@@ -219,11 +220,14 @@ function Missions({ st, act, pick }: { st: S.State; act: Act; pick: Pt }) {
       )}
       {S.can(st.role, "volunteerArea") && <AreaShare st={st} act={act} pick={pick} />}
       {st.missions.map(m => (
-        <div key={m.id} className="card">
+        <div key={m.id} className="card" style={msel === m.id || (m.issueId && msel === m.issueId) ? { outline: "2px solid var(--accent, #8b5cf6)" } : undefined}>
           <div className="row between"><b>{m.title}</b>{m.done && <span className="chip green">Done</span>}</div>
           <div className="bar"><i style={{ width: `${Math.min(100, (m.joined.length / m.need) * 100)}%` }} /></div>
           <small className="dim">{m.joined.length} of {m.need} volunteers · {m.hours} volunteer hours</small>
-          {S.can(st.role, "join") && !m.done && <button onClick={() => act(() => S.join(m.id), "You joined the mission")}>Join mission</button>}
+          <div className="row wrap">
+            {S.missionSpot(st, m) ? <button onClick={() => onShow(m)}><MapPin size={14} /> Show on map</button> : <small className="dim">No location marked</small>}
+            {S.can(st.role, "join") && !m.done && <button onClick={() => act(() => S.join(m.id), "You joined the mission")}>Join mission</button>}
+          </div>
         </div>
       ))}
       {!st.missions.length && <p className="dim">No missions yet. A coordinator can create one.</p>}
@@ -367,7 +371,7 @@ function Account({ st, app, act }: { st: S.State; app: S.AppState; act: Act }) {
 function Main({ app }: { app: S.AppState }) {
   const st = S.useStore(), n = app.nbhd!, demo = app.mode === "demo", t = useT(), lang = useLang();
   const [tab, setTab] = useState<Tab>("feed");
-  const [sel, setSel] = useState<string | null>(null);
+  const [sel, setSel] = useState<string | null>(null), [msel, setMsel] = useState<string | null>(null), [focus, setFocus] = useState<{ lat: number; lng: number; n: number } | null>(null);
   const [pick, setPick] = useState<Pt>(null);
   const [filter, setFilter] = useState<S.Status[]>([...S.STATUSES]);
   const [res, setRes] = useState(true);
@@ -460,9 +464,9 @@ function Main({ app }: { app: S.AppState }) {
       </header>
       <main className="center">
         <div className="layer" hidden={tabNow === "world" || view === "list"}>
-          <IsoMap st={stView} name={n.name} center={{ lat: n.lat, lng: n.lng }} map={app.map} note={app.mapNote} sos={sosList} official={official} sel={sel}
-            onSel={id => { if (id.startsWith("s")) setTab("sos"); else { setSel(id); setTab("feed"); } }}
-            pick={pick} onPick={(lat, lng) => setPick({ lat, lng })} filter={filter} setFilter={setFilter} res={res} setRes={setRes} picking={tabNow === "report" || tabNow === "resources" || tabNow === "sos"} zones={zones}
+          <IsoMap st={stView} name={n.name} center={{ lat: n.lat, lng: n.lng }} map={app.map} note={app.mapNote} sos={sosList} official={official} sel={tabNow === "missions" ? msel ?? sel : sel} focus={focus}
+            onSel={id => { if (id.startsWith("s")) setTab("sos"); else if (id.startsWith("m")) { setMsel(id); setTab("missions"); } else { setSel(id); setTab("feed"); } }}
+            pick={pick} onPick={(lat, lng) => setPick({ lat, lng })} filter={filter} setFilter={setFilter} res={res} setRes={setRes} picking={tabNow === "report" || tabNow === "resources" || tabNow === "sos" || (tabNow === "missions" && S.can(st.role, "mission"))} zones={zones}
             view={view} setView={setView} heat={heat} setHeat={setHeat} showVol={showVol} setShowVol={setShowVol} canSeeVol={st.role === "admin" || st.role === "moderator"}
             sim={simMap} timeOn={tt.on} onTime={() => setTt(o => (o.on ? { on: false, days: 0 } : { on: true, days: 14 }))} />
         </div>
@@ -487,7 +491,7 @@ function Main({ app }: { app: S.AppState }) {
         {tabNow === "sos" && <SosPanel st={st} app={app} pick={pick} setPick={setPick} act={act} />}
         {tabNow === "world" && <WorldPanel app={app} sel={selEv} onSel={setSelEv} />}
         {tabNow === "report" && <Report pick={pick} act={act} done={id => { setSel(id); setPick(null); setTab("feed"); }} />}
-        {tabNow === "missions" && <Missions st={st} act={act} pick={pick} />}
+        {tabNow === "missions" && <Missions st={st} act={act} pick={pick} setPick={setPick} msel={msel} onShow={m => { setMsel(m.lat != null ? m.id : m.issueId ?? m.id); const sp = S.missionSpot(st, m); if (sp) setFocus({ ...sp, n: Date.now() }); }} />}
         {tabNow === "resources" && <Resources st={st} pick={pick} act={act} />}
         {tabNow === "pulse" && <Pulse st={st} app={app} act={act} demo={demo} />}
         {tabNow === "sim" && <Simulator st={st} onOverlay={setSimMap} />}

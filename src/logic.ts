@@ -45,7 +45,13 @@ export interface Care { name: string; need: string; note: string; t: number }
 export interface Plan { routes: string; notes: string; contacts: string; updated: number; by: string }
 export interface Share { id: string; kind: "offer" | "request"; cat: string; title: string; note: string; author: string; created: number; expires: number; status: "open" | "matched" | "done"; with?: string; thread: { by: string; text: string; t: number }[] }
 export interface Notice { id: string; title: string; body: string; author: string; created: number; pinned: boolean; urgent: boolean }
-export interface Mission { id: string; title: string; issueId?: string; need: number; joined: string[]; hours: number; done: boolean }
+export interface Mission { id: string; title: string; issueId?: string; need: number; joined: string[]; hours: number; done: boolean; lat?: number; lng?: number }
+/** Where a mission happens: the spot a coordinator marked, or the location of the report it is linked to. */
+export const missionSpot = (d: Pick<Doc, "issues">, m: Mission): { lat: number; lng: number } | null => {
+  if (m.lat != null && m.lng != null) return { lat: m.lat, lng: m.lng };
+  const i = m.issueId ? d.issues.find(x => x.id === m.issueId) : undefined;
+  return i ? { lat: i.lat, lng: i.lng } : null;
+};
 export interface Resource { id: string; name: string; kind: Kind; lat: number; lng: number; note: string; low?: boolean }
 export interface Volunteer { id: string; name: string; skills: Cat[]; available: boolean; lat?: number; lng?: number; abilities?: string[] }
 export interface Ev { t: number; text: string; tone: string; to?: string }
@@ -68,7 +74,7 @@ export type Action =
   | { t: "merge"; id: string }
   | { t: "verify"; id: string; v: Verif }
   | { t: "advance"; id: string }
-  | { t: "mission"; title: string; need: number; issueId?: string }
+  | { t: "mission"; title: string; need: number; issueId?: string; lat?: number; lng?: number }
   | { t: "join"; mid: string }
   | { t: "assign"; mid: string; name: string }
   | { t: "proof"; id: string; text: string; photo?: string }
@@ -505,7 +511,10 @@ export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; ln
         const i = issue(a.issueId); m.issueId = i.id; i.missionId = m.id; cred("mission", i.id);
         if (i.status === "reported" || i.status === "review") i.status = "assigned";
         assigned(i, `Mission created: ${m.title}`); log(i, "Cleanup mission created and assigned", "ok");
-      } else { cred("mission", m.id); ev(`New community mission: ${title}`, "ok"); }
+      } else {
+        if (a.lat != null || a.lng != null) { const lat = num(a.lat, "Latitude"), lng = num(a.lng, "Longitude"); inBounds(lat, lng); m.lat = Math.round(lat * 1e5) / 1e5; m.lng = Math.round(lng * 1e5) / 1e5; }
+        cred("mission", m.id); ev(`New community mission: ${title}`, "ok");
+      }
       d.missions.push(m); result = m.id; break;
     }
     case "join": {

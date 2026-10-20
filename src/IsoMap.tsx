@@ -22,7 +22,7 @@ const prefersCalm = () => typeof window !== "undefined" && window.matchMedia("(p
 const TILTS = [TILT0, 0.68, 0.36];
 const TILT_NAME = (t: number) => (t > 0.6 ? "high, looking down" : t < 0.42 ? "low, street level" : "standard");
 
-interface Item { id: string; kind: "issue" | "res" | "sos" | "vol"; ax: number; ay: number; col: string; Icon: LucideIcon; label: string; n?: number; pulse: boolean; prog?: number; mission?: string; dashed?: boolean }
+interface Item { id: string; kind: "issue" | "res" | "sos" | "vol" | "mission"; ax: number; ay: number; col: string; Icon: LucideIcon; label: string; n?: number; pulse: boolean; prog?: number; mission?: string; dashed?: boolean }
 function layout(its: Item[], lift: number) {
   const pos = its.map(i => ({ x: i.ax, y: i.ay - lift }));
   for (let it = 0; it < 70; it++) {
@@ -53,11 +53,11 @@ interface Props {
   onPick: (lat: number, lng: number) => void; filter: S.Status[]; setFilter: (f: S.Status[]) => void;
   res: boolean; setRes: (b: boolean) => void; picking: boolean; zones: { cat: S.Cat; lat: number; lng: number; count: number }[];
   view: MapView; setView: (v: MapView) => void; heat: boolean; setHeat: (b: boolean) => void; showVol: boolean; setShowVol: (b: boolean) => void;
-  canSeeVol: boolean; sim: Record<string, number | null> | null; timeOn: boolean; onTime: () => void;
+  canSeeVol: boolean; sim: Record<string, number | null> | null; timeOn: boolean; onTime: () => void; focus?: { lat: number; lng: number; n: number } | null;
 }
 const GROUPS: [string, S.Status[], string][] = [["Open", ["reported", "review"], "red"], ["In progress", ["assigned", "progress", "pending"], "amber"], ["Fixed", ["resolved"], "green"]];
 
-export default function IsoMap({ st, name, center, map, note, sos, official, sel, onSel, pick, onPick, filter, setFilter, res, setRes, picking, zones, view, setView, heat, setHeat, showVol, setShowVol, canSeeVol, sim, timeOn, onTime }: Props) {
+export default function IsoMap({ st, name, center, map, note, sos, official, sel, onSel, pick, onPick, filter, setFilter, res, setRes, picking, zones, view, setView, heat, setHeat, showVol, setShowVol, canSeeVol, sim, timeOn, onTime, focus }: Props) {
   const theme = useTheme(), pal = palette(theme), a11y = useA11y(), calm = a11y.motion || prefersCalm();
   const flat = view === "flat";
   const box = useRef<HTMLDivElement>(null), svg = useRef<SVGSVGElement>(null), cvs = useRef<HTMLCanvasElement>(null), inited = useRef("");
@@ -148,6 +148,12 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
       const a = A(x.lat, x.lng);
       its.push({ id: x.id, kind: "sos", ax: a.x, ay: a.y, col: pal.red, Icon: Siren, label: "SOS request", pulse: x.status !== "closed" && x.status !== "helped" });
     });
+    // Community missions with a marked spot get their own pin. Missions linked to a report already show on that report's pin.
+    st.missions.forEach(m => {
+      if (m.done || m.lat == null || m.lng == null) return;
+      const a = A(m.lat, m.lng);
+      its.push({ id: m.id, kind: "mission", ax: a.x, ay: a.y, col: pal.teal, Icon: Users, label: trunc(m.title), pulse: !sim, mission: `${m.joined.length}/${m.need}` });
+    });
     if (res) st.resources.forEach(r => {
       const a = A(r.lat, r.lng);
       its.push({ id: r.id, kind: "res", ax: a.x, ay: a.y, col: r.low ? pal.amber : pal.teal, Icon: RI[r.kind], label: trunc(r.name), pulse: !!r.low });
@@ -167,6 +173,8 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
     const cx = n ? items.reduce((a, i) => a + i.ax, 0) / n : c0.x, cy = n ? items.reduce((a, i) => a + i.ay, 0) / n : c0.y;
     return { wx: cx, wy: cy - lift / 2, k: size.w < 600 ? 0.62 : 0.85 };
   };
+  // The Missions list can ask the map to move to a mission's spot.
+  useEffect(() => { if (focus) { const a = A(focus.lat, focus.lng); centerOn(a.x, a.y - 60, 1.1); } }, [focus?.n]); // eslint-disable-line react-hooks/exhaustive-deps
   const home = () => { const h = homeTarget(); centerOn(h.wx, h.wy, h.k); };
   const zoomAt = (cx: number, cy: number, f: number) => setV(o => { const k = cl(o.k * f, 0.3, 2.4), r = k / o.k; return { k, x: cx - (cx - o.x) * r, y: cy - (cy - o.y) * r }; });
 
@@ -246,7 +254,7 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
     const w = it.label.length * 7 + 24, round = it.kind === "res" || small;
     return (
       <g key={it.id} transform={`translate(${p.x},${p.y}) scale(${sc})`} className={`mpin ${on ? "on" : ""}`} style={{ cursor: small ? "default" : "pointer", ["--pc" as string]: it.col }}
-        tabIndex={small ? -1 : 0} role={small ? undefined : "button"} aria-label={small ? undefined : `${it.kind === "sos" ? "SOS request" : it.kind === "res" ? "Resource" : "Issue"}: ${it.label}`}
+        tabIndex={small ? -1 : 0} role={small ? undefined : "button"} aria-label={small ? undefined : `${it.kind === "sos" ? "SOS request" : it.kind === "res" ? "Resource" : it.kind === "mission" ? "Mission" : "Issue"}: ${it.label}`}
         onKeyDown={e => { if ((e.key === "Enter" || e.key === " ") && it.kind !== "res" && !small) { e.preventDefault(); onSel(it.id); } }}
         onPointerDown={e => e.stopPropagation()} onClick={() => it.kind !== "res" && !small && onSel(it.id)}
         onPointerEnter={() => setHov(it.id)} onPointerLeave={() => setHov(null)}>
@@ -354,12 +362,13 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
         <b className="hname">{name}</b>
         <span className="mono">{info.lat.toFixed(4)}, {info.lng.toFixed(4)}</span>
         <label className="hsearchwrap"><Search size={15} aria-hidden="true" />
-          <input className="hsearch" placeholder="Find an issue or resource" aria-label="Find an issue or resource" value={q} onChange={e => setQ(e.target.value)}
+          <input className="hsearch" placeholder="Find an issue, mission or resource" aria-label="Find an issue, mission or resource" value={q} onChange={e => setQ(e.target.value)}
             onKeyDown={e => {
               if (e.key !== "Enter") return;
               const s = q.trim().toLowerCase(), h = st.issues.find(i => i.title.toLowerCase().includes(s)), rs = st.resources.find(r => r.name.toLowerCase().includes(s));
-              const tgt = h ?? rs; if (!tgt) return;
-              const a = A(tgt.lat, tgt.lng); centerOn(a.x, a.y - 60, 1.1); if (h) onSel(h.id);
+              const ms = h || rs ? undefined : st.missions.find(m => m.title.toLowerCase().includes(s) && S.missionSpot(st, m));
+              const tgt = h ?? rs ?? (ms && S.missionSpot(st, ms)); if (!tgt) return;
+              const a = A(tgt.lat, tgt.lng); centerOn(a.x, a.y - 60, 1.1); if (h) onSel(h.id); else if (ms) onSel(ms.id);
             }} />
         </label>
       </div>

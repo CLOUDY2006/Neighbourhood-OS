@@ -13,7 +13,7 @@ export * from "./sim";
 export type { MapData } from "./mapdata";
 
 export type State = L.Doc & { role: L.Role };
-export interface NInfo { id: string; kind: "cell" | "named" | "demo"; name: string; lat: number; lng: number; r: number; role: L.Role }
+export interface NInfo { id: string; kind: "cell" | "named" | "demo"; name: string; lat: number; lng: number; r: number; role: L.Role; members?: number }
 export interface Me { id: string; email: string; handle: string; platformAdmin: boolean }
 export interface AppState { mode: "none" | "demo" | "live"; ready: boolean; error: string; me: Me | null; mine: NInfo[]; nbhd: NInfo | null; map: MapData | null; mapNote: string; online: boolean; queued: number; stale: boolean; alerts: Alert[]; world: WorldEvent[] | null; worldInfo: { sources: { name: string; ok: boolean; n: number }[]; updated: number } | null }
 export interface Member { userId: string; name: string; role: L.Role; requested: boolean; joined: string }
@@ -231,6 +231,7 @@ export async function refreshMine() { setApp({ mine: await api<NInfo[]>("/api/ne
 export async function joinCell(cellId: string) { const n = await api<NInfo>("/api/neighbourhoods/cell", { cell: cellId }); await refreshMine(); await enter(n); }
 export async function joinById(id: string) { const n = await api<NInfo>(`/api/neighbourhoods/${enc(id)}/join`, {}); await refreshMine(); await enter(n); }
 export async function createNamed(i: { name: string; lat: number; lng: number; r: number }) { const n = await api<NInfo>("/api/neighbourhoods", i); await refreshMine(); await enter(n); }
+export const cellCount = (cell: string) => api<{ members: number }>(`/api/neighbourhoods/cell-count?cell=${enc(cell)}`);
 export const nearbyNamed = (lat: number, lng: number) => api<NearNamed[]>(`/api/neighbourhoods/nearby?lat=${lat}&lng=${lng}`);
 export const searchNamed = (q: string) => api<NearNamed[]>(`/api/neighbourhoods/search?q=${enc(q)}`);
 export const geocode = (q: string) => api<Place[]>(`/api/geocode?q=${enc(q)}`);
@@ -269,7 +270,7 @@ export const hide = (id: string) => dispatch({ t: "hide", id });
 export const restore = (id: string) => dispatch({ t: "restore", id });
 export const setVerif = (id: string, v: L.Verif) => dispatch({ t: "verify", id, v });
 export const advance = (id: string) => dispatch({ t: "advance", id });
-export const mission = (title: string, need: number, issueId?: string) => dispatch({ t: "mission", title, need, issueId });
+export const mission = (title: string, need: number, issueId?: string, spot?: { lat: number; lng: number } | null) => dispatch({ t: "mission", title, need, issueId, lat: spot?.lat, lng: spot?.lng });
 export const join = (mid: string) => dispatch({ t: "join", mid });
 export const assign = (mid: string, name: string) => dispatch({ t: "assign", mid, name });
 export const addProof = (id: string, text: string, photo?: string) => dispatch({ t: "proof", id, text, photo });
