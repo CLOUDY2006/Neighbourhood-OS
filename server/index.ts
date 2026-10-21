@@ -9,6 +9,7 @@ import { createClient } from "@supabase/supabase-js";
 import { can, dueEscalations, reportersOf, emptyDoc, publicSummary, purgeSos, reduce, sosActiveCount, STATUS_LABEL, visibleSos, weeklyDigest, type Action, type Cat, type Doc, type Role } from "../src/logic";
 
 import { alertsFor, SEV_RANK, type Alert } from "../src/world";
+import { canModerateChat, chatAccess, chatText, CHAT_DAYS, CHAT_HIDE_AT, CHAT_PAGE, ROOMS, roomsFor, type ChatMsg, type Room } from "../src/chat";
 import { CELL_R, parseCell } from "../src/geo";
 import { pool, tx } from "./db";
 import { cityOf, fetchMap, geocode, NAMES_ON, placeName } from "./osm";
@@ -213,10 +214,10 @@ app.get("/api/n/:id/state", ah(async (req, res) => {
   const role = await memberRole(pool, id, u);
   const v = (await pool.query("select version, center_lat, center_lng, radius_m from neighbourhoods where id = $1", [id])).rows[0];
   if (!v) throw new HttpError(404, "Neighbourhood not found");
-  const alerts = alertsOf(v);
-  if (Number(req.query.v) === v.version) return res.json({ unchanged: true, version: v.version, role, alerts });
+  const alerts = alertsOf(v), chat = await chatLatest(id, u);
+  if (Number(req.query.v) === v.version) return res.json({ unchanged: true, version: v.version, role, alerts, chat });
   const d = (await pool.query("select doc, version from neighbourhoods where id = $1", [id])).rows[0];
-  res.json({ version: d.version, doc: viewDoc(d.doc, role, u.handle, await countMembers(pool, id)), role, alerts });
+  res.json({ version: d.version, doc: viewDoc(d.doc, role, u.handle, await countMembers(pool, id)), role, alerts, chat });
 }));
 
 const LIMITS: Partial<Record<Action["t"], [number, number]>> = {
@@ -450,6 +451,94 @@ app.post("/api/n/:id/leave", ah(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// ---- Neighbourhood chat
+// Rooms are scoped to one neighbourhood. Access comes only from the person's own membership row in it,
+// so a coordinator or volunteer elsewhere never reaches this area's rooms. Platform admins get no pass here.
+const ownRole = async (c: Q, nid: string, u: User) => ((await c.query("select role from members where neighbourhood_id = $1 and user_id = $2", [nid, u.id])).rows[0]?.role ?? null) as Role | null;
+async function chatLatest(nid: string, u: User): Promise<Partial<Record<Room, number>>> {
+  const role = await ownRole(pool, nid, u);
+  if (!role) return {};
+  const r = await pool.query("select r.room, (select m.id from chat_messages m where m.neighbourhood_id = $1 and m.room = r.room and m.state = 'ok' order by m.id desc limit 1) as id from unnest($2::text[]) as r(room)", [nid, roomsFor(role).map(x => x.id)]);
+  return Object.fromEntries(r.rows.map(x => [x.room, Number(x.id ?? 0)]));
+}
+async function chatRoom(req: express.Request) {
+  const u = await authenticate(req); const id = String(req.params.id);
+  if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
+  const role = await ownRole(pool, id, u);
+  let room: Room;
+  try { room = chatAccess(role, req.params.room); } catch (e) { throw new HttpError(403, (e as Error).message); }
+  return { u, id, room, role: role! };
+}
+const chatId = (s: unknown) => { const n = Number(s); if (!Number.isSafeInteger(n) || n < 1) throw new HttpError(400, "Invalid message"); return n; };
+// One writer at a time per room, so `rev` values become visible in order and polling with `since` never skips a message.
+const chatWrite = <T>(nid: string, room: Room, fn: (c: Q) => Promise<T>) => tx(async c => { await c.query("select pg_advisory_xact_lock(hashtext($1))", [`chat:${nid}:${room}`]); return fn(c); });
+const CHAT_SEL = "select m.id, m.rev, m.room, m.user_id, m.display_name, m.body, m.state, m.reports, m.created_at, mb.role from chat_messages m left join members mb on mb.neighbourhood_id = m.neighbourhood_id and mb.user_id = m.user_id";
+const chatView = (r: any, u: User, mod: boolean): ChatMsg => {
+  const reports: string[] = r.reports ?? [];
+  return {
+    id: Number(r.id), rev: Number(r.rev), room: r.room, by: r.display_name, role: r.role ?? undefined, t: new Date(r.created_at).getTime(), state: r.state,
+    text: r.state === "ok" || (r.state === "hidden" && mod) ? r.body : "", mine: r.user_id === u.id, reported: reports.includes(u.id), ...(mod ? { reports: reports.length } : {}),
+  };
+};
+const optId = (v: unknown) => { const n = Number(v); return v != null && v !== "" && Number.isSafeInteger(n) && n >= 0 ? n : null; };
+app.get("/api/n/:id/chat/:room", ah(async (req, res) => {
+  const { u, id, room, role } = await chatRoom(req); const mod = canModerateChat(role, room);
+  rl(`chatR:${u.id}`, 240, 60000);
+  const since = optId(req.query.since), before = optId(req.query.before);
+  if (since != null) {
+    const rows = (await pool.query(`${CHAT_SEL} where m.neighbourhood_id = $1 and m.room = $2 and m.rev > $3 order by m.rev limit 200`, [id, room, since])).rows;
+    return res.json({ msgs: rows.map(r => chatView(r, u, mod)), rev: rows.length ? Number(rows[rows.length - 1].rev) : since });
+  }
+  const rows = (await pool.query(`${CHAT_SEL} where m.neighbourhood_id = $1 and m.room = $2 and ($3::bigint is null or m.id < $3) order by m.id desc limit ${CHAT_PAGE}`, [id, room, before])).rows.reverse();
+  const rev = Number((await pool.query("select coalesce(max(rev), 0) as r from chat_messages where neighbourhood_id = $1 and room = $2", [id, room])).rows[0].r);
+  res.json({ msgs: rows.map(r => chatView(r, u, mod)), rev, more: rows.length === CHAT_PAGE });
+}));
+app.post("/api/n/:id/chat/:room", ah(async (req, res) => {
+  const { u, id, room, role } = await chatRoom(req);
+  rl(`chat:${id}:${u.id}`, 8, 60000); rl(`chatD:${u.id}`, 300, 86400000);
+  let text: string;
+  try { text = chatText(req.body?.text); } catch (e) { throw new HttpError(400, (e as Error).message); }
+  const r = await chatWrite(id, room, async c => (await c.query("insert into chat_messages (neighbourhood_id, room, user_id, display_name, body) values ($1, $2, $3, $4, $5) returning id, rev, room, user_id, display_name, body, state, reports, created_at, $6::text as role", [id, room, u.id, u.handle, text, role])).rows[0]);
+  res.json({ msg: chatView(r, u, canModerateChat(role, room)) });
+}));
+app.post("/api/n/:id/chat/:room/:mid/report", ah(async (req, res) => {
+  const { u, id, room } = await chatRoom(req); const mid = chatId(req.params.mid);
+  rl(`chatRep:${u.id}`, 20, 86400000);
+  const hidden = await chatWrite(id, room, async c => {
+    const r = (await c.query("select user_id, state, reports from chat_messages where id = $1 and neighbourhood_id = $2 and room = $3 for update", [mid, id, room])).rows[0];
+    if (!r || r.state === "deleted") throw new HttpError(404, "Message not found");
+    if (r.user_id === u.id) throw new HttpError(400, "You cannot report your own message");
+    if ((r.reports as string[]).includes(u.id)) return false;
+    const hide = r.state === "ok" && r.reports.length + 1 >= CHAT_HIDE_AT;
+    await c.query("update chat_messages set reports = array_append(reports, $2::uuid), state = case when $3 then 'hidden' else state end, rev = nextval('chat_rev_seq') where id = $1", [mid, u.id, hide]);
+    return hide;
+  });
+  if (hidden) void notify(id, room === "volunteers" ? "admins" : "reviewers", { title: "A chat message was hidden", body: `Neighbours reported a message in the ${ROOMS.find(r => r.id === room)!.name} room, so it was hidden. Open Chat to review it.` });
+  res.json({ ok: true, hidden });
+}));
+app.post("/api/n/:id/chat/:room/:mid/hide", ah(async (req, res) => {
+  const { u, id, room, role } = await chatRoom(req); const mid = chatId(req.params.mid), hide = req.body?.hidden !== false;
+  if (!canModerateChat(role, room)) throw new HttpError(403, "Only coordinators and moderators can hide messages");
+  await chatWrite(id, room, async c => {
+    const r = (await c.query("select display_name, state from chat_messages where id = $1 and neighbourhood_id = $2 and room = $3 for update", [mid, id, room])).rows[0];
+    if (!r || r.state === "deleted") throw new HttpError(404, "Message not found");
+    // Restoring clears the reports, so the moderator's decision is not undone by the same reports.
+    await c.query(`update chat_messages set state = $2, ${hide ? "" : "reports = '{}', "}rev = nextval('chat_rev_seq') where id = $1`, [mid, hide ? "hidden" : "ok"]);
+    await c.query("insert into audit_log (neighbourhood_id, user_id, who, action, detail) values ($1, $2, $3, $4, $5)", [id, u.id, u.handle, hide ? "chatHide" : "chatRestore", JSON.stringify({ room, author: r.display_name })]);
+  });
+  res.json({ ok: true });
+}));
+app.delete("/api/n/:id/chat/:room/:mid", ah(async (req, res) => {
+  const { u, id, room } = await chatRoom(req); const mid = chatId(req.params.mid);
+  await chatWrite(id, room, async c => {
+    const r = (await c.query("select user_id from chat_messages where id = $1 and neighbourhood_id = $2 and room = $3 for update", [mid, id, room])).rows[0];
+    if (!r) throw new HttpError(404, "Message not found");
+    if (r.user_id !== u.id) throw new HttpError(403, "You can only delete your own messages");
+    await c.query("update chat_messages set state = 'deleted', body = '', reports = '{}', rev = nextval('chat_rev_seq') where id = $1", [mid]);
+  });
+  res.json({ ok: true });
+}));
+
 app.get("/api/capabilities", ah(async (req, res) => {
   await authenticate(req);
   res.json({ ai: aiEnabled(), tinyfish: tfEnabled(), ...caps(), cap: capFeedCount() });
@@ -664,6 +753,8 @@ app.delete("/api/me", ah(async (req, res) => {
       await c.query("update neighbourhoods set doc = $2, version = version + 1 where id = $1", [neighbourhood_id, doc]);
     }
     await c.query("delete from photos where user_id = $1", [u.id]);
+    await c.query("delete from chat_messages where user_id = $1", [u.id]);
+    await c.query("update chat_messages set reports = array_remove(reports, $1::uuid) where $1::uuid = any(reports)", [u.id]);
     await c.query("delete from members where user_id = $1", [u.id]);
   });
   const { error } = await sb.auth.admin.deleteUser(u.id);
@@ -673,6 +764,7 @@ app.delete("/api/me", ah(async (req, res) => {
 }));
 
 async function purgeAll() {
+  try { await pool.query(`delete from chat_messages where created_at < now() - interval '${CHAT_DAYS} days'`); } catch (e) { console.error("Chat purge failed:", e); }
   try {
     const r = await pool.query("select id from neighbourhoods where jsonb_array_length(coalesce(doc->'sos', '[]'::jsonb)) > 0");
     for (const { id } of r.rows) {

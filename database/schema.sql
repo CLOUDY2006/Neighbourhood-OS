@@ -88,3 +88,25 @@ alter table channels enable row level security;
 
 alter table members drop constraint if exists members_role_check;
 alter table members add constraint members_role_check check (role in ('resident', 'volunteer', 'moderator', 'admin'));
+
+-- Neighbourhood chat. Every message belongs to exactly one neighbourhood and one room in it.
+-- The server checks the sender's own membership row in that neighbourhood, so rooms never span areas.
+-- `rev` changes whenever a message is added, hidden, restored or deleted, so clients can poll for changes cheaply.
+create sequence if not exists chat_rev_seq;
+create table if not exists chat_messages (
+  id bigserial primary key,
+  neighbourhood_id text not null references neighbourhoods(id) on delete cascade,
+  room text not null check (room in ('all', 'volunteers', 'coordinators')),
+  user_id uuid not null,
+  display_name text not null,
+  body text not null check (char_length(body) <= 500),
+  state text not null default 'ok' check (state in ('ok', 'hidden', 'deleted')),
+  reports uuid[] not null default '{}',
+  rev bigint not null default nextval('chat_rev_seq'),
+  created_at timestamptz not null default now()
+);
+create index if not exists chat_room_idx on chat_messages (neighbourhood_id, room, id desc);
+create index if not exists chat_rev_idx on chat_messages (neighbourhood_id, room, rev);
+create index if not exists chat_user_idx on chat_messages (user_id);
+create index if not exists chat_created_idx on chat_messages (created_at);
+alter table chat_messages enable row level security;

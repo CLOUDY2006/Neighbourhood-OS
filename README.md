@@ -54,6 +54,7 @@ Alongside the loop, an **AI agent** turns each report into a complaint addressed
 | Missions and volunteers     | Missions with a meeting spot on the map, their own pin, progress and volunteer hours. Volunteer skills, availability and emergency abilities. Suggested volunteers for each issue.                                                                                                                                                                                                                                                                                         |
 | Coordinator ranking         | A Coordinators tab, open to every member, ranks the neighbourhood's coordinators and moderators each month by verified work, using fixed point rules shown on the tab.                                                                                                                                                                                                                                                                                                     |
 | Resources and exchange      | Shelters, water points, aid posts and equipment, with shortage flags. Neighbor offers and requests with a message thread.                                                                                                                                                                                                                                                                                                                                                  |
+| Neighbourhood chat          | Chat rooms that belong to one neighbourhood: one for everyone, one for volunteers and coordinators, and one for coordinators and moderators. Nobody outside the neighbourhood can read them. Reporting, moderator hide and restore, unread dots, and messages deleted after 30 days. |
 | World layer and Crisis Mode | A global hazard map from USGS, NASA EONET and GDACS, plus local CAP feeds. An alert that overlaps the neighbourhood switches on Crisis Mode.                                                                                                                                                                                                                                                                                                                               |
 | SOS                         | Consent-based help requests, visible only to coordinators and the assigned volunteer. The location is wiped when the request closes, or after 24 hours.                                                                                                                                                                                                                                                                                                                    |
 | Safety and preparedness     | Safety check-ins ("I am safe" / "I need help"), an optional extra-help register, an emergency plan, a notice board and an automated weekly summary.                                                                                                                                                                                                                                                                                                                        |
@@ -118,6 +119,7 @@ No keys, database or account are needed for the demo.
 ### Design decisions worth knowing
 
 - **One document per neighbourhood.** A neighbourhood's whole state is one JSON document (`neighbourhoods.doc` in Postgres). Browsers poll `GET /api/n/:id/state` every 5 seconds. Every write goes through one endpoint, `POST /api/n/:id/action`, which locks the row, checks the caller's role, writes the audit log and sends notifications.
+- **Chat lives outside the document.** Chat messages are in their own `chat_messages` table, so a busy conversation does not make every phone download the whole neighbourhood document again. The open room polls `GET /api/n/:id/chat/:room?since=<rev>` every 4 seconds and gets only what changed. See [Neighbourhood chat](#neighbourhood-chat).
 - **Shared rules.** `src/logic.ts` holds the rules, validation and permission table. The browser runs it for the demo and the server runs it for real neighbourhoods, so both behave the same.
 - **Real maps, with a fallback.** Map data comes from OpenStreetMap and is cached on the server for 30 days. The download starts as soon as someone creates or joins a neighbourhood and runs in the background, so a slow map server never blocks the app. Until the real map arrives, or if an area has too little data or the servers do not answer, a clearly labelled schematic city is drawn instead. See [Map loading and society names](#map-loading-and-society-names).
 - **A custom map renderer.** The isometric city is drawn by our own code rather than Leaflet or Three.js, so it can show real OpenStreetMap data in the intended look. The Flat view is the top-down alternative.
@@ -145,6 +147,7 @@ src/                     React web app (also runs the whole demo in the browser)
   SosPanel.tsx           SOS tab
   Prepare.tsx            check-ins, emergency plan, extra-help register
   Exchange.tsx, Notices.tsx  neighbor exchange and notice board
+  ChatPanel.tsx, chat.ts  neighbourhood chat tab, and the room and message rules the server shares
   Pulse.tsx              analytics charts
   Simulator.tsx, sim.ts  What-if simulator
   Reports.tsx            council reports, authorities directory, hand-offs
@@ -188,7 +191,7 @@ Optional: `npm run seed` adds a clearly labelled fictional neighbourhood, "Maple
 
 ### Upgrading an existing install
 
-Run `database/schema.sql` again in the Supabase SQL editor. It is safe to repeat, and adds anything newer versions need, such as the `channels` table for notifications and the moderator role. It also renames tables and columns from older versions to the `neighbourhood` spelling, keeping their data. If you copied files over an older project, delete `src/Agent.tsx` and `src/Sim.tsx`, which were renamed `AgentPanel.tsx` and `Simulator.tsx`.
+Run `database/schema.sql` again in the Supabase SQL editor. It is safe to repeat, and adds anything newer versions need, such as the `channels` table for notifications, the `chat_messages` table and the moderator role. It also renames tables and columns from older versions to the `neighbourhood` spelling, keeping their data. If you copied files over an older project, delete `src/Agent.tsx` and `src/Sim.tsx`, which were renamed `AgentPanel.tsx` and `Simulator.tsx`.
 
 ## Deploying to Render
 
@@ -406,12 +409,28 @@ Two features in the AI agent panel use [TinyFish](https://www.tinyfish.ai) when 
 - **Pulse:** charts with date filters for reported and resolved issues, open issues over time, categories, hours to resolve and volunteer hours. Each chart is tagged Actual or Estimate.
 - **Recognition:** badges and points that count only verified reports and completed fixes, so spam earns nothing. Coordinators and moderators also have a monthly ranking (see [Coordinators and the monthly ranking](#coordinators-and-the-monthly-ranking)).
 
+### Neighbourhood chat
+
+Each neighbourhood has its own chat rooms. A room is always tied to one neighbourhood, and the server lets you in only through your own membership in that neighbourhood. If you coordinate in one area, you cannot see the coordinator room of another, and if you belong to several neighbourhoods each one has separate rooms. Platform admins get no exception here.
+
+| Room | Who can read and post |
+|---|---|
+| Neighbourhood | Every member |
+| Volunteers | Volunteers and coordinators |
+| Coordinators | Coordinators and moderators |
+
+- **Safety:** a banner says chat is not for emergencies and links to SOS. Typing words like "help", "fire" or "बचाओ" shows a "call 112 first" hint. Typing something that looks like a phone number shows a reminder that the whole room will see it.
+- **Spam and abuse:** links are refused, messages are limited to 500 characters, and each person can send at most 8 messages a minute and 300 a day. Members can report a message. After 3 reports from different people it is hidden until a moderator looks. Coordinators and moderators can hide or restore messages in the rooms they belong to. Each hide and restore is written to the audit log. Restoring clears the reports.
+- **Privacy:** messages are deleted after 30 days. People can delete their own messages, and deleting an account removes all of that person's messages and reports. User ids are never sent to the browser, only display names.
+- **Unread dots:** the 5-second state poll also returns the newest message id for each room you can open. The browser compares it with what you last saw on this device.
+- **Demo:** the chat works in the demo with simulated, labelled messages kept only in the browser. The Role menu changes which rooms you see.
+
 ## Testing
 
 | Command               | What it does                                                                                                                                                                                                                                                                                                               |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `npm run check`       | Type-checks the web app and the server.                                                                                                                                                                                                                                                                                    |
-| `npm test`            | Runs 16 test files: shared rules, SOS, the CAP parser, the AI agent, fix review, AI providers, "You are here", OpenStreetMap loading, society names, reporter confirmation, the coordinator ranking, the before-and-after photo, mission spots, and the TinyFish module, routes and result ranking (against a local mock). |
+| `npm test`            | Runs 19 test files: shared rules, chat rooms and messages, the action plan, SOS, the CAP parser, the AI agent, fix review, AI providers, "You are here", OpenStreetMap loading, society names, reporter confirmation, the coordinator ranking, the before-and-after photo, mission spots, and the TinyFish module, routes and result ranking (against a local mock). |
 | `npm run test:render` | Renders the main screens on the server to catch crashes.                                                                                                                                                                                                                                                                   |
 
 ## Honest limits
@@ -420,7 +439,8 @@ Two features in the AI agent panel use [TinyFish](https://www.tinyfish.ai) when 
 - OpenStreetMap coverage varies. Some areas have few buildings mapped, and the app says so.
 - State is one JSON document per neighbourhood, locked on each write. That suits neighbourhood-sized communities, but a very busy neighbourhood would need normalized tables.
 - Photos are stored in Postgres. Move them to object storage if volume grows.
-- Updates use 5-second polling. Supabase Realtime would make them instant.
+- Updates use 5-second polling, and the open chat room polls every 4 seconds. Supabase Realtime would make them instant.
+- Chat is not end-to-end encrypted. The server and database administrators can read it. Chat messages are not queued offline. The app says the message was not sent and keeps the text in the box.
 - Rate limits are kept in memory, so run one server instance, or add a shared store such as Redis.
 - Hidden reports still appear briefly in the event log by title before being hidden.
 - The world feeds are third-party services whose formats and availability can change. GDACS in particular is parsed defensively, and the app keeps working if a feed fails. Check each provider's terms and attribution requirements before a public launch.

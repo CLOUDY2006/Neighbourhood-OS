@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Bell, Radar, PlusCircle, Users, Package, BarChart3, RotateCcw, Play, ShieldAlert, UserCog, User, Globe, Siren, ShieldCheck, FileText, FlaskConical, Sun, Moon, Ellipsis, LogOut, Trophy, MapPin } from "lucide-react";
+import { Bell, Radar, PlusCircle, Users, Package, BarChart3, RotateCcw, Play, ShieldAlert, UserCog, User, Globe, Siren, ShieldCheck, FileText, FlaskConical, Sun, Moon, Ellipsis, LogOut, Trophy, MapPin, MessagesSquare } from "lucide-react";
 import * as S from "./store";
 import IsoMap, { ViewSwitch, type MapView } from "./IsoMap";
 import { toggleTheme, useTheme } from "./a11y";
@@ -18,6 +18,7 @@ import PublicImpact from "./PublicImpact";
 import VoiceButton from "./Voice";
 import { Exchange } from "./Exchange";
 import { NoticeBoard } from "./Notices";
+import { ChatPanel } from "./ChatPanel";
 import { CheckinCard, Prepare } from "./Prepare";
 import { HandoffBox, Reports } from "./Reports";
 import { AccessSettings, MyImpact, NotifySettings } from "./Settings";
@@ -25,7 +26,7 @@ import { LANGS, setLang, useLang, useT } from "./i18n";
 import { AlertBanner, WorldMap, WorldPanel } from "./WorldView";
 
 type Act = (fn: () => unknown, ok?: string) => Promise<void>;
-type Tab = "feed" | "report" | "missions" | "resources" | "people" | "account" | "world" | "sos" | "prepare" | "reports" | "pulse" | "sim" | "board";
+type Tab = "feed" | "report" | "missions" | "chat" | "resources" | "people" | "account" | "world" | "sos" | "prepare" | "reports" | "pulse" | "sim" | "board";
 type Pt = { lat: number; lng: number } | null;
 
 const grp = (s: S.Status) => (s === "resolved" ? "green" : s === "assigned" || s === "progress" || s === "pending" ? "amber" : "red");
@@ -40,6 +41,7 @@ const TAB_INFO: Record<Tab, [string, string]> = {
   feed: ["Command", "Live overview of the neighbourhood: alerts, notices, how much work is in each stage, and every issue. Pick an issue to see its details."],
   report: ["Report a problem", "Click the map to place a pin, describe what is wrong and submit. A coordinator reviews every report."],
   missions: ["Missions", "Volunteer work that fixes reported problems. Join a mission, or set your skills and availability."],
+  chat: ["Chat", "Talk with people in this neighbourhood. Rooms are private to its members, and each role has its own room."],
   pulse: ["Pulse", "How fast problems get fixed. Actual numbers are tagged green and estimates amber."],
   sos: ["SOS", "Ask neighbors for help. If anyone is in danger, call your local emergency number first."],
   resources: ["Resources", "Shelters, water points and supplies on the map, plus the neighbor exchange."],
@@ -400,16 +402,17 @@ function Main({ app }: { app: S.AppState }) {
   const unread = myEvents.filter(e => e.t > seen).length;
   const asOf = tt.on && tt.days > 0 ? Date.now() - tt.days * 86400000 : null;
   const stView: S.State = asOf ? { ...S.docAsOf(st, asOf), role: st.role } : st;
-  const NAV: [Tab, string, typeof Radar][] = [["feed", "Command", Radar], ["report", "Report", PlusCircle], ["missions", "Missions", Users], ["pulse", "Pulse", BarChart3], ["sos", "SOS", Siren]];
+  const NAV: [Tab, string, typeof Radar][] = [["feed", "Command", Radar], ["report", "Report", PlusCircle], ["missions", "Missions", Users], ["chat", "Chat", MessagesSquare], ["pulse", "Pulse", BarChart3], ["sos", "SOS", Siren]];
   const MORE: [Tab, string, typeof Radar][] = [["resources", "Resources", Package], ["board", "Coordinators", Trophy], ["prepare", "Prepare", ShieldCheck], ["world", "World", Globe]];
   if (st.role === "admin") MORE.push(["sim", "What-if", FlaskConical], ["reports", "Reports", FileText]);
   if (!demo && st.role === "admin") MORE.push(["people", "People", UserCog]);
+  const chatNew = S.chatUnread(app, st.role);
   const tabNow: Tab = (tab === "people" || tab === "reports" || tab === "sim") && st.role !== "admin" ? "feed" : tab;
   const [more, setMore] = useState(false);
   const theme = useTheme();
   const ALL: [Tab, string, typeof Radar][] = [...NAV, ...MORE, ["account", "Account", User]];
   const TabIcon = ALL.find(x => x[0] === tabNow)?.[2] ?? Radar;
-  const navBtn = ([k, l, Ic]: [Tab, string, typeof Radar]) => <button key={k} className={`${tabNow === k ? "on" : ""} ${k === "sos" ? "sostab" : ""}`} onClick={() => { setTab(k); setMore(false); }} aria-label={t(l)} aria-current={tabNow === k ? "page" : undefined} title={t(l)}><Ic size={20} /><span>{t(l)}</span></button>;
+  const navBtn = ([k, l, Ic]: [Tab, string, typeof Radar]) => <button key={k} className={`${tabNow === k ? "on" : ""} ${k === "sos" ? "sostab" : ""}`} onClick={() => { setTab(k); setMore(false); }} aria-label={t(l)} aria-current={tabNow === k ? "page" : undefined} title={t(l)}><Ic size={20} /><span>{t(l)}</span>{k === "chat" && tabNow !== "chat" && chatNew && <i className="dot" aria-label={t("new messages")} />}</button>;
   useEffect(() => {
     if (!more) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMore(false); };
@@ -493,6 +496,7 @@ function Main({ app }: { app: S.AppState }) {
         {tabNow === "report" && <Report pick={pick} act={act} done={id => { setSel(id); setPick(null); setTab("feed"); }} />}
         {tabNow === "missions" && <Missions st={st} act={act} pick={pick} setPick={setPick} msel={msel} onShow={m => { setMsel(m.lat != null ? m.id : m.issueId ?? m.id); const sp = S.missionSpot(st, m); if (sp) setFocus({ ...sp, n: Date.now() }); }} />}
         {tabNow === "resources" && <Resources st={st} pick={pick} act={act} />}
+        {tabNow === "chat" && <ChatPanel st={st} app={app} act={act} onSos={() => setTab("sos")} />}
         {tabNow === "pulse" && <Pulse st={st} app={app} act={act} demo={demo} />}
         {tabNow === "sim" && <Simulator st={st} onOverlay={setSimMap} />}
         {tabNow === "prepare" && <Prepare st={st} app={app} act={act} />}

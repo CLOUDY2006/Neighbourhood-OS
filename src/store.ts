@@ -4,18 +4,22 @@ import * as L from "./logic";
 import { genCity, type MapData } from "./mapdata";
 import { demoWorld, simulatedAlert, type Alert, type WorldEvent } from "./world";
 import { understand, type Analysis } from "./agent";
+import * as C from "./chat";
 export * from "./logic";
 export * from "./world";
 export * from "./agent";
 export * from "./routes";
 export * from "./plan";
+export * from "./chat";
 export * from "./sim";
 export type { MapData } from "./mapdata";
 
 export type State = L.Doc & { role: L.Role };
 export interface NInfo { id: string; kind: "cell" | "named" | "demo"; name: string; lat: number; lng: number; r: number; role: L.Role; members?: number }
 export interface Me { id: string; email: string; handle: string; platformAdmin: boolean }
-export interface AppState { mode: "none" | "demo" | "live"; ready: boolean; error: string; me: Me | null; mine: NInfo[]; nbhd: NInfo | null; map: MapData | null; mapNote: string; online: boolean; queued: number; stale: boolean; alerts: Alert[]; world: WorldEvent[] | null; worldInfo: { sources: { name: string; ok: boolean; n: number }[]; updated: number } | null }
+export interface AppState { mode: "none" | "demo" | "live"; ready: boolean; error: string; me: Me | null; mine: NInfo[]; nbhd: NInfo | null; map: MapData | null; mapNote: string; online: boolean; queued: number; stale: boolean; alerts: Alert[]; world: WorldEvent[] | null; worldInfo: { sources: { name: string; ok: boolean; n: number }[]; updated: number } | null; chat?: ChatIds; chatSeen?: ChatIds }
+/** Newest message id per chat room you can open (from the server), and the newest one you have seen on this device. */
+export type ChatIds = Partial<Record<C.Room, number>>;
 export interface Member { userId: string; name: string; role: L.Role; requested: boolean; joined: string }
 export interface Place { name: string; lat: number; lng: number }
 export interface NearNamed { id: string; name: string; r: number; lat: number; lng: number; members: number }
@@ -108,10 +112,11 @@ async function refresh() {
   if (app.mode !== "live" || !app.nbhd || document.visibilityState === "hidden") return;
   const id = app.nbhd.id;
   try {
-    const j = await api<{ version: number; doc?: L.Doc; role: L.Role; unchanged?: boolean; alerts?: Alert[] }>(`/api/n/${enc(id)}/state?v=${ver}`);
+    const j = await api<{ version: number; doc?: L.Doc; role: L.Role; unchanged?: boolean; alerts?: Alert[]; chat?: ChatIds }>(`/api/n/${enc(id)}/state?v=${ver}`);
     if (app.nbhd?.id !== id) return;
     const al = j.alerts ?? [];
     if (JSON.stringify(al) !== JSON.stringify(app.alerts)) setApp({ alerts: al });
+    if (j.chat && JSON.stringify(j.chat) !== JSON.stringify(app.chat)) setApp({ chat: j.chat });
     let changed = false;
     if (app.stale || !app.online) setApp({ stale: false, online: true });
     void flushQueue();
@@ -144,7 +149,7 @@ export async function enter(n: NInfo) {
   role = n.role; ver = -1; doc = L.emptyDoc();
   let cached = false;
   try { const c = JSON.parse(localStorage.getItem(`nos-doc-${n.id}`) || "null"); if (c?.doc) { doc = c.doc; role = c.role ?? n.role; cached = true; } } catch { /* ignore */ }
-  setApp({ mode: "live", nbhd: n, map: null, mapNote: "", error: "", alerts: [], stale: cached, queued: readQ().filter(x => x.nid === n.id).length });
+  setApp({ mode: "live", nbhd: n, map: null, mapNote: "", error: "", alerts: [], stale: cached, queued: readQ().filter(x => x.nid === n.id).length, chat: {}, chatSeen: readSeen(n.id) });
   commit();
   try { localStorage.setItem("nos-last-n", n.id); } catch { /* ignore */ }
   await refresh();
@@ -155,8 +160,8 @@ export function enterDemo() {
   stopPoll();
   try { const r = localStorage.getItem(DEMO_KEY); doc = r ? JSON.parse(r) : L.seed(); } catch { doc = L.seed(); }
   role = "resident";
-  setApp({ mode: "demo", nbhd: DEMO_N, map: genCity(650), mapNote: "Simulated neighbourhood. The streets and buildings are made up.", alerts: [] });
-  commit();
+  setApp({ mode: "demo", nbhd: DEMO_N, map: genCity(650), mapNote: "Simulated neighbourhood. The streets and buildings are made up.", alerts: [], chatSeen: readSeen("demo") });
+  commit(); demoChatSync();
 }
 export async function loadWorld() {
   if (app.mode === "demo") { const w = demoWorld(); setApp({ world: w, worldInfo: { sources: [{ name: "Simulated", ok: true, n: w.length }], updated: Date.now() } }); return; }
@@ -165,7 +170,7 @@ export async function loadWorld() {
 }
 export function toggleDemoAlert() { if (app.mode === "demo") setApp({ alerts: app.alerts.length ? [] : [simulatedAlert(DEMO_N)] }); }
 export function leave() { stopPoll(); setApp({ mode: "none", nbhd: null, map: null, mapNote: "" }); }
-export function setRole(r: L.Role) { if (app.mode === "demo") { role = r; commit(); } }
+export function setRole(r: L.Role) { if (app.mode === "demo") { role = r; commit(); demoChatSync(); } }
 
 export async function dispatch(a: L.Action): Promise<string | undefined> {
   if (app.mode === "live" && app.nbhd) {
@@ -286,7 +291,84 @@ export const sosAssign = (id: string, name: string) => dispatch({ t: "sosAssign"
 export const sosStatus = (id: string, status: "helped" | "closed") => dispatch({ t: "sosStatus", id, status });
 export const sosCancel = (id: string) => dispatch({ t: "sosCancel", id });
 export const runDemo = () => dispatch({ t: "demo" });
-export const reset = () => dispatch({ t: "reset" });
+export const reset = () => { if (app.mode === "demo") { demoChat = C.demoChatSeed(); saveDemoChat(); } return dispatch({ t: "reset" }); };
+
+// ---- Neighbourhood chat. Rooms belong to the neighbourhood you are in; the server checks your membership there.
+export interface ChatPage { msgs: C.ChatMsg[]; rev: number; more?: boolean }
+const chatBase = (room: C.Room) => `/api/n/${enc(app.nbhd!.id)}/chat/${room}`;
+const SEEN_KEY = (nid: string) => `nos-chat-seen-${nid}`;
+function readSeen(nid: string): ChatIds { try { return JSON.parse(localStorage.getItem(SEEN_KEY(nid)) || "{}"); } catch { return {}; } }
+export function markChatSeen(room: C.Room, id: number) {
+  if (!app.nbhd || id <= (app.chatSeen?.[room] ?? 0)) return;
+  const seen = { ...app.chatSeen, [room]: id };
+  try { localStorage.setItem(SEEN_KEY(app.nbhd.id), JSON.stringify(seen)); } catch { /* ignore */ }
+  setApp({ chatSeen: seen });
+}
+export const chatUnread = (a: AppState, r: L.Role, room?: C.Room) => C.roomsFor(r).some(x => (!room || x.id === room) && (a.chat?.[x.id] ?? 0) > (a.chatSeen?.[x.id] ?? 0));
+
+const DEMO_CHAT_KEY = "neighbourhood-os-demo-chat-v1";
+let demoChat: C.DemoMsg[] = (() => { try { const r = localStorage.getItem(DEMO_CHAT_KEY); return r ? JSON.parse(r) : C.demoChatSeed(); } catch { return C.demoChatSeed(); } })();
+function saveDemoChat() { try { localStorage.setItem(DEMO_CHAT_KEY, JSON.stringify(demoChat)); } catch { /* ignore */ } demoChatSync(); }
+function demoChatSync() {
+  if (app.mode !== "demo") return;
+  setApp({ chat: Object.fromEntries(C.roomsFor(role).map(r => [r.id, Math.max(0, ...demoChat.filter(m => m.room === r.id && m.state === "ok").map(m => m.id))])) });
+}
+function demoMsg(room: C.Room, id: number) {
+  const m = demoChat.find(x => x.id === id && x.room === room);
+  if (!m || m.state === "deleted") throw new Error("Message not found");
+  return m;
+}
+const demoRev = () => Math.max(0, ...demoChat.map(m => m.rev)) + 1;
+function demoView(m: C.DemoMsg, mod: boolean): C.ChatMsg {
+  const me = myName();
+  return { id: m.id, rev: m.rev, room: m.room, by: m.by, role: m.role, t: m.t, state: m.state, text: m.state === "ok" || (m.state === "hidden" && mod) ? m.text : "", mine: m.by === me, reported: m.reporters.includes(me), ...(mod ? { reports: m.reporters.length } : {}) };
+}
+const demoRoom = (room: C.Room) => C.chatAccess(role, room);
+
+export async function chatLoad(room: C.Room, q: { since?: number; before?: number } = {}): Promise<ChatPage> {
+  if (app.mode === "live") {
+    const p = new URLSearchParams();
+    if (q.since != null) p.set("since", String(q.since));
+    if (q.before != null) p.set("before", String(q.before));
+    return api<ChatPage>(`${chatBase(room)}?${p}`);
+  }
+  demoRoom(room);
+  const mod = C.canModerateChat(role, room), all = demoChat.filter(m => m.room === room);
+  if (q.since != null) { const ch = all.filter(m => m.rev > q.since!).sort((a, b) => a.rev - b.rev); return { msgs: ch.map(m => demoView(m, mod)), rev: ch.length ? ch[ch.length - 1].rev : q.since }; }
+  const page = all.filter(m => q.before == null || m.id < q.before).sort((a, b) => a.id - b.id).slice(-C.CHAT_PAGE);
+  return { msgs: page.map(m => demoView(m, mod)), rev: Math.max(0, ...all.map(m => m.rev)), more: page.length === C.CHAT_PAGE };
+}
+export async function chatSend(room: C.Room, text: string): Promise<C.ChatMsg> {
+  if (app.mode === "live") {
+    try { return (await api<{ msg: C.ChatMsg }>(chatBase(room), { text })).msg; }
+    catch (e) { throw e instanceof HttpErr ? e : new Error("Could not send. You seem to be offline. Chat messages are not saved for later, so send it again when you are back online"); }
+  }
+  demoRoom(room);
+  const m: C.DemoMsg = { id: Math.max(0, ...demoChat.map(x => x.id)) + 1, rev: demoRev(), room, by: myName(), role, text: C.chatText(text), t: Date.now(), state: "ok", reporters: [] };
+  demoChat.push(m); saveDemoChat();
+  return demoView(m, C.canModerateChat(role, room));
+}
+export async function chatReport(room: C.Room, id: number) {
+  if (app.mode === "live") { await api(`${chatBase(room)}/${id}/report`, {}); return; }
+  demoRoom(room);
+  const m = demoMsg(room, id), me = myName();
+  if (m.by === me) throw new Error("You cannot report your own message");
+  if (!m.reporters.includes(me)) { m.reporters.push(me); if (m.state === "ok" && m.reporters.length >= C.CHAT_HIDE_AT) m.state = "hidden"; m.rev = demoRev(); saveDemoChat(); }
+}
+export async function chatHide(room: C.Room, id: number, hidden: boolean) {
+  if (app.mode === "live") { await api(`${chatBase(room)}/${id}/hide`, { hidden }); return; }
+  demoRoom(room);
+  if (!C.canModerateChat(role, room)) throw new Error("Only coordinators and moderators can hide messages");
+  const m = demoMsg(room, id);
+  m.state = hidden ? "hidden" : "ok"; if (!hidden) m.reporters = []; m.rev = demoRev(); saveDemoChat();
+}
+export async function chatDelete(room: C.Room, id: number) {
+  if (app.mode === "live") { await api(`${chatBase(room)}/${id}`, undefined, "DELETE"); return; }
+  demoRoom(room);
+  const m = demoMsg(room, id);
+  if (m.by !== myName()) throw new Error("You can only delete your own messages");
+  m.state = "deleted"; m.text = ""; m.reporters = []; m.rev = demoRev(); saveDemoChat();
+}
 
 export const quickSuggest = (i: L.SuggestInput) => L.suggest(doc, i);
 const aiBase = () => `/api/n/${enc(app.nbhd!.id)}/ai`;
