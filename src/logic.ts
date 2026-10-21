@@ -129,7 +129,8 @@ export type Action =
   | { t: "demo" }
   | { t: "reset" };
 
-const ALL: Role[] = ["resident", "volunteer", "admin"];
+// Everyone, moderators included. A moderator is a neighbour too: they can report, confirm, send an SOS, answer a check-in and run the demo.
+const ALL: Role[] = ["resident", "volunteer", "moderator", "admin"];
 export const CAN: Record<Action["t"], readonly Role[]> = {
   report: ALL, merge: ALL, verify: ["admin", "moderator"], advance: ["admin"], mission: ["admin"], join: ["volunteer"],
   assign: ["admin"], proof: ["volunteer", "admin"], flag: ["resident"], availability: ["volunteer"], skills: ["volunteer"],

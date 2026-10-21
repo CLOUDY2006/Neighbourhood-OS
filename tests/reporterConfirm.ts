@@ -37,7 +37,7 @@ check("canConfirmFix: reporter and confirmer yes, outsider and submitter no", ca
 throws("an outsider cannot answer", () => step(d, R3, { t: "reporterConfirm", id, ok: true }), "Only the person who reported");
 throws("the coordinator who submitted cannot confirm their own fix", () => step(d, A, { t: "reporterConfirm", id, ok: true }), "someone else");
 throws("the submitter still cannot approve it either", () => step(d, A, { t: "approveResolution", id }), "different reviewer");
-throws("a moderator cannot use the reporter path", () => step(d, M, { t: "reporterConfirm", id, ok: true }), "not allowed");
+throws("a moderator who did not report it cannot use the reporter path", () => step(d, M, { t: "reporterConfirm", id, ok: true }), "Only the person who reported");
 
 // ---- 3. reporter says fixed -> resolved
 const done = step(d, R, { t: "reporterConfirm", id, ok: true, note: "Road is smooth now" });

@@ -68,7 +68,7 @@ The server enforces every permission from the table in `src/logic.ts`. In the co
 |---|---|---|
 | Resident | Every new member | Report, confirm, flag, report spam, add updates, answer "Is the problem fixed?" on their own reports, send SOS, reply to check-ins, use the neighbor exchange, approve the agent's complaint for their own report. |
 | Volunteer | A resident who opts in under Account | Everything a resident can except flagging, plus join missions, set skills and availability, share an approximate area, and post proof of a fix. |
-| Moderator | Set by a coordinator in the People tab | Verify or dispute reports, hide and restore them, approve or reject fixes (never their own), close a fix without confirmation. |
+| Moderator | Set by a coordinator in the People tab | Verify or dispute reports, hide and restore them, approve or reject fixes (never their own), close a fix without confirmation. A moderator can also report, confirm, send an SOS, answer a check-in and use the demo, like any neighbour. |
 | Coordinator | Whoever creates a named neighbourhood, or a member a coordinator promotes | Everything a member can, plus move issues forward, create missions, assign volunteers, manage resources and SOS, run check-ins, post notices, hand issues to authorities, run TinyFish status checks, and use What-if, Reports and People. |
 | Platform admin | Emails listed in `PLATFORM_ADMINS` | Acts as a coordinator in any neighbourhood. |
 
@@ -90,7 +90,7 @@ No keys, database or account are needed for the demo.
 1. `npm install` then `npm run dev`, and open http://localhost:5173.
 2. On the landing page, press **Try the live demo**.
 3. In the Command tab, press **Run next step** nine times to play the AI agent flow on a Hindi report.
-4. Use the **Role** menu in the header to see the app as a resident, volunteer, moderator or coordinator. Switch away from Moderator before using Run next step or Reset demo (see [Known issues](#known-issues)).
+4. Use the **Role** menu in the header to see the app as a resident, volunteer, moderator or coordinator.
 5. Press **Simulate an earthquake alert** to switch the neighbourhood into Crisis Mode, then open the SOS and Prepare tabs.
 
 ## How it is built
@@ -385,7 +385,6 @@ Two features in the AI agent panel use [TinyFish](https://www.tinyfish.ai) when 
 These were found while writing the design brief (section 9 has the full list and suggested fixes):
 
 - The demo opens in Crisis Mode. Four open garbage reports near Lakeview Road form a report cluster, so the red crisis chip and pulsing SOS tab are on before any hazard alert.
-- Moderators cannot report, confirm, send SOS or answer check-ins, and in the demo "Run next step" and "Reset demo" fail while the Role menu is set to Moderator.
 - On phones, the header wraps to three rows and takes about a quarter of the screen.
 - Some copy is out of date: a few labels say only a moderator approves fixes, the landing page says "Claude AI suggestions" although Gemini is the default, the Account text-command help leaves out FIXED and NOT FIXED, and the app manifest still uses the old navy colour.
 - The landing page is English only, and the World panel cannot filter by severity.
