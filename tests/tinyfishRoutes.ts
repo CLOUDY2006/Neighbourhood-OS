@@ -77,6 +77,10 @@ try {
   check("signed-out request to the status route gets 401", r.status === 401);
   r = await fetch(a.base + "/api/n/abc/tinyfish/runs/run_abc123");
   check("signed-out request to the run route gets 401", r.status === 401);
+  r = await post(a.base, "/api/n/abc/tinyfish/ward/pages", {});
+  check("signed-out request to the ward pages route gets 401", r.status === 401);
+  r = await post(a.base, "/api/n/abc/tinyfish/ward", { url: "https://city.gov.in/wards", area: { locality: "Kothrud", city: "Pune" } });
+  check("signed-out request to the ward lookup route gets 401", r.status === 401);
 
   const b = await boot({});
   check("startup log says TinyFish is off without a key", /TinyFish: off/.test(b.log()));

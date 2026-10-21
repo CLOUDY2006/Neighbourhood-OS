@@ -457,6 +457,34 @@ export async function tfPollStatus(runId: string): Promise<TfStatus> {
   return api<TfStatus>(`${tfBase()}/runs/${enc(runId)}`);
 }
 
+export interface TfWardArea { locality: string; city: string; postcode: string }
+export interface TfWardPages { area: TfWardArea; sources: TfRouteCheck["sources"]; simulated?: boolean }
+export interface TfWard {
+  state: "running" | "done" | "failed"; streamingUrl?: string; error?: string; simulated?: boolean;
+  found?: boolean; ward?: string; councillor?: string; phone?: string; email?: string; office?: string; sourceUrl?: string; remarks?: string;
+}
+export async function tfWardPages(city?: string): Promise<TfWardPages> {
+  if (app.mode === "demo") {
+    await new Promise(r => setTimeout(r, 1000));
+    return {
+      simulated: true, area: { locality: "Maple Nagar", city: city?.trim() || "Maple City", postcode: "" },
+      sources: [{ title: "Know your ward councillor (simulated)", url: "https://example.org/wards", official: false, snippet: "Simulated example. No real website was read in demo mode." }],
+    };
+  }
+  return api<TfWardPages>(`${tfBase()}/ward/pages`, { city: city || undefined });
+}
+export async function tfStartWard(url: string, area: TfWardArea): Promise<string> {
+  if (app.mode === "demo") return `demo:${Date.now()}`;
+  return (await api<{ runId: string }>(`${tfBase()}/ward`, { url, area })).runId;
+}
+export async function tfPollWard(runId: string): Promise<TfWard> {
+  if (runId.startsWith("demo:")) {
+    if (Date.now() - Number(runId.slice(5)) < 3000) return { state: "running", simulated: true };
+    return { state: "done", simulated: true, found: true, ward: "Ward 42, Maple Nagar", councillor: "A. Sharma (fictional)", phone: "011 0000 0000", email: "", office: "Ward office, Community Hall, Maple Nagar", sourceUrl: "https://example.org/wards", remarks: "Simulated example. No real website was visited." };
+  }
+  return api<TfWard>(`${tfBase()}/runs/${enc(runId)}`);
+}
+
 export async function agentAnalyze(text: string): Promise<Analysis> {
   if (app.mode === "live" && app.nbhd) {
     try { return await api<Analysis>(`/api/n/${enc(app.nbhd.id)}/agent/analyze`, { text }); } catch (e) { if (e instanceof HttpErr) throw e; }

@@ -12,9 +12,9 @@ import { alertsFor, SEV_RANK, type Alert } from "../src/world";
 import { canModerateChat, chatAccess, chatText, CHAT_DAYS, CHAT_HIDE_AT, CHAT_PAGE, ROOMS, roomsFor, type ChatMsg, type Room } from "../src/chat";
 import { CELL_R, parseCell } from "../src/geo";
 import { pool, tx } from "./db";
-import { cityOf, fetchMap, geocode, NAMES_ON, placeName } from "./osm";
+import { areaOf, cityOf, fetchMap, geocode, NAMES_ON, placeName } from "./osm";
 import { aiAnalyze, aiCompare, aiEnabled, aiImage, aiInsights, aiLabel, aiSuggest } from "./ai";
-import { getStatusRun, runOwner, startStatusRun, tfEnabled, tfLabel, TinyFishError, trackRun, verifyRoute } from "./tinyfish";
+import { getStatusRun, getWardRun, runOwner, startStatusRun, startWardRun, tfEnabled, tfLabel, TinyFishError, trackRun, verifyRoute, wardPages } from "./tinyfish";
 import { getWorld, worldSnapshot } from "./world";
 import { capAlertsFor, capFeedCount, capSnapshot, getCap } from "./cap";
 import { caps, notify, sendEmail, sendText, sign, twilioReady, twilioToken } from "./notify";
@@ -684,7 +684,7 @@ const tfAdmin = async (req: express.Request) => {
   const u = await authenticate(req); const id = String(req.params.id);
   if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
   if (!tfEnabled()) throw new HttpError(503, "TinyFish is not set up on this server");
-  if ((await memberRole(pool, id, u)) !== "admin") throw new HttpError(403, "Only a coordinator can run a status check");
+  if ((await memberRole(pool, id, u)) !== "admin") throw new HttpError(403, "Only a coordinator can use the TinyFish web agent");
   return { u, id };
 };
 
@@ -727,7 +727,30 @@ app.get("/api/n/:id/tinyfish/runs/:runId", ah(async (req, res) => {
   rl(`tfpoll:${u.id}`, 300, 3600000);
   const runId = String(req.params.runId), o = runOwner(runId);
   if (!o || o.nid !== id || o.uid !== u.id) throw new HttpError(404, "Run not found");
-  try { res.json(await getStatusRun(runId)); } catch (e) { tfFail(e); }
+  try { res.json(await (o.kind === "ward" ? getWardRun(runId) : getStatusRun(runId))); } catch (e) { tfFail(e); }
+}));
+
+app.post("/api/n/:id/tinyfish/ward/pages", ah(async (req, res) => {
+  const { u, id } = await tfAdmin(req);
+  rl(`tfwardpages:${u.id}`, 20, 3600000);
+  const n = (await pool.query("select center_lat, center_lng from neighbourhoods where id = $1", [id])).rows[0];
+  if (!n) throw new HttpError(404, "Neighbourhood not found");
+  const a = await areaOf(n.center_lat, n.center_lng);
+  const typed = String(req.body?.city ?? "").trim().slice(0, 80);
+  const city = typed || [a.city, a.state].filter(Boolean).join(", ");
+  if (!city) throw new HttpError(400, "Could not tell the city. Type it in and try again");
+  try { res.json({ area: { locality: a.locality, city: typed || a.city, postcode: a.postcode }, sources: await wardPages(city) }); } catch (e) { tfFail(e); }
+}));
+
+app.post("/api/n/:id/tinyfish/ward", ah(async (req, res) => {
+  const { u, id } = await tfAdmin(req);
+  rl(`tfward:${u.id}`, 5, 3600000);
+  rl("tfward:all", 30, 86400000);
+  try {
+    const runId = await startWardRun(String(req.body?.url ?? ""), req.body?.area);
+    trackRun(runId, { nid: id, uid: u.id, kind: "ward" });
+    res.json({ runId });
+  } catch (e) { tfFail(e); }
 }));
 
 app.get("/api/public/tinyfish", (_req, res) => res.json({ enabled: tfEnabled() }));

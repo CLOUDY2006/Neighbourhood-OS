@@ -39,6 +39,25 @@ export async function placeName(lat: number, lng: number) {
   } catch { return fallback; }
 }
 
+/** Area name, city, state and PIN code for a neighbourhood's centre, used only to look up its ward. Never a street address. */
+export async function areaOf(lat: number, lng: number): Promise<{ locality: string; city: string; state: string; postcode: string }> {
+  const key = `a:${lat.toFixed(3)},${lng.toFixed(3)}`;
+  const hit = recall<{ locality: string; city: string; state: string; postcode: string }>(key);
+  if (hit) return hit;
+  const none = { locality: "", city: "", state: "", postcode: "" };
+  try {
+    const r = await queue(() => fetch(`${NOMINATIM}/reverse?format=jsonv2&zoom=16&lat=${lat}&lon=${lng}`, { headers: { "User-Agent": UA, "Accept-Language": "en" }, signal: AbortSignal.timeout(5000) }));
+    if (!r.ok) return none;
+    const a = ((await r.json()) as any).address ?? {};
+    return remember(key, {
+      locality: String(a.suburb || a.neighbourhood || a.quarter || a.city_district || a.village || "").slice(0, 60),
+      city: String(a.city || a.town || a.municipality || a.county || a.state_district || "").slice(0, 60),
+      state: String(a.state || "").slice(0, 60),
+      postcode: String(a.postcode || "").replace(/\s/g, "").slice(0, 10),
+    });
+  } catch { return none; }
+}
+
 /** City and state for a point, used only to look up the right official website. Never includes the exact spot. */
 export async function cityOf(lat: number, lng: number): Promise<string> {
   const key = `c:${lat.toFixed(2)},${lng.toFixed(2)}`;

@@ -1,6 +1,6 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import { extractContacts, getStatusRun, isOfficial, cleanRef, resetTinyFish, runOwner, safePortalUrl, startStatusRun, suggestStatus, tfEnabled, trackRun, verifyRoute, TinyFishError } from "../server/tinyfish";
+import { cleanArea, extractContacts, getStatusRun, getWardRun, isOfficial, cleanRef, resetTinyFish, runOwner, safePortalUrl, startStatusRun, startWardRun, suggestStatus, tfEnabled, trackRun, verifyRoute, wardPages, TinyFishError } from "../server/tinyfish";
 
 let bad = 0;
 const check = (m: string, ok: boolean, extra = "") => { if (!ok) bad++; console.log(ok ? "ok" : "FAIL", m, extra); };
@@ -32,6 +32,13 @@ const server = http.createServer((req, res) => {
       const blog = { position: 1, site_name: "blog", title: "A blog about civic life", snippet: "tips", url: "https://civic-blog.example.com/post" };
       const gov = { position: 2, site_name: "city.gov.in", title: "City Municipal Corporation", snippet: "Official site", url: "https://city.gov.in/grievance" };
       if (mode === "nogov") return send(200, { results: sp.get("include_domains") ? [gov] : [blog] });
+      if (mode === "ward") return send(200, { results: sp.get("include_domains") ? [
+        { title: "Property tax", snippet: "Pay your tax", url: "https://city.gov.in/tax" },
+        { title: "Know your ward councillor", snippet: "Ward list for Pune", url: "https://city.gov.in/wards" },
+      ] : [
+        { title: "Corporators in the news", snippet: "Corporator story", url: "https://news.example.com/x" },
+        { title: "Know your ward councillor", snippet: "Ward list for Pune", url: "https://city.gov.in/wards" },
+      ] });
       if (mode === "rank") return send(200, { results: [
         { title: "National grievance portal", snippet: "Lodge any grievance", url: "https://pgportal.gov.in/" },
         { title: "Random page about Dwarka", snippet: "Dwarka", url: "https://blog.example.in/dwarka" },
@@ -58,6 +65,9 @@ const server = http.createServer((req, res) => {
       if (mode === "failed") return send(200, { status: "FAILED", error: { code: "SITE_BLOCKED", message: "Blocked", help_message: "The site blocked the agent." } });
       if (mode === "bare") return send(200, { status: "COMPLETED", result: { result: "Status: Closed" } });
       if (mode === "notfound") return send(200, { status: "COMPLETED", result: { found: false, remarks: "Number not found" } });
+      if (mode === "ward") return send(200, { status: "COMPLETED", result: { found: true, ward: "Ward 12, Kothrud", councillor: "Asha Patil", phone: "Office: 020-2543 1234, mobile on request", email: "WARD12@CITY.GOV.IN", office: "Kothrud ward office", sourceUrl: "https://city.gov.in/wards/12", remarks: "" } });
+      if (mode === "wardbad") return send(200, { status: "COMPLETED", result: { found: true, ward: "Ward 9", councillor: "", phone: "call the office", email: "not an email", sourceUrl: "javascript:alert(1)", remarks: "Seat vacant. Administrator in charge" } });
+      if (mode === "wardempty") return send(200, { status: "COMPLETED", result: { found: true, ward: "", councillor: "", phone: "020 2543 1234" } });
       return send(200, { status: "COMPLETED", result: { found: true, status: "Action taken. Complaint closed", lastUpdated: "12 Oct 2026", remarks: "<b>Fixed</b> by zone 4" } });
     }
     send(404, {});
@@ -173,8 +183,49 @@ const T: [string, string | undefined][] = [
 ];
 for (const [t, want] of T) check(`suggestStatus("${t}") is ${want ?? "nothing"}`, suggestStatus(t) === want, `(${suggestStatus(t)})`);
 
+reset(); mode = "ward";
+const wp = await wardPages("Pune, Maharashtra");
+check("ward pages: searched twice at once, once limited to gov.in and nic.in", searches.length === 2 && searches.some(x => x.get("include_domains") === "gov.in,nic.in") && /know your ward councillor/.test(searches[0].get("query") ?? ""));
+check("ward pages: duplicates removed, the government ward page first, then other government pages, then the rest", wp.map(x => x.url).join(",") === "https://city.gov.in/wards,https://city.gov.in/tax,https://news.example.com/x", wp.map(x => x.url).join(","));
+const wn = hits.length;
+await wardPages("pune, maharashtra");
+check("ward pages: same city is served from the cache", hits.length === wn);
+e = await fails(wardPages("<>"));
+check("ward pages: a city with no letters is rejected before any request", e?.status === 400 && hits.length === wn);
+
+check("area: markup is stripped and spaces are removed from the PIN code", JSON.stringify(cleanArea({ locality: "Kothrud<script>", city: "Pune", postcode: "411 038" })) === JSON.stringify({ locality: "Kothrudscript", city: "Pune", postcode: "411038" }));
+for (const [why, a] of [["no area name", { city: "Pune" }], ["no city", { locality: "Kothrud" }], ["a PIN code that is not 6 digits", { locality: "Kothrud", city: "Pune", postcode: "4110" }], ["not an object", "Kothrud"]] as const) {
+  let refused = false; try { cleanArea(a); } catch (er) { refused = er instanceof TinyFishError && er.status === 400; }
+  check(`area refused: ${why}`, refused);
+}
+
+reset();
+const wid = await startWardRun("https://city.gov.in/wards", { locality: "Kothrud", city: "Pune", postcode: "411038" });
+const wcall = hits.find(h => h.url === "/agent/v1/automation/run-async")!;
+check("ward run: returns the run id and opens the chosen page", wid === "run_abc123" && wcall.body.url === "https://city.gov.in/wards");
+check("ward run: goal is read-only, names the area and PIN code, and forbids personal details", /read-only/i.test(wcall.body.goal) && /do not log in/i.test(wcall.body.goal) && /street address/i.test(wcall.body.goal) && wcall.body.goal.includes('"Kothrud" in Pune (PIN code 411038)'));
+check("ward run: asks for the ward schema and a longer time limit", !!wcall.body.output_schema?.properties?.councillor && wcall.body.agent_config.max_duration_seconds === 150);
+e = await fails(startWardRun("https://localhost/wards", { locality: "Kothrud", city: "Pune" }));
+check("ward run: a private address is refused before any request", e?.status === 400 && hits.length === 1);
+e = await fails(startWardRun("https://city.gov.in/wards", { city: "Pune" }));
+check("ward run: a missing area name is refused before any request", e?.status === 400 && hits.length === 1);
+
+reset(); mode = "running";
+let wr = await getWardRun("run_abc123");
+check("ward run: running shows the live link", wr.state === "running" && wr.streamingUrl === "https://stream.example.com/x");
+mode = "ward"; wr = await getWardRun("run_abc123");
+check("ward run: result is read, the first phone number is kept and the email is lowercased", wr.found === true && wr.ward === "Ward 12, Kothrud" && wr.councillor === "Asha Patil" && wr.phone === "020-2543 1234" && wr.email === "ward12@city.gov.in" && wr.sourceUrl === "https://city.gov.in/wards/12", JSON.stringify(wr));
+mode = "wardbad"; wr = await getWardRun("run_abc123");
+check("ward run: a vacant seat keeps the ward and remark, and junk phone, email and links are dropped", wr.found === true && wr.ward === "Ward 9" && !wr.councillor && !wr.phone && !wr.email && !wr.sourceUrl && /vacant/i.test(wr.remarks ?? ""), JSON.stringify(wr));
+mode = "wardempty"; wr = await getWardRun("run_abc123");
+check("ward run: found with no ward and no name counts as not found and shows no contact", wr.found === false && !wr.phone);
+mode = "failed"; wr = await getWardRun("run_abc123");
+check("ward run: failed run gives the help message", wr.state === "failed" && /blocked/i.test(wr.error ?? ""));
+
 trackRun("run_abc123", { nid: "n1", uid: "u1", issueId: "i1" });
-check("run ownership is remembered", runOwner("run_abc123")?.uid === "u1" && runOwner("nope") === undefined);
+check("run ownership is remembered", runOwner("run_abc123")?.uid === "u1" && runOwner("run_abc123")?.kind === "status" && runOwner("nope") === undefined);
+trackRun("run_ward99", { nid: "n1", uid: "u1", kind: "ward" });
+check("a ward run is remembered as a ward run", runOwner("run_ward99")?.kind === "ward");
 
 server.close();
 if (bad) { console.log(`\n${bad} TinyFish test(s) failed`); process.exit(1); }

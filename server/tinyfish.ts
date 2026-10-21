@@ -32,7 +32,7 @@ function warn(msg: string) {
   lastWarn.set(msg, now);
   console.warn(`[tinyfish] ${msg}`);
 }
-export function resetTinyFish() { lastWarn.clear(); cache.clear(); runs.clear(); }
+export function resetTinyFish() { lastWarn.clear(); cache.clear(); pageCache.clear(); runs.clear(); }
 
 async function call(url: string, init: { method?: string; body?: unknown }, ms: number): Promise<any> {
   const c = tfConfig();
@@ -96,9 +96,10 @@ export const cityOnly = (where: string): string | null => {
   return words.length >= 3 && last.length >= 4 && !/\d/.test(last) && !GENERIC_PLACE.test(last) ? last : null;
 };
 /** Order results: official government pages, pages about this kind of problem, pages that mention the place. Pure. */
-export function rankSources(found: RouteSource[], where: string, cat: Cat): RouteSource[] {
+export const rankSources = (found: RouteSource[], where: string, cat: Cat): RouteSource[] => rankBy(found, where, TOPIC[cat] ?? TOPIC.other);
+function rankBy(found: RouteSource[], where: string, words: string[]): RouteSource[] {
   const uniq = [...new Map(found.map(r => [r.url, r])).values()];
-  const tok = where.split(/[ ,]+/)[0].toLowerCase(), words = TOPIC[cat] ?? TOPIC.other;
+  const tok = where.split(/[ ,]+/)[0].toLowerCase();
   const mentions = (r: RouteSource) => tok.length >= 3 && `${r.title} ${r.snippet} ${r.url}`.toLowerCase().includes(tok);
   const topical = (r: RouteSource) => { const h = `${r.title} ${r.snippet} ${r.url}`.toLowerCase(); return Math.min(2, words.filter(w => h.includes(w)).length); };
   const score = (r: RouteSource) => (r.official ? 3 : 0) + topical(r) * 2 + (mentions(r) ? 1 : 0);
@@ -252,20 +253,20 @@ export const statusGoal = (ref: string) =>
   `If the page needs a login, an OTP, a mobile number or a CAPTCHA, stop. ` +
   `Reply as JSON with: found (true only if the page showed a status for this exact number), status (the status text exactly as shown), lastUpdated (the date shown, if any), remarks (any officer remark shown, or why nothing was found).`;
 
-const runs = new Map<string, { nid: string; uid: string; issueId: string; at: number }>();
-export function trackRun(runId: string, o: { nid: string; uid: string; issueId: string }) {
+type RunKind = "status" | "ward";
+const runs = new Map<string, { nid: string; uid: string; issueId?: string; kind: RunKind; at: number }>();
+export function trackRun(runId: string, o: { nid: string; uid: string; issueId?: string; kind?: RunKind }) {
   const now = Date.now();
   for (const [k, v] of runs) if (now - v.at > 2 * 3600000) runs.delete(k);
-  runs.set(runId, { ...o, at: now });
+  runs.set(runId, { ...o, kind: o.kind ?? "status", at: now });
   if (runs.size > 500) runs.delete(runs.keys().next().value as string);
 }
 export const runOwner = (runId: string) => runs.get(runId);
 
-export async function startStatusRun(portalUrl: string, ref: string): Promise<string> {
-  const url = safePortalUrl(portalUrl), r = cleanRef(ref), c = tfConfig();
-  const body = { url, goal: statusGoal(r), browser_profile: "lite", agent_config: { max_duration_seconds: 120 } };
+async function startRun(url: string, goal: string, schema: object, seconds: number): Promise<string> {
+  const c = tfConfig(), body = { url, goal, browser_profile: "lite", agent_config: { max_duration_seconds: seconds } };
   let j: any;
-  try { j = await call(`${c.agent}/v1/automation/run-async`, { method: "POST", body: { ...body, output_schema: SCHEMA } }, 20000); }
+  try { j = await call(`${c.agent}/v1/automation/run-async`, { method: "POST", body: { ...body, output_schema: schema } }, 20000); }
   catch (e) {
     // The goal already asks for JSON, so a rejected schema is not fatal.
     if (e instanceof TinyFishError && e.status === 400) j = await call(`${c.agent}/v1/automation/run-async`, { method: "POST", body }, 20000);
@@ -274,6 +275,25 @@ export async function startStatusRun(portalUrl: string, ref: string): Promise<st
   const id = typeof j?.run_id === "string" ? j.run_id : "";
   if (!id || j?.error) throw new TinyFishError(502, "TinyFish could not start the check");
   return id;
+}
+
+export async function startStatusRun(portalUrl: string, ref: string): Promise<string> {
+  const url = safePortalUrl(portalUrl), r = cleanRef(ref);
+  return startRun(url, statusGoal(r), SCHEMA, 120);
+}
+
+type RunRead = { state: "running" | "failed"; streamingUrl?: string; error?: string } | { state: "done"; streamingUrl?: string; res: any };
+async function readRun(runId: string): Promise<RunRead> {
+  if (!/^[A-Za-z0-9_-]{6,80}$/.test(runId)) throw new TinyFishError(400, "Invalid run");
+  const j = await call(`${tfConfig().agent}/v1/runs/${encodeURIComponent(runId)}`, {}, 15000);
+  const st = String(j?.status ?? "");
+  const stream = typeof j?.streaming_url === "string" && /^https:\/\//.test(j.streaming_url) ? j.streaming_url.slice(0, 500) : undefined;
+  if (st === "PENDING" || st === "RUNNING" || !st) return { state: "running", streamingUrl: stream };
+  if (st !== "COMPLETED") return { state: "failed", streamingUrl: stream, error: clean(j?.error?.help_message || j?.error?.message, 200) || "TinyFish could not finish the check" };
+  let res: any = j?.result;
+  if (typeof res === "string") { try { res = JSON.parse(res); } catch { res = { found: false, remarks: res }; } }
+  if (res && res.found === undefined && res.result !== undefined) res = typeof res.result === "object" ? res.result : { found: false, remarks: res.result };
+  return { state: "done", streamingUrl: stream, res };
 }
 
 export interface StatusResult {
@@ -292,19 +312,92 @@ export function suggestStatus(text: string): "acknowledged" | "resolved" | undef
 }
 
 export async function getStatusRun(runId: string): Promise<StatusResult> {
-  if (!/^[A-Za-z0-9_-]{6,80}$/.test(runId)) throw new TinyFishError(400, "Invalid run");
-  const j = await call(`${tfConfig().agent}/v1/runs/${encodeURIComponent(runId)}`, {}, 15000);
-  const st = String(j?.status ?? "");
-  const stream = typeof j?.streaming_url === "string" && /^https:\/\//.test(j.streaming_url) ? j.streaming_url.slice(0, 500) : undefined;
-  if (st === "PENDING" || st === "RUNNING" || !st) return { state: "running", streamingUrl: stream };
-  if (st !== "COMPLETED") return { state: "failed", streamingUrl: stream, error: clean(j?.error?.help_message || j?.error?.message, 200) || "TinyFish could not finish the check" };
-  let res: any = j?.result;
-  if (typeof res === "string") { try { res = JSON.parse(res); } catch { res = { found: false, remarks: res }; } }
-  if (res && res.found === undefined && res.result !== undefined) res = typeof res.result === "object" ? res.result : { found: false, remarks: res.result };
-  const found = res?.found === true;
+  const r = await readRun(runId);
+  if (r.state !== "done") return r;
+  const res = r.res, found = res?.found === true;
   const status = clean(res?.status, 200), remarks = clean(res?.remarks, 400);
   return {
-    state: "done", streamingUrl: stream, found, status, lastUpdated: clean(res?.lastUpdated, 60), remarks,
+    state: "done", streamingUrl: r.streamingUrl, found, status, lastUpdated: clean(res?.lastUpdated, 60), remarks,
     suggest: found ? suggestStatus(`${status} ${remarks}`) : undefined,
+  };
+}
+
+/* ------------------------------------------------------------ ward councillor lookup (Search is free, the Web Agent uses credits) */
+
+export interface WardArea { locality: string; city: string; postcode: string }
+const WARD_WORDS = ["ward", "councillor", "corporator", "parshad", "know your", "elected"];
+const placeText = (s: unknown, max: number) => clean(s, max).normalize("NFKC").replace(/[^\p{L}\p{N} ,.'-]/gu, "").replace(/\s+/g, " ").trim();
+const pageCache = new Map<string, { at: number; v: RouteSource[] }>();
+
+/** Find the city's "know your ward" or councillor list pages. Government sites first. Free to run. */
+export async function wardPages(city: string): Promise<RouteSource[]> {
+  const where = placeText(city, 80);
+  if (where.length < 2) throw new TinyFishError(400, "Enter the city name first");
+  const { country } = tfConfig(), region = REGION[country] ?? country;
+  const key = `${country}|${where.toLowerCase()}`, hit = pageCache.get(key);
+  if (hit && Date.now() - hit.at < 7 * DAY) return hit.v;
+  const place = region && !where.toLowerCase().includes(region.toLowerCase()) ? `${where}, ${region}` : where;
+  const q = `${place} municipal corporation know your ward councillor corporator list`;
+  const got = await Promise.allSettled([tfSearch(q), ...(GOV_DOMAINS[country] ? [tfSearch(q, GOV_DOMAINS[country])] : [])]);
+  const found = got.flatMap(r => (r.status === "fulfilled" ? r.value : []));
+  if (!found.length) {
+    const bad = got.find(r => r.status === "rejected") as PromiseRejectedResult | undefined;
+    if (bad) throw bad.reason;
+    throw new TinyFishError(404, "No ward pages were found for that city. Check the spelling, or paste the address of your city corporation's ward page");
+  }
+  const v = rankBy(found, where, WARD_WORDS).slice(0, 5);
+  pageCache.set(key, { at: Date.now(), v });
+  if (pageCache.size > 200) pageCache.delete(pageCache.keys().next().value as string);
+  return v;
+}
+
+/** Only an area name, a city and a PIN code ever reach the agent, never a street address or a person's details. */
+export function cleanArea(a: unknown): WardArea {
+  const o = (a && typeof a === "object" ? a : {}) as Record<string, unknown>;
+  const locality = placeText(o.locality, 60), city = placeText(o.city, 60), postcode = clean(o.postcode, 12).replace(/\s/g, "");
+  if (locality.length < 2) throw new TinyFishError(400, "Enter the area name first");
+  if (city.length < 2) throw new TinyFishError(400, "Enter the city first");
+  if (postcode && !(tfConfig().country === "IN" ? /^\d{6}$/ : /^[A-Za-z0-9-]{3,10}$/).test(postcode)) throw new TinyFishError(400, "The PIN code looks wrong");
+  return { locality, city, postcode };
+}
+
+const WARD_SCHEMA = {
+  type: "object",
+  properties: {
+    found: { type: "boolean" }, ward: { type: "string" }, councillor: { type: "string" }, phone: { type: "string" },
+    email: { type: "string" }, office: { type: "string" }, sourceUrl: { type: "string" }, remarks: { type: "string" },
+  },
+  required: ["found"],
+};
+
+export const wardGoal = (a: WardArea) =>
+  `Find which municipal ward covers the area "${a.locality}" in ${a.city}${a.postcode ? ` (PIN code ${a.postcode})` : ""}, and who its elected ward councillor is (also called corporator, parshad or ward member). ` +
+  `You may use this website's ward search, ward lookup form, ward list or list of councillors. You may type or choose only the area name, the city or the PIN code. ` +
+  `This is read-only. Do not log in, do not register, do not submit any complaint, feedback or other form, and do not enter any name, phone number, email or street address. If the page needs a login, an OTP, a mobile number or a CAPTCHA, stop. ` +
+  `Do not guess. Only report what a page on this website shows. If the seat is vacant, or the city is run by an administrator with no elected councillors, say so in remarks. ` +
+  `Reply as JSON with: found (true only if a page showed which ward covers this area), ward (the ward number and name as shown), councillor (the name exactly as shown, empty if none), ` +
+  `phone, email and office (the ward office address), each only if shown, sourceUrl (the address of the page where you read this), remarks (anything to double-check, or why nothing was found).`;
+
+export async function startWardRun(portalUrl: string, area: unknown): Promise<string> {
+  const url = safePortalUrl(portalUrl), a = cleanArea(area);
+  return startRun(url, wardGoal(a), WARD_SCHEMA, 150);
+}
+
+export interface WardResult {
+  state: "running" | "done" | "failed"; streamingUrl?: string; error?: string;
+  found?: boolean; ward?: string; councillor?: string; phone?: string; email?: string; office?: string; sourceUrl?: string; remarks?: string;
+}
+const phoneOf = (s: unknown) => (clean(s, 80).match(LONG_NUMBER) ?? []).find(m => { const n = m.replace(/\D/g, "").length; return n >= 8 && n <= 13; })?.trim().slice(0, 20) ?? "";
+const emailOf = (s: unknown) => { const v = clean(s, 120).toLowerCase(); return /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(v) ? v : ""; };
+
+export async function getWardRun(runId: string): Promise<WardResult> {
+  const r = await readRun(runId);
+  if (r.state !== "done") return r;
+  const x = r.res ?? {}, ward = clean(x.ward, 80), councillor = clean(x.councillor, 80), remarks = clean(x.remarks, 400);
+  if (x.found !== true || !(ward || councillor)) return { state: "done", streamingUrl: r.streamingUrl, found: false, remarks };
+  const src = httpsUrl(x.sourceUrl);
+  return {
+    state: "done", streamingUrl: r.streamingUrl, found: true, ward, councillor, remarks,
+    phone: phoneOf(x.phone), email: emailOf(x.email), office: clean(x.office, 200), sourceUrl: src.startsWith("https://") ? src : "",
   };
 }

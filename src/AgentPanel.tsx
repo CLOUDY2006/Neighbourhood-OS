@@ -19,30 +19,36 @@ export function AnalysisCard({ a, onApply }: { a: S.Analysis; onApply: () => voi
   );
 }
 
-const ext = { target: "_blank", rel: "noopener noreferrer" } as const;
+export const ext = { target: "_blank", rel: "noopener noreferrer" } as const;
 
-function TinyFishCard({ i, admin, owns, sent, act }: { i: S.Issue; admin: boolean; owns: boolean; sent: boolean; act: Act }) {
-  const t = useT(), app = S.useApp();
-  const [ok, setOk] = useState(false), [city, setCity] = useState(""), [busy, setBusy] = useState(false), [res, setRes] = useState<S.TfRouteCheck | null>(null), [err, setErr] = useState("");
-  const [url, setUrl] = useState(""), [runId, setRunId] = useState(""), [st, setSt] = useState<S.TfStatus | null>(null), [serr, setSerr] = useState("");
-  const ref = i.handoff?.ref ?? "", resolved = i.status === "resolved";
-
-  useEffect(() => { let on = true; S.tfAvailable().then(v => { if (on) setOk(v); }); return () => { on = false; }; }, [app.mode]);
+/** Polls a TinyFish web agent run every 3 seconds until it finishes, or gives up after `limit` polls. */
+export function useTfRun<T extends { state: "running" | "done" | "failed"; error?: string }>(runId: string, poll: (id: string) => Promise<T>, limit = 60) {
+  const [st, setSt] = useState<T | null>(null);
   useEffect(() => {
     if (!runId) return;
     let on = true, n = 0, timer: ReturnType<typeof setTimeout> | undefined;
     const tick = async () => {
       try {
-        const r = await S.tfPollStatus(runId);
+        const r = await poll(runId);
         if (!on) return;
-        if (r.state === "running" && ++n >= 60) { setSt({ state: "failed", error: "The check took too long. Try again later." }); return; }
+        if (r.state === "running" && ++n >= limit) { setSt({ state: "failed", error: "The check took too long. Try again later." } as T); return; }
         setSt(r);
         if (r.state === "running") timer = setTimeout(tick, 3000);
-      } catch (e) { if (on) setSt({ state: "failed", error: (e as Error).message }); }
+      } catch (e) { if (on) setSt({ state: "failed", error: (e as Error).message } as T); }
     };
     void tick();
     return () => { on = false; if (timer) clearTimeout(timer); };
   }, [runId]);
+  return [st, setSt] as const;
+}
+
+function TinyFishCard({ i, admin, owns, sent, act }: { i: S.Issue; admin: boolean; owns: boolean; sent: boolean; act: Act }) {
+  const t = useT(), app = S.useApp();
+  const [ok, setOk] = useState(false), [city, setCity] = useState(""), [busy, setBusy] = useState(false), [res, setRes] = useState<S.TfRouteCheck | null>(null), [err, setErr] = useState("");
+  const [url, setUrl] = useState(""), [runId, setRunId] = useState(""), [st, setSt] = useTfRun(runId, S.tfPollStatus), [serr, setSerr] = useState("");
+  const ref = i.handoff?.ref ?? "", resolved = i.status === "resolved";
+
+  useEffect(() => { let on = true; S.tfAvailable().then(v => { if (on) setOk(v); }); return () => { on = false; }; }, [app.mode]);
 
   const showRoute = owns && !resolved, showStatus = admin && sent && !!ref && !resolved;
   if (!ok || (!showRoute && !showStatus)) return null;
