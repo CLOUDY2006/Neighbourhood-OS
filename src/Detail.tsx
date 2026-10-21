@@ -3,6 +3,7 @@ import { Flag, MapPin } from "lucide-react";
 import * as S from "./store";
 import { useT } from "./i18n";
 import { AgentPanel } from "./AgentPanel";
+import { PlanSheet, PlanSummary, printPlan } from "./PlanSheet";
 import { HandoffBox } from "./Reports";
 import { ago, grp, VL, type Act } from "./ui";
 import { osmLink } from "./geo";
@@ -293,24 +294,15 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
       <AgentPanel i={i} st={st} act={act} />
 
       <details className="card">
-        <summary>Action plan (a suggestion, a person approves it)</summary>
-        <ol className="why">{plan.steps.map((x, n) => <li key={n}>{x}</li>)}</ol>
-        <small className="dim">Department: {plan.department}. Volunteers: {plan.volunteers}. Effort: about {plan.personHours} person-hours (estimate). Time: {plan.timeline} (estimate). Materials: {plan.materials.join(", ")}.</small>
-        <small className="dim">Safety: {plan.safety}</small>
+        <summary>{t("Action plan")} &middot; {plan.progress.done}/{plan.progress.total} {t("steps done")}</summary>
+        <PlanSummary plan={plan} />
+        <small className="dim">{t("This plan is a suggestion built from fixed rules. A coordinator approves it before anything happens.")}</small>
         <div className="row wrap">
           {S.can(r, "actionPlanApprove") && !m && i.status !== "resolved" && <button className="go" onClick={() => act(() => S.actionPlanApprove(i.id), "Plan approved and mission created")}>Approve plan and create mission</button>}
-          <button onClick={() => window.print()}>Print action plan</button>
+          <button onClick={printPlan}>{t("Print or save as PDF")}</button>
         </div>
       </details>
-      <div id="plan-print" className="print-only">
-        <h2>Action plan: {i.title}</h2>
-        <p>Priority score {ps.score}/100 ({ps.level}). Why: {ps.reasons.map(x => `${x.label} (+${x.pts})`).join("; ")}.</p>
-        <p>Department: {plan.department}. Channel: {plan.channel}.</p>
-        <ol>{plan.steps.map((x, n) => <li key={n}>{x}</li>)}</ol>
-        <p>Volunteers: {plan.volunteers}. Effort: about {plan.personHours} person-hours (estimate). Time: {plan.timeline} (estimate). Materials: {plan.materials.join(", ")}.</p>
-        <p>Safety: {plan.safety}</p>
-        <p>Suggested by NEIGHBOURHOOD OS. A coordinator must approve it before any action is taken. {i.actionPlan ? `Approved by ${i.actionPlan.approvedBy}.` : "Not approved yet."}</p>
-      </div>
+      <PlanSheet plan={plan} issue={i} photo={i.photo ? <Photo src={i.photo} alt="Before photo" /> : undefined} />
 
       <details className="fold">
         <summary>{ps.level === "resolved" ? t("Priority details") : `${t("How urgent")}: ${ps.level} (${ps.score}/100)`}</summary>

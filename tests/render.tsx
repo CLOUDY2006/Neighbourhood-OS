@@ -7,6 +7,8 @@ import ListView from "../src/ListView";
 import { Prepare } from "../src/Prepare";
 import { Reports } from "../src/Reports";
 import { AgentPanel } from "../src/AgentPanel";
+import { PlanSheet, PlanSummary } from "../src/PlanSheet";
+import { actionPlan } from "../src/plan";
 
 S.enterDemo();
 S.setRole("admin");
@@ -22,6 +24,9 @@ const parts: [string, () => string][] = [
   ["Prepare", () => renderToString(<Prepare st={st} app={app} act={act} />)],
   ["Reports", () => renderToString(<Reports st={st} app={app} act={act} />)],
   ["AgentPanel", () => renderToString(<AgentPanel i={st.issues.find(i => i.id === "i4")!} st={st} act={act} />)],
+  ["PlanSheet", () => { const i = st.issues.find(x => x.id === "i4")!, h = renderToString(<PlanSheet plan={actionPlan(st, i)} issue={i} />); if (!/ACTION PLAN/.test(h) || !/Done when/.test(h) || !/Step by step/.test(h)) throw new Error("the plan sheet is missing its main parts"); return h; }],
+  ["PlanSheet resolved", () => { const i = st.issues.find(x => x.id === "i8")!, h = renderToString(<PlanSheet plan={actionPlan(st, i)} issue={i} />); if (!/resolved/.test(h)) throw new Error("a resolved report should say resolved"); return h; }],
+  ["PlanSummary", () => { const i = st.issues.find(x => x.id === "i4")!; return renderToString(<PlanSummary plan={actionPlan(st, i)} />); }],
 ];
 let bad = 0;
 {
