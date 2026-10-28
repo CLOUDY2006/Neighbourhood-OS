@@ -1,0 +1,1 @@
+update members set role = 'resident' where role in ('volunteer', 'moderator');

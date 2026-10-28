@@ -6,9 +6,8 @@ import type { Role } from "./logic";
 export type Room = "all" | "volunteers" | "coordinators";
 export interface RoomInfo { id: Room; name: string; who: string; roles: readonly Role[] }
 export const ROOMS: readonly RoomInfo[] = [
-  { id: "all", name: "Neighbourhood", who: "Everyone who has joined this neighbourhood", roles: ["resident", "volunteer", "moderator", "admin"] },
-  { id: "volunteers", name: "Volunteers", who: "Volunteers and coordinators of this neighbourhood", roles: ["volunteer", "admin"] },
-  { id: "coordinators", name: "Coordinators", who: "Coordinators and moderators of this neighbourhood", roles: ["moderator", "admin"] },
+  { id: "all", name: "Neighbourhood", who: "Everyone who has joined this neighbourhood", roles: ["resident", "admin"] },
+  { id: "coordinators", name: "Coordinators", who: "Coordinators of this neighbourhood", roles: ["admin"] },
 ];
 export const CHAT_MAX = 500, CHAT_DAYS = 30, CHAT_HIDE_AT = 3, CHAT_PAGE = 50;
 
@@ -20,7 +19,7 @@ export interface ChatMsg {
 export const isRoom = (s: unknown): s is Room => ROOMS.some(r => r.id === s);
 export const canRoom = (role: Role, room: Room) => !!ROOMS.find(r => r.id === room)?.roles.includes(role);
 export const roomsFor = (role: Role) => ROOMS.filter(r => r.roles.includes(role));
-export const canModerateChat = (role: Role, room: Room) => (role === "admin" || role === "moderator") && canRoom(role, room);
+export const canModerateChat = (role: Role, room: Room) => role === "admin" && canRoom(role, room);
 
 // `memberRole` is the person's role from their own membership row in this neighbourhood, or null if they have not joined it.
 // Platform admins get no special pass here: chat is for the people who live in the area.
@@ -53,11 +52,8 @@ export function demoChatSeed(now = Date.now()): DemoMsg[] {
     ["all", "Ritu (demo)", "resident", "Is anyone else getting low water pressure since this morning?", 190],
     ["all", "Imran (demo)", "resident", "Yes, same on our lane. Started around 7.", 182],
     ["all", "Coordinator Asha (demo)", "admin", "Thanks both. I have asked the water board and will post on the notice board when they reply.", 170],
-    ["all", "Vikram (demo)", "volunteer", "The streetlight near Park Lane is working again.", 45],
-    ["volunteers", "Coordinator Asha (demo)", "admin", "Cleanup mission on Saturday, 8 am at the community hall. Gloves and bags are in the store room.", 300],
-    ["volunteers", "Vikram (demo)", "volunteer", "I can bring two extra rakes.", 290],
-    ["volunteers", "Meena (demo)", "volunteer", "Count me in. I can stay until 11.", 120],
-    ["coordinators", "Moderator Joseph (demo)", "moderator", "Two pothole reports on Main Street look like the same spot. Can someone check before we verify?", 240],
+    ["all", "Vikram (demo)", "resident", "The streetlight near Park Lane is working again.", 45],
+    ["coordinators", "Coordinator Joseph (demo)", "admin", "Two pothole reports on Main Street look like the same spot. Can someone check before we verify?", 240],
     ["coordinators", "Coordinator Asha (demo)", "admin", "Checked on the way home. Same pothole, I merged them.", 220],
   ];
   return rows.map(([room, by, role, text, min], i) => ({ id: i + 1, rev: i + 1, room, by, role, text, t: m(min), state: "ok", reporters: [] }));

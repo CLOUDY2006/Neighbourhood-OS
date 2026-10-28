@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Send, Siren } from "lucide-react";
+import { Send } from "lucide-react";
 import * as S from "./store";
 import { useT } from "./i18n";
 import { ago, RL, type Act } from "./ui";
@@ -7,7 +7,7 @@ import { ago, RL, type Act } from "./ui";
 const LAST_ROOM = "nos-chat-room";
 const merge = (a: S.ChatMsg[], b: S.ChatMsg[]) => { const m = new Map(a.map(x => [x.id, x])); b.forEach(x => m.set(x.id, x)); return [...m.values()].sort((x, y) => x.id - y.id); };
 
-export function ChatPanel({ st, app, act, onSos }: { st: S.State; app: S.AppState; act: Act; onSos: () => void }) {
+export function ChatPanel({ st, app, act }: { st: S.State; app: S.AppState; act: Act }) {
   const t = useT(), n = app.nbhd!, demo = app.mode === "demo";
   const rooms = S.roomsFor(st.role);
   const [pick, setPick] = useState<S.Room>(() => { try { return (localStorage.getItem(LAST_ROOM) as S.Room) || "all"; } catch { return "all"; } });
@@ -65,7 +65,6 @@ export function ChatPanel({ st, app, act, onSos }: { st: S.State; app: S.AppStat
       <small className="dim">{t(info.who)}: {n.name}. {t("Nobody outside this neighbourhood can read it.")}</small>
       <div className="chat-sos" role="note">
         <span>{t("Chat is not for emergencies. If anyone is in danger, call 112 first.")}</span>
-        <button className="warn" onClick={onSos}><Siren size={14} /> SOS</button>
       </div>
 
       <div className="chat-list" ref={list} aria-live="polite" aria-busy={loading} onScroll={e => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60; }}>
@@ -88,7 +87,7 @@ export function ChatPanel({ st, app, act, onSos }: { st: S.State; app: S.AppStat
             {m.state !== "deleted" && (
               <div className="msg-acts">
                 {!m.mine && m.state === "ok" && (m.reported ? <small className="dim">{t("Reported")}</small>
-                  : <button className="x" onClick={() => after(() => S.chatReport(room, m.id), "Reported. A moderator will look at it")}>{t("Report")}</button>)}
+                  : <button className="x" onClick={() => after(() => S.chatReport(room, m.id), "Reported. A coordinator will look at it")}>{t("Report")}</button>)}
                 {mod && m.state === "ok" && <button className="x" onClick={() => after(() => S.chatHide(room, m.id, true), "Message hidden")}>{t("Hide")}</button>}
                 {mod && m.state === "hidden" && <button className="x" onClick={() => after(() => S.chatHide(room, m.id, false), "Message restored")}>{t("Restore")}</button>}
                 {m.mine && <button className="x" onClick={() => { if (confirm(t("Delete this message for everyone?"))) void after(() => S.chatDelete(room, m.id), "Message deleted"); }}>{t("Delete")}</button>}
@@ -104,7 +103,7 @@ export function ChatPanel({ st, app, act, onSos }: { st: S.State; app: S.AppStat
           onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }} />
         <button className="go" onClick={send} disabled={!text.trim() || sending} aria-label={t("Send")}><Send size={15} /> {t("Send")}</button>
       </div>
-      {S.soundsUrgent(text) && <small className="chat-hint red">{t("If someone is in danger, call 112 first, then use SOS. Neighbours may not read this in time.")}</small>}
+      {S.soundsUrgent(text) && <small className="chat-hint red">{t("If someone is in danger, call 112 first. Neighbours may not read this in time.")}</small>}
       {S.looksLikePhone(text) && <small className="chat-hint">{t("This looks like a phone number. Everyone in this room will see it.")}</small>}
       <small className="dim">{text.length}/{S.CHAT_MAX} · {demo ? t("Demo: simulated messages, kept only on this device.") : t(`Messages are deleted after ${S.CHAT_DAYS} days. Links are not allowed.`)}</small>
     </div>

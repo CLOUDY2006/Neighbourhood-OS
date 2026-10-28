@@ -1,32 +1,24 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Bell, Radar, PlusCircle, Users, Package, BarChart3, RotateCcw, Play, ShieldAlert, UserCog, User, Globe, Siren, ShieldCheck, FileText, FlaskConical, Sun, Moon, Ellipsis, LogOut, Trophy, MapPin, MessagesSquare } from "lucide-react";
+import { Bell, Radar, PlusCircle, BarChart3, RotateCcw, Play, UserCog, User, Sun, Moon, LogOut, MessagesSquare } from "lucide-react";
 import * as S from "./store";
 import IsoMap, { ViewSwitch, type MapView } from "./IsoMap";
 import { toggleTheme, useTheme } from "./a11y";
 import { go, usePath } from "./route";
 import Landing from "./Landing";
 import { Detail, AiPhoto, PhotoPicker } from "./Detail";
-import { Pulse } from "./Pulse";
-import { Simulator } from "./Simulator";
+import { Status } from "./Status";
 import ListView from "./ListView";
-import { AreaShare } from "./Swarm";
 import Onboarding from "./Onboarding";
-import SosPanel from "./SosPanel";
 import { AgentPanel, AnalysisCard } from "./AgentPanel";
-import PublicImpact from "./PublicImpact";
 import VoiceButton from "./Voice";
-import { Exchange } from "./Exchange";
 import { NoticeBoard } from "./Notices";
 import { ChatPanel } from "./ChatPanel";
-import { CheckinCard, Prepare } from "./Prepare";
-import { HandoffBox, Reports } from "./Reports";
-import { AccessSettings, MyImpact, NotifySettings } from "./Settings";
+import { AccessSettings, NotifySettings } from "./Settings";
 import { LANGS, setLang, useLang, useT } from "./i18n";
-import { AlertBanner, WorldMap, WorldPanel } from "./WorldView";
 
 type Act = (fn: () => unknown, ok?: string) => Promise<void>;
-type Tab = "feed" | "report" | "missions" | "chat" | "resources" | "people" | "account" | "world" | "sos" | "prepare" | "reports" | "pulse" | "sim" | "board";
+type Tab = "feed" | "report" | "status" | "chat" | "people" | "account";
 type Pt = { lat: number; lng: number } | null;
 
 const grp = (s: S.Status) => (s === "resolved" ? "green" : s === "assigned" || s === "progress" || s === "pending" ? "amber" : "red");
@@ -38,27 +30,19 @@ const ago = (t: number) => {
   return m < 1 ? "now" : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`;
 };
 const TAB_INFO: Record<Tab, [string, string]> = {
-  feed: ["Command", "Live overview of the neighbourhood: alerts, notices, how much work is in each stage, and every issue. Pick an issue to see its details."],
+  feed: ["Command", "Live overview of the neighbourhood: notices, how much work is in each stage, and every issue. Pick an issue to see its details."],
   report: ["Report a problem", "Click the map to place a pin, describe what is wrong and submit. A coordinator reviews every report."],
-  missions: ["Missions", "Volunteer work that fixes reported problems. Join a mission, or set your skills and availability."],
-  chat: ["Chat", "Talk with people in this neighbourhood. Rooms are private to its members, and each role has its own room."],
-  pulse: ["Pulse", "How fast problems get fixed. Actual numbers are tagged green and estimates amber."],
-  sos: ["SOS", "Ask neighbors for help. If anyone is in danger, call your local emergency number first."],
-  resources: ["Resources", "Shelters, water points and supplies on the map, plus the neighbor exchange."],
-  prepare: ["Prepare", "Safety check-ins, the emergency plan and the optional extra-help register."],
-  world: ["World", "Official hazard feeds. An alert near this neighbourhood can switch on Crisis Mode."],
-  sim: ["What-if", "Try different numbers of volunteers and hours. Everything is an estimate and nothing real changes."],
-  reports: ["Council reports", "Summaries for local offices: trends, hotspots and hand-offs, with CSV and PDF export."],
-  board: ["Coordinators", "This month's ranking of coordinators in this neighbourhood, scored by verified work. It starts again on the 1st of every month."],
-  people: ["People", "Members and their roles. Every coordinator action is recorded in the log."],
+  status: ["Locality status", "How fast problems get fixed, where they repeat, and a summary for local offices. Actual numbers are tagged green and estimates amber."],
+  chat: ["Chat", "Talk with people in this neighbourhood. Rooms are private to its members. Coordinators also have their own room."],
+  people: ["People", "This month's ranking of coordinators, scored by verified work. Coordinators can also manage members and see the activity log."],
   account: ["Account", "Your profile, neighbourhoods, notifications, display settings and privacy."],
 };
 const PIPE: [S.Status, string, string, string][] = [
   ["reported", "Reported", "red", "A neighbor reported it. Others can confirm with “I see this too”."],
   ["review", "Review", "red", "A coordinator is checking the report."],
-  ["assigned", "Assigned", "amber", "A mission or volunteer has been assigned."],
-  ["progress", "Fixing", "amber", "Volunteers are working on it and posting evidence."],
-  ["pending", "Approval", "amber", "A different moderator must approve the fix."],
+  ["assigned", "Assigned", "amber", "A coordinator has lined up someone to fix it."],
+  ["progress", "Fixing", "amber", "The fix is under way and evidence is being added."],
+  ["pending", "Approval", "amber", "The reporter or a different coordinator must confirm the fix."],
   ["resolved", "Fixed", "green", "Approved. The pin turns green on the map."],
 ];
 
@@ -76,12 +60,12 @@ function Pipeline({ st }: { st: S.State }) {
           </li>
         ))}
       </ol>
-      <small className="dim">Report → neighbors confirm → coordinator verifies and assigns → volunteers fix → a moderator approves the proof.</small>
+      <small className="dim">Report → neighbors confirm → coordinator verifies and assigns → the fix is done with proof → the reporter or another coordinator confirms.</small>
     </div>
   );
 }
 
-function Feed({ st, app, sel, setSel, act, demo, goReport, alerts, onWorld }: { st: S.State; app: S.AppState; sel: string | null; setSel: (id: string | null) => void; act: Act; demo: boolean; goReport: () => void; alerts: S.Alert[]; onWorld: () => void }) {
+function Feed({ st, app, sel, setSel, act, demo, goReport }: { st: S.State; app: S.AppState; sel: string | null; setSel: (id: string | null) => void; act: Act; demo: boolean; goReport: () => void }) {
   const t = useT();
   const open = st.issues.filter(i => i.status === "reported" || i.status === "review").length;
   const prog = st.issues.filter(i => i.status === "assigned" || i.status === "progress").length;
@@ -99,20 +83,17 @@ function Feed({ st, app, sel, setSel, act, demo, goReport, alerts, onWorld }: { 
   );
   if (issue) return (
     <>
-      <AlertBanner alerts={alerts} onWorld={onWorld} />
       <Detail i={issue} st={st} act={act} close={() => setSel(null)} />
     </>
   );
   return (
     <>
-      <AlertBanner alerts={alerts} onWorld={onWorld} />
-      <CheckinCard st={st} app={app} act={act} compact />
       <div className="stats"><div className="red"><b>{open}</b>{t("Open")}</div><div className="amber"><b>{prog}</b>{t("In progress")}</div><div className="green"><b>{done}</b>{t("Fixed")}</div></div>
       {st.issues.some(i => i.status === "pending" && !i.hidden) && (
         <div className="card alertcard">
           <b>Fixes waiting for review</b>
           {st.issues.filter(i => i.status === "pending" && !i.hidden).map(i => <button key={i.id} className="issue amber" onClick={() => setSel(i.id)}><span className="dot" /><span className="grow">{i.title}<small>{S.STATUS_LABEL.pending}</small></span></button>)}
-          <small className="dim">Neighbors can say whether it looks fixed. A moderator approves the resolution.</small>
+          <small className="dim">Neighbors can say whether it looks fixed. The reporter or a different coordinator confirms the fix.</small>
         </div>
       )}
       {st.issues.length > 0 && <Pipeline st={st} />}
@@ -121,7 +102,7 @@ function Feed({ st, app, sel, setSel, act, demo, goReport, alerts, onWorld }: { 
           <b>Guided AI agent demo</b>
           <p className="dim">{st.demo < S.DEMO.length ? `Step ${st.demo + 1} of ${S.DEMO.length}: ${S.DEMO[st.demo]}` : "Demo finished. Reset to run it again."}</p>
           {st.demo === 0 && <p className="hindi">“{S.DEMO_HINDI}”</p>}
-          <div className="row wrap"><button className="go" onClick={() => act(() => S.runDemo())}><Play size={14} /> Run next step</button><button className="warn" onClick={() => S.toggleDemoAlert()}>{alerts.length ? "Clear simulated alert" : "Simulate an earthquake alert"}</button></div>
+          <div className="row wrap"><button className="go" onClick={() => act(() => S.runDemo())}><Play size={14} /> Run next step</button></div>
         </div>
       )}
       {!demo && st.issues.length === 0 && (
@@ -196,83 +177,6 @@ function Report({ pick, act, done }: { pick: Pt; act: Act; done: (id: string) =>
   );
 }
 
-function Missions({ st, act, pick, setPick, msel, onShow }: { st: S.State; act: Act; pick: Pt; setPick: (p: Pt) => void; msel: string | null; onShow: (m: S.Mission) => void }) {
-  const [f, setF] = useState({ title: "", need: 5 });
-  const me = st.volunteers.find(v => v.name === S.myName());
-  return (
-    <>
-      {S.can(st.role, "mission") && (
-        <div className="card form">
-          <b>New community mission</b>
-          <input placeholder="e.g. Park cleanup this Sunday" maxLength={100} value={f.title} onChange={e => setF({ ...f, title: e.target.value })} />
-          <input type="number" min={1} max={200} value={f.need} onChange={e => setF({ ...f, need: Number(e.target.value) })} aria-label="Volunteers needed" />
-          <small className="dim">{pick ? "Meeting spot chosen on the map. Click the map again to change it." : "Click the map to mark where this mission happens. Volunteers will see it there."}</small>
-          <button className="go" disabled={!pick} onClick={() => act(async () => { await S.mission(f.title, f.need, undefined, pick); setF({ title: "", need: 5 }); setPick(null); }, "Mission created")}>Create mission</button>
-        </div>
-      )}
-      {S.can(st.role, "availability") && (
-        <div className="card">
-          <div className="row between"><b>My volunteer profile</b>
-            <button className={me?.available !== false ? "go" : ""} onClick={() => act(() => S.setAvailability(!(me?.available ?? true)))}>{me?.available !== false ? "Available" : "Unavailable"}</button></div>
-          <small className="dim">Skills help coordinators match you to requests.</small>
-          <div className="skills">{S.CATS.map(c => { const on = !!me?.skills.includes(c); return <button key={c} className={`chip btn ${on ? "sel" : ""}`} onClick={() => act(() => S.setSkills(on ? (me?.skills ?? []).filter(x => x !== c) : [...(me?.skills ?? []), c]))}>{c}</button>; })}</div>
-          <small className="dim">Abilities that help in emergencies:</small>
-          <div className="skills">{S.ABILITIES.map(c => { const on = !!me?.abilities?.includes(c); return <button key={c} className={`chip btn ${on ? "sel" : ""}`} onClick={() => act(() => S.setAbilities(on ? (me?.abilities ?? []).filter(x => x !== c) : [...(me?.abilities ?? []), c]))}>{c.replace("_", " ")}</button>; })}</div>
-        </div>
-      )}
-      {S.can(st.role, "volunteerArea") && <AreaShare st={st} act={act} pick={pick} />}
-      {st.missions.map(m => (
-        <div key={m.id} className="card" style={msel === m.id || (m.issueId && msel === m.issueId) ? { outline: "2px solid var(--accent, #8b5cf6)" } : undefined}>
-          <div className="row between"><b>{m.title}</b>{m.done && <span className="chip green">Done</span>}</div>
-          <div className="bar"><i style={{ width: `${Math.min(100, (m.joined.length / m.need) * 100)}%` }} /></div>
-          <small className="dim">{m.joined.length} of {m.need} volunteers · {m.hours} volunteer hours</small>
-          <div className="row wrap">
-            {S.missionSpot(st, m) ? <button onClick={() => onShow(m)}><MapPin size={14} /> Show on map</button> : <small className="dim">No location marked</small>}
-            {S.can(st.role, "join") && !m.done && <button onClick={() => act(() => S.join(m.id), "You joined the mission")}>Join mission</button>}
-          </div>
-        </div>
-      ))}
-      {!st.missions.length && <p className="dim">No missions yet. A coordinator can create one.</p>}
-      {st.role === "resident" && <small className="dim">To join missions, switch to volunteer in the Account tab.</small>}
-    </>
-  );
-}
-
-function Resources({ st, pick, act }: { st: S.State; pick: Pt; act: Act }) {
-  const [f, setF] = useState({ name: "", kind: "aid" as S.Kind, note: "" });
-  const [dn, setDn] = useState("");
-  return (
-    <>
-      <h3>Resource radar</h3>
-      {st.resources.map(r => (
-        <div key={r.id} className={`card res-card ${r.low ? "amber" : ""}`}>
-          <div className="row between"><b>{r.name}</b>{r.low && <span className="chip amber">Shortage</span>}</div>
-          <small className="dim">{r.kind} · {r.note}</small>
-          {S.can(st.role, "delivery") && (
-            <div className="row wrap">
-              <input placeholder="Delivery note, e.g. 4 tankers received" value={dn} onChange={e => setDn(e.target.value)} />
-              <button onClick={() => act(async () => { await S.delivery(r.id, dn); setDn(""); }, "Delivery recorded")}>Record delivery</button>
-              {!r.low && <button className="warn" onClick={() => act(() => S.shortage(r.id), "Shortage flagged")}>Flag shortage</button>}
-            </div>
-          )}
-        </div>
-      ))}
-      {!st.resources.length && <p className="dim">No resources listed yet. Coordinators can add shelters, water points, aid posts and donation drops.</p>}
-      {S.can(st.role, "addResource") && (
-        <div className="card form">
-          <b>Add a resource</b>
-          <small className="dim">{pick ? "Using the location you chose on the map." : "Click the map first to choose a location."}</small>
-          <input placeholder="Name" maxLength={80} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} />
-          <select value={f.kind} onChange={e => setF({ ...f, kind: e.target.value as S.Kind })}>{S.KINDS.map(k => <option key={k}>{k}</option>)}</select>
-          <input placeholder="Note (stock, hours)" maxLength={120} value={f.note} onChange={e => setF({ ...f, note: e.target.value })} />
-          <button className="go" onClick={() => act(async () => { if (!pick) throw new Error("Click the map to choose a location first"); await S.addResource({ ...f, lat: pick.lat, lng: pick.lng }); setF({ name: "", kind: "aid", note: "" }); }, "Resource added")}>Add resource</button>
-        </div>
-      )}
-      <Exchange st={st} act={act} />
-    </>
-  );
-}
-
 function CoordBoard({ st, demo }: { st: S.State; demo: boolean }) {
   const [list, setList] = useState<{ name: string; role: string }[] | null>(demo ? [] : null), [bad, setBad] = useState(false);
   useEffect(() => { if (!demo) S.coordinators().then(setList).catch(() => { setList([]); setBad(true); }); }, [demo]);
@@ -291,19 +195,19 @@ function CoordBoard({ st, demo }: { st: S.State; demo: boolean }) {
         <div key={r.name} className="card">
           <div className="row between"><b>#{r.rank} {r.name}{r.name === me ? " (you)" : ""}</b><span className="chip green">{r.score} points</span></div>
           <div className="chips">
-            <span className="chip">{r.fixes} fixes approved</span><span className="chip">{r.reviews} reviews</span><span className="chip">{r.missions} missions</span><span className="chip">{r.escalations} escalations</span>
+            <span className="chip">{r.fixes} fixes approved</span><span className="chip">{r.reviews} reviews</span><span className="chip">{r.escalations} escalations</span>
             {r.reopened > 0 && <span className="chip amber">{r.reopened} sent back</span>}
           </div>
-          <small className="dim">{r.role === "moderator" ? "Moderator" : "Coordinator"} · Neighbour feedback: {r.rating ? `${Math.round((r.rating.ok / r.rating.total) * 100)}% say fixed (${r.rating.total} ratings)` : `shown after ${S.COORD_MIN_RATINGS} ratings`}</small>
+          <small className="dim">Coordinator · Neighbour feedback: {r.rating ? `${Math.round((r.rating.ok / r.rating.total) * 100)}% say fixed (${r.rating.total} ratings)` : `shown after ${S.COORD_MIN_RATINGS} ratings`}</small>
         </div>
       ))}
       {list !== null && !b.rows.length && <small className="dim">No coordinators yet.</small>}
-      <small className="dim">How points work: verifying a report 2, moving it forward 1, asking for review 2, a fix approved by someone else 5 (plus 2 if a reporter confirms it), reviewing someone else's fix 3, sending a weak fix back 1, creating or assigning a mission 2 or 1, sending a complaint to an authority 2, posting a notice 1 (max 3). A fix that is sent back or reopened costs the person who submitted it 2. Each kind of action counts once per report. Only activity inside this app is counted; work done by phone or in person is not.</small>
+      <small className="dim">How points work: verifying a report 2, moving it forward 1, asking for review 2, a fix approved by someone else 5 (plus 2 if a reporter confirms it), reviewing someone else's fix 3, sending a weak fix back 1, sending a complaint to an authority 2, posting a notice 1 (max 3). A fix that is sent back or reopened costs the person who submitted it 2. Each kind of action counts once per report. Only activity inside this app is counted; work done by phone or in person is not.</small>
     </>
   );
 }
 
-function People({ act }: { act: Act }) {
+function Members({ act }: { act: Act }) {
   const [ms, setMs] = useState<S.Member[]>([]), [au, setAu] = useState<{ at: string; who: string; action: string; detail: string }[]>([]);
   const load = () => { S.members().then(setMs).catch(() => setMs([])); S.auditLog().then(setAu).catch(() => setAu([])); };
   useEffect(load, []);
@@ -313,7 +217,7 @@ function People({ act }: { act: Act }) {
         <div key={m.userId} className="card">
           <div className="row between"><b>{m.name}</b>{m.requested && m.role !== "admin" && <span className="chip amber">Wants to coordinate</span>}</div>
           <select aria-label={`Role for ${m.name}`} value={m.role} onChange={e => act(async () => { await S.setMemberRole(m.userId, e.target.value as S.Role); load(); }, "Role updated")}>
-            {(["resident", "volunteer", "moderator", "admin"] as S.Role[]).map(r => <option key={r} value={r}>{RL[r]}</option>)}
+            {(["resident", "admin"] as S.Role[]).map(r => <option key={r} value={r}>{RL[r]}</option>)}
           </select>
         </div>
       ))}
@@ -321,6 +225,20 @@ function People({ act }: { act: Act }) {
       <h3>Coordinator activity log</h3>
       {au.map((a, n) => <div key={n} className="ev"><span className="mono">{new Date(a.at).toLocaleString()}</span> {a.who}: {a.action} {a.detail}</div>)}
       {!au.length && <small className="dim">Nothing recorded yet.</small>}
+    </>
+  );
+}
+
+function People({ st, act, demo }: { st: S.State; act: Act; demo: boolean }) {
+  return (
+    <>
+      <CoordBoard st={st} demo={demo} />
+      {!demo && st.role === "admin" && (
+        <>
+          <h3>Members</h3>
+          <Members act={act} />
+        </>
+      )}
     </>
   );
 }
@@ -334,7 +252,6 @@ function Account({ st, app, act }: { st: S.State; app: S.AppState; act: Act }) {
         <div className="card">
           <b>{app.me?.handle}</b>
           <small className="dim">{app.me?.email} · {RL[st.role]} in {n.name}</small>
-          {st.role !== "admin" && <button onClick={() => act(() => S.setMyRole(st.role === "volunteer" ? "resident" : "volunteer"), "Role updated")}>{st.role === "volunteer" ? "Stop volunteering" : "I want to volunteer"}</button>}
           {st.role !== "admin" && <button onClick={() => act(() => S.requestCoordinator(), "Request sent to this neighbourhood's coordinators")}>Ask to become a coordinator</button>}
           <button onClick={() => act(async () => { await navigator.clipboard.writeText(invite); }, "Invite link copied")}>Copy invite link</button>
         </div>
@@ -349,7 +266,6 @@ function Account({ st, app, act }: { st: S.State; app: S.AppState; act: Act }) {
           <button className="warn" onClick={() => { if (confirm("Leave this neighbourhood?")) act(() => S.leaveNeighbourhood()); }}>Leave this neighbourhood</button>
         </div>
       )}
-      <MyImpact st={st} />
       {live && <NotifySettings act={act} />}
       <AccessSettings />
       <div className="card">
@@ -358,7 +274,7 @@ function Account({ st, app, act }: { st: S.State; app: S.AppState; act: Act }) {
         <small className="dim">Your exact location is never stored. A neighbourhood is a roughly 1 km area, or a named area you join. The pin on a report is only the spot someone chose on the map.</small>
         <small className="dim">Photos are re-encoded in your browser, which removes location data from the file, and only members of the neighbourhood can see them.</small>
         <small className="dim">Reports start as unverified. Only a human coordinator can mark one verified, and every coordinator action is logged. Several flags from neighbors hide a report until a coordinator reviews it.</small>
-        <small className="dim">Your display name is visible to your neighbors on reports and missions.</small>
+        <small className="dim">Your display name is visible to your neighbors on reports and in chat.</small>
       </div>
       {live && (
         <div className="card">
@@ -373,12 +289,10 @@ function Account({ st, app, act }: { st: S.State; app: S.AppState; act: Act }) {
 function Main({ app }: { app: S.AppState }) {
   const st = S.useStore(), n = app.nbhd!, demo = app.mode === "demo", t = useT(), lang = useLang();
   const [tab, setTab] = useState<Tab>("feed");
-  const [sel, setSel] = useState<string | null>(null), [msel, setMsel] = useState<string | null>(null), [focus, setFocus] = useState<{ lat: number; lng: number; n: number } | null>(null);
+  const [sel, setSel] = useState<string | null>(null);
   const [pick, setPick] = useState<Pt>(null);
   const [filter, setFilter] = useState<S.Status[]>([...S.STATUSES]);
-  const [res, setRes] = useState(true);
-  const [view, setView] = useState<MapView>("iso"), [heat, setHeat] = useState(false), [showVol, setShowVol] = useState(true);
-  const [simMap, setSimMap] = useState<Record<string, number | null> | null>(null);
+  const [view, setView] = useState<MapView>("iso"), [heat, setHeat] = useState(false);
   const [tt, setTt] = useState<{ on: boolean; days: number }>({ on: false, days: 0 });
   const [bell, setBell] = useState(false);
   useEffect(() => {
@@ -389,30 +303,22 @@ function Main({ app }: { app: S.AppState }) {
     document.addEventListener("mousedown", onDown);
     return () => { document.removeEventListener("keydown", onKey); document.removeEventListener("mousedown", onDown); };
   }, [bell]);
-  const [selEv, setSelEv] = useState<string | null>(null);
   const [seen, setSeen] = useState(() => Number(localStorage.getItem("nos-seen") || 0));
   const [toast, setToast] = useState<{ m: string; bad?: boolean } | null>(null);
   const flash = (m: string, bad?: boolean) => { setToast({ m, bad }); setTimeout(() => setToast(null), 3200); };
   const act: Act = async (fn, ok) => { try { await fn(); if (ok) flash(ok); } catch (e) { flash((e as Error).message, !(e instanceof S.QueuedError)); } };
-  const zones = S.crisisZones(st);
-  const official = S.isOfficial(app.alerts);
-  const sosList = S.visibleSos(st, st.role, S.myName());
-  useEffect(() => { if (tab === "world") S.loadWorld().catch(() => undefined); }, [tab]);
   const myEvents = st.events.filter(e => !e.to || e.to === S.myName());
   const unread = myEvents.filter(e => e.t > seen).length;
   const asOf = tt.on && tt.days > 0 ? Date.now() - tt.days * 86400000 : null;
   const stView: S.State = asOf ? { ...S.docAsOf(st, asOf), role: st.role } : st;
-  const NAV: [Tab, string, typeof Radar][] = [["feed", "Command", Radar], ["report", "Report", PlusCircle], ["missions", "Missions", Users], ["chat", "Chat", MessagesSquare], ["pulse", "Pulse", BarChart3], ["sos", "SOS", Siren]];
-  const MORE: [Tab, string, typeof Radar][] = [["resources", "Resources", Package], ["board", "Coordinators", Trophy], ["prepare", "Prepare", ShieldCheck], ["world", "World", Globe]];
-  if (st.role === "admin") MORE.push(["sim", "What-if", FlaskConical], ["reports", "Reports", FileText]);
-  if (!demo && st.role === "admin") MORE.push(["people", "People", UserCog]);
+  const stMap = useMemo<S.State>(() => ({ ...stView, missions: [], resources: [], volunteers: [] }), [stView]);
+  const NAV: [Tab, string, typeof Radar][] = [["feed", "Command", Radar], ["report", "Report", PlusCircle], ["status", "Status", BarChart3], ["chat", "Chat", MessagesSquare], ["people", "People", UserCog], ["account", "Account", User]];
   const chatNew = S.chatUnread(app, st.role);
-  const tabNow: Tab = (tab === "people" || tab === "reports" || tab === "sim") && st.role !== "admin" ? "feed" : tab;
+  const tabNow: Tab = tab;
   const [more, setMore] = useState(false);
   const theme = useTheme();
-  const ALL: [Tab, string, typeof Radar][] = [...NAV, ...MORE, ["account", "Account", User]];
-  const TabIcon = ALL.find(x => x[0] === tabNow)?.[2] ?? Radar;
-  const navBtn = ([k, l, Ic]: [Tab, string, typeof Radar]) => <button key={k} className={`${tabNow === k ? "on" : ""} ${k === "sos" ? "sostab" : ""}`} onClick={() => { setTab(k); setMore(false); }} aria-label={t(l)} aria-current={tabNow === k ? "page" : undefined} title={t(l)}><Ic size={20} /><span>{t(l)}</span>{k === "chat" && tabNow !== "chat" && chatNew && <i className="dot" aria-label={t("new messages")} />}</button>;
+  const TabIcon = NAV.find(x => x[0] === tabNow)?.[2] ?? Radar;
+  const navBtn = ([k, l, Ic]: [Tab, string, typeof Radar]) => <button key={k} className={tabNow === k ? "on" : ""} onClick={() => { setTab(k); setMore(false); }} aria-label={t(l)} aria-current={tabNow === k ? "page" : undefined} title={t(l)}><Ic size={20} /><span>{t(l)}</span>{k === "chat" && tabNow !== "chat" && chatNew && <i className="dot" aria-label={t("new messages")} />}</button>;
   useEffect(() => {
     if (!more) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMore(false); };
@@ -421,18 +327,11 @@ function Main({ app }: { app: S.AppState }) {
   }, [more]);
 
   return (
-    <div className={`app ${zones.length > 0 || official ? "in-crisis" : ""}`}>
+    <div className="app">
       <a className="skip" href="#panel">{t("Skip to the list")}</a>
       <nav className={`side ${more ? "more-open" : ""}`} aria-label="Main">
         <div className="logo" aria-hidden="true">N</div>
         {NAV.map(navBtn)}
-        <button className={`morebtn ${!NAV.some(x => x[0] === tabNow) ? "on" : ""}`} aria-expanded={more} onClick={() => setMore(!more)}><Ellipsis size={20} /><span>More</span></button>
-        <div className="moreset">
-          <hr className="sep" />
-          {MORE.map(navBtn)}
-          <hr className="sep" />
-          {navBtn(["account", "Account", User])}
-        </div>
       </nav>
       {more && <div className="scrim" onClick={() => setMore(false)} />}
       <header className="top">
@@ -440,7 +339,6 @@ function Main({ app }: { app: S.AppState }) {
         <span className={`mode ${demo ? "" : "live"}`}>{demo ? t("Demo mode") : `${t("Live")} · ${t(RL[st.role])}`}</span>
         {!demo && (!app.online || app.stale) && <span className="mode off">{t("Offline")}</span>}
         {app.queued > 0 && <span className="mode off">{app.queued} {t("waiting to send")}</span>}
-        {(zones.length > 0 || official) && <span className="crisis"><ShieldAlert size={14} /> {official ? "Crisis mode: official alert" : `Crisis mode: ${zones.length} cluster${zones.length > 1 ? "s" : ""}`}</span>}
         <div className="grow" />
         <select className="langsel" aria-label={t("Language")} value={lang} onChange={e => setLang(e.target.value)}>{LANGS.map(l => <option key={l.code} value={l.code}>{l.label}</option>)}</select>
         <button className="iconbtn" onClick={toggleTheme} aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"} data-tip={theme === "dark" ? "Light theme" : "Dark theme"}>{theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}</button>
@@ -457,7 +355,7 @@ function Main({ app }: { app: S.AppState }) {
           <>
             <label className="role">{t("Role")}
               <select value={st.role} onChange={e => S.setRole(e.target.value as S.Role)}>
-                <option value="resident">Resident</option><option value="volunteer">Volunteer</option><option value="moderator">Moderator</option><option value="admin">Coordinator</option>
+                <option value="resident">Resident</option><option value="admin">Coordinator</option>
               </select>
             </label>
             <button onClick={() => act(async () => { await S.reset(); setSel(null); setPick(null); }, "Demo reset")}><RotateCcw size={14} /> {t("Reset demo")}</button>
@@ -466,15 +364,15 @@ function Main({ app }: { app: S.AppState }) {
         ) : <button onClick={() => { S.leave(); go("/signin"); }}>{t("Switch neighbourhood")}</button>}
       </header>
       <main className="center">
-        <div className="layer" hidden={tabNow === "world" || view === "list"}>
-          <IsoMap st={stView} name={n.name} center={{ lat: n.lat, lng: n.lng }} map={app.map} note={app.mapNote} sos={sosList} official={official} sel={tabNow === "missions" ? msel ?? sel : sel} focus={focus}
-            onSel={id => { if (id.startsWith("s")) setTab("sos"); else if (id.startsWith("m")) { setMsel(id); setTab("missions"); } else { setSel(id); setTab("feed"); } }}
-            pick={pick} onPick={(lat, lng) => setPick({ lat, lng })} filter={filter} setFilter={setFilter} res={res} setRes={setRes} picking={tabNow === "report" || tabNow === "resources" || tabNow === "sos" || (tabNow === "missions" && S.can(st.role, "mission"))} zones={zones}
-            view={view} setView={setView} heat={heat} setHeat={setHeat} showVol={showVol} setShowVol={setShowVol} canSeeVol={st.role === "admin" || st.role === "moderator"}
-            sim={simMap} timeOn={tt.on} onTime={() => setTt(o => (o.on ? { on: false, days: 0 } : { on: true, days: 14 }))} />
+        <div className="layer" hidden={view === "list"}>
+          <IsoMap st={stMap} name={n.name} center={{ lat: n.lat, lng: n.lng }} map={app.map} note={app.mapNote} sos={[]} official={false} sel={sel}
+            onSel={id => { setSel(id); setTab("feed"); }}
+            pick={pick} onPick={(lat, lng) => setPick({ lat, lng })} filter={filter} setFilter={setFilter} res={false} setRes={() => undefined} picking={tabNow === "report"} zones={[]}
+            view={view} setView={setView} heat={heat} setHeat={setHeat} showVol={false} setShowVol={() => undefined} canSeeVol={false}
+            sim={null} timeOn={tt.on} onTime={() => setTt(o => (o.on ? { on: false, days: 0 } : { on: true, days: 14 }))} />
         </div>
-        {view === "list" && tabNow !== "world" && <div className="layer scroll"><ListView st={stView} filter={filter} sel={sel} onSel={id => { setSel(id); setTab("feed"); }} /><ViewSwitch view={view} setView={setView} /></div>}
-        {tt.on && tabNow !== "world" && view !== "list" && (
+        {view === "list" && <div className="layer scroll"><ListView st={stView} filter={filter} sel={sel} onSel={id => { setSel(id); setTab("feed"); }} /><ViewSwitch view={view} setView={setView} /></div>}
+        {tt.on && view !== "list" && (
           <div className="hud timebar glass">
             <b>Then vs now</b>
             <input type="range" min={0} max={60} value={tt.days} onChange={e => setTt({ on: true, days: Number(e.target.value) })} aria-label="Days ago" />
@@ -482,27 +380,18 @@ function Main({ app }: { app: S.AppState }) {
             <small className="dim">Open then: {stView.issues.filter(i => i.status !== "resolved" && !i.hidden).length} · now: {st.issues.filter(i => i.status !== "resolved" && !i.hidden).length}. Reconstructed from the activity log.</small>
           </div>
         )}
-        {tabNow === "world" && <div className="layer"><WorldMap events={app.world ?? []} mine={{ lat: n.lat, lng: n.lng, name: n.name }} sel={selEv} onSel={setSelEv} alerts={app.alerts} /></div>}
       </main>
       <aside id="panel" tabIndex={-1} className="panel" aria-labelledby="panel-title">
-        <div className={`phead ${tabNow === "sos" ? "red" : ""}`}>
+        <div className="phead">
           <span className="picon" aria-hidden="true"><TabIcon size={18} /></span>
           <div><h2 id="panel-title">{t(TAB_INFO[tabNow][0])}</h2><p>{TAB_INFO[tabNow][1]}</p></div>
         </div>
         <AnimatePresence mode="wait"><motion.div className="pbody" key={tabNow} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.14 }}>
-        {tabNow === "feed" && <Feed st={st} app={app} sel={sel} setSel={setSel} act={act} demo={demo} goReport={() => setTab("report")} alerts={app.alerts} onWorld={() => setTab("world")} />}
-        {tabNow === "sos" && <SosPanel st={st} app={app} pick={pick} setPick={setPick} act={act} />}
-        {tabNow === "world" && <WorldPanel app={app} sel={selEv} onSel={setSelEv} />}
+        {tabNow === "feed" && <Feed st={st} app={app} sel={sel} setSel={setSel} act={act} demo={demo} goReport={() => setTab("report")} />}
         {tabNow === "report" && <Report pick={pick} act={act} done={id => { setSel(id); setPick(null); setTab("feed"); }} />}
-        {tabNow === "missions" && <Missions st={st} act={act} pick={pick} setPick={setPick} msel={msel} onShow={m => { setMsel(m.lat != null ? m.id : m.issueId ?? m.id); const sp = S.missionSpot(st, m); if (sp) setFocus({ ...sp, n: Date.now() }); }} />}
-        {tabNow === "resources" && <Resources st={st} pick={pick} act={act} />}
-        {tabNow === "chat" && <ChatPanel st={st} app={app} act={act} onSos={() => setTab("sos")} />}
-        {tabNow === "pulse" && <Pulse st={st} app={app} act={act} demo={demo} />}
-        {tabNow === "sim" && <Simulator st={st} onOverlay={setSimMap} />}
-        {tabNow === "prepare" && <Prepare st={st} app={app} act={act} />}
-        {tabNow === "reports" && <Reports st={st} app={app} act={act} />}
-        {tabNow === "board" && <CoordBoard st={st} demo={demo} />}
-        {tabNow === "people" && <People act={act} />}
+        {tabNow === "chat" && <ChatPanel st={st} app={app} act={act} />}
+        {tabNow === "status" && <Status st={st} app={app} act={act} demo={demo} />}
+        {tabNow === "people" && <People st={st} act={act} demo={demo} />}
         {tabNow === "account" && <Account st={st} app={app} act={act} />}
         </motion.div></AnimatePresence>
       </aside>
@@ -513,8 +402,6 @@ function Main({ app }: { app: S.AppState }) {
 
 export default function App() {
   const app = S.useApp(), path = usePath();
-  const impact = new URLSearchParams(location.search).get("impact");
-  if (impact) return <PublicImpact id={impact} />;
   if (app.mode === "none" || !app.nbhd) {
     let invite = false;
     try { invite = !!localStorage.getItem("nos-pending-n"); } catch { /* ignore */ }

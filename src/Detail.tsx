@@ -101,7 +101,7 @@ const NOW: Record<S.Issue["status"], string> = {
   review: "A coordinator is looking at this report.",
   assigned: "Someone has been assigned to fix this.",
   progress: "Work on this problem is under way.",
-  pending: "A fix was submitted. The reporter, or a different coordinator or moderator, has to confirm it.",
+  pending: "A fix was submitted. The reporter, or a different coordinator, has to confirm it.",
   resolved: "This problem was fixed and confirmed.",
 };
 const RESOLVED: Record<S.Closure, string> = {
@@ -127,7 +127,7 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
   const ps = S.priorityScore(st, i), plan = S.actionPlan(st, i), after = S.afterPhoto(i);
   const fbs = Object.values(i.feedback ?? {}), good = fbs.filter(f => f.ok).length, bad = fbs.length - good;
   const hasMore = (S.can(r, "flag") && i.status !== "resolved") || (mine && i.status === "reported" && !i.hidden) || (S.can(r, "verify") && i.status !== "resolved" && i.verif !== "disputed") || S.can(r, "hide");
-  const hasVol = (S.can(r, "assign") && i.status !== "resolved" && st.volunteers.length > 0) || r === "admin" || !!i.handoff;
+  const hasVol = r === "admin" || !!i.handoff;
   const evidenceCount = i.proof.length + (i.updates ?? []).length;
   const historyCount = (i.assignments ?? []).length + i.log.length;
   const demo = S.useApp().mode === "demo", asker = i.pendingBy === me, admin = S.can(r, "advance");
@@ -158,7 +158,7 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
         {i.hidden && <span className="chip red">Hidden</span>}
         {S.can(r, "hide") && i.flags.length > 0 && <span className="chip amber">{i.flags.length} flag(s)</span>}
       </div>
-      {(r === "admin" || r === "moderator") && (
+      {r === "admin" && (
         <div className="row wrap">
           <button className="x" onClick={() => window.open(osmLink(i.lat, i.lng), "_blank", "noopener,noreferrer")} title={t("Opens the exact spot on OpenStreetMap in a new tab. It is the same link as in the complaint draft.")}>
             <MapPin size={14} aria-hidden="true" /> {t("Open location in OpenStreetMap")}
@@ -190,7 +190,6 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
       <p>{i.desc}</p>
       {i.photo && !after && <Photo src={i.photo} alt="Reported issue" />}
       {i.photo && after && <BeforeAfter before={i.photo} after={after} />}
-      {m && <p>Mission: <b>{m.title}</b> · {m.joined.length}/{m.need} volunteers</p>}
 
       {canAnswer && (
         <div className="card alertcard">
@@ -213,7 +212,7 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
       {i.status === "pending" && (
         <div className="card alertcard">
           <b>{S.STATUS_LABEL.pending}</b>
-          <small className="dim">Submitted for review by {i.pendingBy}. The reporter, or a different coordinator or moderator, must confirm it.</small>
+          <small className="dim">Submitted for review by {i.pendingBy}. The reporter, or a different coordinator, must confirm it.</small>
           {fbs.length > 0 && <p>Neighbor feedback: {good} say it looks fixed, {bad} say it is not fully fixed.</p>}
           {S.can(r, "approveResolution") && (
             <>
@@ -222,7 +221,7 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
                 <button className="go" disabled={i.pendingBy === me} onClick={() => act(() => S.approveResolution(i.id, reason), "Resolution approved")}>Approve resolution</button>
                 <button className="warn" disabled={!reason.trim()} onClick={() => act(async () => { await S.rejectResolution(i.id, reason); setReason(""); }, "Sent back for more work")}>Request more work</button>
               </div>
-              {asker && <small className="dim">{t("You submitted this fix, so you cannot approve it yourself. The reporters were asked. A different coordinator or moderator can approve it too.")}</small>}
+              {asker && <small className="dim">{t("You submitted this fix, so you cannot approve it yourself. The reporters were asked. A different coordinator can approve it too.")}</small>}
               {asker && (
                 <div className="row wrap">
                   <button disabled={waitDays > 0} onClick={() => act(() => S.closeUnconfirmed(i.id), "Closed without confirmation")}>{t("Close without confirmation")}</button>
@@ -234,7 +233,6 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
                   <button onClick={() => act(() => S.demoAnswerAsReporter(i.id, true, "Looks good now"), "Simulated: the reporter confirmed the fix")}>{t("Demo: answer as the reporter")}</button>
                   <button onClick={() => act(() => S.demoAnswerAsReporter(i.id, false, "Still not fixed on the left side"), "Simulated: the reporter says it is not fully fixed")}>{t("Demo: reporter says not fixed")}</button>
                   <button onClick={() => S.demoSkipWait(i.id)}>{t("Demo: skip the 7-day wait")}</button>
-                  <button onClick={() => S.setRole("moderator")}>{t("Demo: switch to Moderator to approve")}</button>
                 </div>
               )}
             </>
@@ -245,7 +243,7 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
         <div className="card nextstep">
           <b>{t("What happens next")}</b>
           {i.status === "reported" && <p>{admin ? t("Check that this report is real, then start the review.") : t("A coordinator needs to start the review. If you see this problem too, confirm it with the button below.")}</p>}
-          {i.status === "review" && <p>{admin ? t("Decide who will fix it: approve the action plan or create a mission, then mark it as assigned.") : t("A coordinator is deciding who will fix this.")}</p>}
+          {i.status === "review" && <p>{admin ? t("Decide who will fix it, then mark it as assigned.") : t("A coordinator is deciding who will fix this.")}</p>}
           {i.status === "assigned" && <p>{proofInline ? t("When the fix is done, add a photo or note as proof. This moves it to In progress.") : t("Someone is assigned. Waiting for the work to start.")}</p>}
           {i.status === "progress" && <p>{proofInline ? (i.proof.length ? t("Proof was added. You can add more.") : t("Add a photo or note as proof of the fix.")) : t("Work is under way. A coordinator will submit the fix for review when it is done.")}</p>}
           {proofInline && proofForm}
@@ -274,8 +272,6 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
 
       <div className="row wrap">
         {S.can(r, "merge") && !mine && !i.hidden && i.status !== "resolved" && <button onClick={() => act(() => S.merge(i.id), "Added your confirmation")}>I see this too</button>}
-        {S.can(r, "join") && m && !m.done && <button className="go" onClick={() => act(() => S.join(m.id), "You joined the mission")}>Join mission</button>}
-        {S.can(r, "mission") && !m && i.status !== "resolved" && <button onClick={() => act(() => S.mission(`Fix: ${i.title}`, 4, i.id), "Mission created")}>Create mission</button>}
         {S.can(r, "verify") && i.status !== "resolved" && i.verif !== "verified" && <button onClick={() => act(() => S.setVerif(i.id, "verified"), "Marked verified")}>Mark verified</button>}
         {S.can(r, "flag") && i.status === "resolved" && <button className="warn" onClick={() => act(() => S.flag(i.id), "Flag sent to coordinators")}>Not fully fixed (reopen)</button>}
       </div>
@@ -298,7 +294,6 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
         <PlanSummary plan={plan} />
         <small className="dim">{t("This plan is a suggestion built from fixed rules. A coordinator approves it before anything happens.")}</small>
         <div className="row wrap">
-          {S.can(r, "actionPlanApprove") && !m && i.status !== "resolved" && <button className="go" onClick={() => act(() => S.actionPlanApprove(i.id), "Plan approved and mission created")}>Approve plan and create mission</button>}
           <button onClick={printPlan}>{t("Print or save as PDF")}</button>
         </div>
       </details>
@@ -331,18 +326,8 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
       ) : null}
       {hasVol && (
         <details className="fold">
-          <summary>{t("Volunteers and mission")}{m ? ` · ${m.joined.length}/${m.need}` : ""}</summary>
+          <summary>{t("Hand-off to authority")}</summary>
           <div className="foldbody">
-      {S.can(r, "assign") && i.status !== "resolved" && st.volunteers.length > 0 && (
-        <div className="card ai">
-          <b>Suggested volunteers (rule-based suggestion)</b>
-          {S.matchVolunteers(st, i).map(({ v, why }) => (
-            <div key={v.id} className="row between"><span>{v.name}<small className="dim"> {why}</small></span>
-              {m && <button onClick={() => act(() => S.assign(m.id, v.name), `${v.name} assigned`)}>Assign</button>}</div>
-          ))}
-          {!m && <small className="dim">Approve the action plan or create a mission first to assign volunteers.</small>}
-        </div>
-      )}
       {r === "admin" && <HandoffBox i={i} st={st} act={act} />}
       {r !== "admin" && i.handoff && <p className="dim">Passed to {i.handoff.to} ({i.handoff.status.replace("_", " ")}).</p>}
 

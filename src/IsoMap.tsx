@@ -409,7 +409,6 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
           {!flat && <button className="rbtn" {...tip(`Tilt: ${TILT_NAME(cam.tilt)}`)} onClick={cycleTilt}><Rotate3d size={17} /></button>}
         </div>
         <div className="tgroup glass" role="group" aria-label="Map layers">
-          <button className={`rbtn ${res ? "on" : ""}`} aria-pressed={res} {...tip("Resources layer")} onClick={() => setRes(!res)}><Layers size={17} /></button>
           <button className={`rbtn ${heat ? "on" : ""}`} aria-pressed={heat} {...tip("Issue heatmap")} onClick={() => setHeat(!heat)}><Flame size={17} /></button>
           {canSeeVol && <button className={`rbtn ${showVol ? "on" : ""}`} aria-pressed={showVol} {...tip("Volunteers and their missions")} onClick={() => setShowVol(!showVol)}><Users size={17} /></button>}
           <button className={`rbtn ${timeOn ? "on" : ""}`} aria-pressed={timeOn} {...tip("Then vs now")} onClick={onTime}><History size={17} /></button>
@@ -425,7 +424,6 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
           const on = g.every(s => filter.includes(s));
           return <button key={label} className={`tabb fchip ${on ? "on" : ""}`} aria-pressed={on} onClick={() => setFilter(on ? filter.filter(s => !g.includes(s)) : [...new Set([...filter, ...g])])}><i className={`dotc ${c}`} />{label}<sup>{count(g)}</sup></button>;
         })}
-        <button className={`tabb fchip ${res ? "on" : ""}`} aria-pressed={res} onClick={() => setRes(!res)}><i className="dotc teal" />Resources<sup>{st.resources.length}</sup></button>
       </div>
 
       <div className="hud hud-legend">

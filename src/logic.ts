@@ -129,19 +129,22 @@ export type Action =
   | { t: "demo" }
   | { t: "reset" };
 
-// Everyone, moderators included. A moderator is a neighbour too: they can report, confirm, send an SOS, answer a check-in and run the demo.
-const ALL: Role[] = ["resident", "volunteer", "moderator", "admin"];
+// Two roles only: resident and coordinator (stored as "admin"). Everything that used to belong to volunteers,
+// moderators, missions, SOS, resources, check-ins and the neighbour exchange is switched off here with NONE.
+// The server uses the same table, so those actions are refused there too.
+const ALL: Role[] = ["resident", "admin"];
+const NONE: readonly Role[] = [];
 export const CAN: Record<Action["t"], readonly Role[]> = {
-  report: ALL, merge: ALL, verify: ["admin", "moderator"], advance: ["admin"], mission: ["admin"], join: ["volunteer"],
-  assign: ["admin"], proof: ["volunteer", "admin"], flag: ["resident"], availability: ["volunteer"], skills: ["volunteer"],
-  sos: ALL, sosCancel: ALL, sosAck: ["admin"], sosAssign: ["admin"], sosStatus: ["volunteer", "admin"],
-  checkinStart: ["admin"], checkinReply: ALL, checkinClose: ["admin"], careSet: ALL, careRemove: ALL, planSet: ["admin"], abilities: ["volunteer"],
-  shareAdd: ALL, shareClaim: ALL, shareMsg: ALL, shareDone: ALL, shareRemove: ALL, noticeAdd: ["admin"], noticeRemove: ["admin"],
+  report: ALL, merge: ALL, verify: ["admin"], advance: ["admin"], mission: NONE, join: NONE,
+  assign: NONE, proof: ["admin"], flag: ["resident"], availability: NONE, skills: NONE,
+  sos: NONE, sosCancel: NONE, sosAck: NONE, sosAssign: NONE, sosStatus: NONE,
+  checkinStart: NONE, checkinReply: NONE, checkinClose: NONE, careSet: NONE, careRemove: NONE, planSet: NONE, abilities: NONE,
+  shareAdd: NONE, shareClaim: NONE, shareMsg: NONE, shareDone: NONE, shareRemove: NONE, noticeAdd: ["admin"], noticeRemove: ["admin"],
   authoritySet: ["admin"], authorityRemove: ["admin"], handoff: ["admin"], handoffStatus: ["admin"],
   agentStart: ALL, agentDraft: ALL, agentApprove: ALL, agentSend: ALL, agentRef: ALL, agentEscalate: ["admin"],
-  withdraw: ALL, spam: ALL, hide: ["admin", "moderator"], restore: ["admin", "moderator"],
-  approveResolution: ["admin", "moderator"], rejectResolution: ["admin", "moderator"], reporterConfirm: ALL, closeUnconfirmed: ["admin", "moderator"], feedback: ALL, update: ALL, actionPlanApprove: ["admin"], volunteerArea: ["volunteer"], volunteerAreaClear: ["volunteer"],
-  delivery: ["admin"], shortage: ["admin"], addResource: ["admin"], demo: ALL, reset: ALL,
+  withdraw: ALL, spam: ALL, hide: ["admin"], restore: ["admin"],
+  approveResolution: ["admin"], rejectResolution: ["admin"], reporterConfirm: ALL, closeUnconfirmed: ["admin"], feedback: ALL, update: ALL, actionPlanApprove: NONE, volunteerArea: NONE, volunteerAreaClear: NONE,
+  delivery: NONE, shortage: NONE, addResource: NONE, demo: ALL, reset: ALL,
 };
 export const can = (r: Role, t: Action["t"]) => !!CAN[t]?.includes(r);
 

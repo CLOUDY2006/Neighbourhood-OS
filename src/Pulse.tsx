@@ -27,12 +27,11 @@ export function Pulse({ st, app, act, demo }: { st: S.State; app: S.AppState; ac
     const inRange = issues.filter(i => i.created >= start);
     const cats = S.CATS.map(c => ({ cat: c, open: inRange.filter(i => i.cat === c && i.status !== "resolved").length, resolved: inRange.filter(i => i.cat === c && i.status === "resolved").length })).filter(x => x.open + x.resolved > 0);
     const hrs = S.CATS.map(c => { const r = issues.filter(i => i.cat === c && i.resolvedAt && i.resolvedAt >= start); return { cat: c, hours: r.length ? Math.round((r.reduce((a, i) => a + (i.resolvedAt! - i.created), 0) / r.length / 3600000) * 10) / 10 : 0 }; }).filter(x => x.hours > 0);
-    const missions = st.missions.map(m => ({ name: m.title.length > 16 ? m.title.slice(0, 15) + "…" : m.title, hours: m.hours, volunteers: m.joined.length }));
     const open = issues.filter(i => i.status !== "resolved");
     const resolved = issues.filter(i => i.resolvedAt && i.resolvedAt >= start);
     const avg = resolved.length ? resolved.reduce((a, i) => a + (i.resolvedAt! - i.created), 0) / resolved.length / 3600000 : 0;
-    const people = S.leaderboard(st).length;
-    return { series, cats, hrs, missions, openThen: openAt(start), openNow: open.length, reports: inRange.length, resolved: resolved.length, avg, effort: Math.round(open.reduce((a, i) => a + S.effortFor(i), 0) * 10) / 10, people, spots: S.hotspots(st), start };
+    const verified = issues.filter(i => i.verif === "verified" || i.verif === "resolved").length, waiting = issues.filter(i => i.status === "pending").length;
+    return { series, cats, hrs, openThen: openAt(start), openNow: open.length, reports: inRange.length, resolved: resolved.length, avg, verified, waiting, spots: S.hotspots(st), start };
   }, [st, range]);
   return (
     <>
@@ -41,7 +40,7 @@ export function Pulse({ st, app, act, demo }: { st: S.State; app: S.AppState; ac
         <small className="dim">From {new Date(d.start).toLocaleDateString()}</small>
       </div>
       <div className="stats"><div className="red"><b>{d.reports}</b>Reported</div><div className="green"><b>{d.resolved}</b>Resolved</div><div className="amber"><b>{d.avg ? d.avg.toFixed(1) : "–"}</b>Avg hours to fix</div></div>
-      <div className="stats"><div className="red"><b>{d.openNow}</b>Open now</div><div className="amber"><b>{st.missions.filter(m => m.done).length}</b>Missions done</div><div className="green"><b>{d.people}</b>Contributors</div></div>
+      <div className="stats"><div className="red"><b>{d.openNow}</b>Open now</div><div className="green"><b>{d.verified}</b>Verified</div><div className="amber"><b>{d.waiting}</b>Fix awaiting confirmation</div></div>
 
       <Box title="Before and after" tag="Actual">
         <div className="row between"><span>Open at the start: <b>{d.openThen}</b></span><span>Open now: <b>{d.openNow}</b></span><span className={d.openNow <= d.openThen ? "oktext" : "errtext"}>{d.openNow - d.openThen > 0 ? "+" : ""}{d.openNow - d.openThen}</span></div>
@@ -73,26 +72,11 @@ export function Pulse({ st, app, act, demo }: { st: S.State; app: S.AppState; ac
           </BarChart></ResponsiveContainer>
         </Box>
       )}
-      {d.missions.length > 0 && (
-        <Box title="Volunteer hours and participation by mission" tag="Actual">
-          <ResponsiveContainer width="100%" height={150}><BarChart data={d.missions} margin={{ left: -20, right: 6, top: 6 }}>
-            <CartesianGrid stroke={P.chart.grid} vertical={false} /><XAxis dataKey="name" {...axis} /><YAxis allowDecimals={false} {...axis} /><Tooltip {...tip} /><Legend wrapperStyle={{ fontSize: 11 }} />
-            <Bar dataKey="hours" fill={P.teal} /><Bar dataKey="volunteers" fill={P.chart.pink} />
-          </BarChart></ResponsiveContainer>
-        </Box>
-      )}
-      <Box title="Resource needs for open issues" tag="Estimate">
-        <p>About <b>{d.effort}</b> person-hours of volunteer work.</p>
-        <small className="dim">Estimated from simple effort values per type of problem. Real needs depend on each site and on authority response.</small>
-      </Box>
       <Box title="Recurring problem areas" tag="Actual">
         {d.spots.map((h, k) => <p key={k}>{h.n} reports of mostly {h.cat} near {h.lat.toFixed(4)}, {h.lng.toFixed(4)}</p>)}
         {!d.spots.length && <small className="dim">No area has repeated reports yet. This shows past reports, not a prediction.</small>}
       </Box>
 
-      <h3>Top contributors</h3>
-      {S.leaderboard(st).slice(0, 5).map(x => <p key={x.name}>{x.name}: {x.pts} points</p>)}
-      {!S.leaderboard(st).length && <small className="dim">Points count only verified reports and completed fixes.</small>}
       <h3>Community intelligence</h3>
       <button disabled={busy} onClick={() => act(async () => { setBusy(true); try { setIns(await S.aiInsights()); } finally { setBusy(false); } })}>{busy ? "Analyzing…" : "Generate insights"}</button>
       {ins && (
