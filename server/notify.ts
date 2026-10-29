@@ -21,7 +21,9 @@ export async function sendText(to: string, body: string, whatsapp = false) {
   const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TW.sid}/Messages.json`, {
     method: "POST",
     headers: { Authorization: "Basic " + Buffer.from(`${TW.sid}:${TW.token}`).toString("base64"), "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ To: whatsapp ? `whatsapp:${to}` : to, From: from, Body: body.slice(0, 600) }),
+    body: new URLSearchParams(whatsapp && process.env.TWILIO_WHATSAPP_TEMPLATE_SID
+      ? { To: `whatsapp:${to}`, From: from, ContentSid: process.env.TWILIO_WHATSAPP_TEMPLATE_SID, ContentVariables: JSON.stringify({ "1": body.replace(/\s+/g, " ").slice(0, 600) }) }
+      : { To: whatsapp ? `whatsapp:${to}` : to, From: from, Body: body.slice(0, 600) }),
     signal: AbortSignal.timeout(15000),
   });
   if (!r.ok) throw new Error(`Messaging provider responded with ${r.status}: ${(await r.text()).slice(0, 300)}`);
