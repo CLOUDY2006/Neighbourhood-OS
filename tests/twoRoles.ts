@@ -23,7 +23,20 @@ const id = d.issues[0].id;
 d = step(d, R2, { t: "merge", id });
 check("resident cannot verify", !can("resident", "verify"));
 d = step(d, A, { t: "verify", id, v: "verified" });
-check("coordinator verified", get(d, id).verif === "verified");
+check("one coordinator is not enough to verify", get(d, id).verif !== "verified", get(d, id).verif);
+throws("the same coordinator cannot verify twice", () => step(d, A, { t: "verify", id, v: "verified" }), "different coordinator");
+d = step(d, A2, { t: "verify", id, v: "verified" });
+check("a second, different coordinator verifies", get(d, id).verif === "verified");
+
+// ---- spam: only coordinators flag, two different coordinators hide
+check("residents can no longer flag spam", !can("resident", "spam") && can("admin", "spam"));
+let sp = step(emptyDoc(), R, { t: "report", title: "Fake", desc: "x", cat: "garbage", priority: "low", lat: 28.567, lng: 77.212 });
+const sid = sp.issues[0].id;
+sp = step(sp, A, { t: "spam", id: sid });
+check("one coordinator flag does not hide a report", !get(sp, sid).hidden);
+throws("the same coordinator cannot flag twice", () => step(sp, A, { t: "spam", id: sid }), "already flagged");
+sp = step(sp, A2, { t: "spam", id: sid });
+check("two coordinators hide it", get(sp, sid).hidden === true);
 for (let n = 0; n < 6 && get(d, id).status !== "pending"; n++) {
   if (get(d, id).status === "progress" && !get(d, id).proof.length) d = step(d, A, { t: "proof", id, text: "filled the hole" });
   d = step(d, A, { t: "advance", id });

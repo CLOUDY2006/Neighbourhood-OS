@@ -28,11 +28,13 @@ let bad = 0;
 {
   // A report written by someone else must show the spam button near the top, before the collapsed "More options".
   const other = { ...st.issues.find(i => i.id === "i4")!, author: "Someone else", flags: [] as string[], hidden: false };
-  const h = renderToString(<Detail i={other} st={st} act={act} close={() => undefined} />);
+  const h = renderToString(<Detail i={other} st={{ ...st, role: "admin" }} act={act} close={() => undefined} />);
   const a = h.indexOf("Report spam or wrong report"), f = h.indexOf("More options");
   const okTop = a > -1 && (f === -1 || a < f);
+  const resSpam = renderToString(<Detail i={other} st={{ ...st, role: "resident" }} act={act} close={() => undefined} />).includes("Report spam or wrong report");
+  if (resSpam) { bad++; console.log("FAIL residents still see the spam button"); } else console.log("ok residents do not see the spam button");
   if (!okTop) { bad++; console.log("FAIL spam button is missing or buried"); } else console.log("ok spam button is near the top");
-  const own = renderToString(<Detail i={{ ...other, author: S.myName() }} st={st} act={act} close={() => undefined} />);
+  const own = renderToString(<Detail i={{ ...other, author: S.myName() }} st={{ ...st, role: "admin" }} act={act} close={() => undefined} />);
   if (own.includes("Report spam or wrong report")) { bad++; console.log("FAIL author can flag own report"); } else console.log("ok author does not see the spam button");
   // The "Open location in OpenStreetMap" button is for coordinators only.
   for (const [role, expected] of [["admin", true], ["resident", false]] as const) {
@@ -40,7 +42,7 @@ let bad = 0;
     const has = out.includes("Open location in OpenStreetMap");
     if (has !== expected) { bad++; console.log(`FAIL location button for ${role}: expected ${expected}`); } else console.log(`ok location button ${expected ? "shown" : "hidden"} for ${role}`);
   }
-  const hid = renderToString(<Detail i={{ ...other, hidden: true }} st={st} act={act} close={() => undefined} />);
+  const hid = renderToString(<Detail i={{ ...other, hidden: true }} st={{ ...st, role: "admin" }} act={act} close={() => undefined} />);
   if (hid.includes("Report spam or wrong report")) { bad++; console.log("FAIL hidden report still offers spam button"); } else console.log("ok hidden report does not offer the spam button");
 }
 for (const [n, f] of parts) { try { const h = f(); console.log("ok", n, h.length, "chars"); } catch (e) { bad++; console.log("FAIL", n, (e as Error).stack?.split("\n").slice(0, 4).join(" | ")); } }

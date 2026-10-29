@@ -33,9 +33,11 @@ export interface Issue {
   log: { t: number; by: string; text: string }[]; missionId?: string; photo?: string; created: number; resolvedAt?: number; handoff?: Handoff; agent?: AgentRecord;
   pendingBy?: string; pendingAt?: number; closure?: Closure; reviewedBy?: string; rejections?: number; feedback?: Record<string, { ok: boolean; note: string; t: number }>; updates?: Proof[]; assignments?: { t: number; by: string; text: string }[]; actionPlan?: { approvedBy: string; approvedAt: number };
   author: string; confirmedBy: string[]; flags: string[]; hidden?: boolean;
+  /** Coordinators who have checked this report. Two different coordinators are needed before it counts as verified. */
+  verifiedBy?: string[];
 }
-export interface AgentDraft { level: number; to: string; lang: "en" | "hi"; subject: string; body: string; edited?: boolean; approvedBy?: string; approvedAt?: number; sentAt?: number; via?: "copied" | "emailed" | "simulated" }
-export interface AgentRecord { lang: "hi" | "en" | "other"; original: string; summaryEn: string; source: "ai" | "rules" | "scripted"; draft: AgentDraft; history: { level: number; to: string; sentAt: number; ref?: string }[]; escalateAt?: number; created: number }
+export interface AgentDraft { level: number; to: string; lang: "en" | "hi"; subject: string; body: string; edited?: boolean; approvedBy?: string; approvedAt?: number; sentAt?: number; via?: "copied" | "emailed" | "mailto" | "simulated"; emailedTo?: string }
+export interface AgentRecord { lang: "hi" | "en" | "other"; original: string; summaryEn: string; source: "ai" | "rules" | "scripted"; draft: AgentDraft; history: { level: number; to: string; sentAt: number; ref?: string }[]; escalateAt?: number; created: number; replies?: { t: number; by: string; text: string }[] }
 export interface Handoff { to: string; email?: string; ref: string; sentAt: number; by: string; status: "sent" | "acknowledged" | "resolved" | "no_response" }
 export interface Authority { id: string; name: string; email: string; phone: string }
 export interface Notice { id: string; title: string; body: string; author: string; created: number; pinned: boolean; urgent: boolean }
@@ -83,7 +85,8 @@ export type Action =
   | { t: "agentStart"; id: string; lang: string; original: string; summaryEn: string; source: string }
   | { t: "agentDraft"; id: string; lang?: "en" | "hi"; subject?: string; body?: string }
   | { t: "agentApprove"; id: string }
-  | { t: "agentSend"; id: string; via: "copied" | "emailed" | "simulated"; ref?: string }
+  | { t: "agentSend"; id: string; via: "copied" | "emailed" | "mailto" | "simulated"; ref?: string; emailTo?: string }
+  | { t: "agentReply"; id: string; text: string; ref?: string; status?: "acknowledged" | "resolved" }
   | { t: "agentRef"; id: string; ref: string }
   | { t: "agentEscalate"; id: string }
   | { t: "approveResolution"; id: string; note?: string }
@@ -102,12 +105,14 @@ export const CAN: Record<Action["t"], readonly Role[]> = {
   report: ALL, merge: ALL, verify: ["admin"], advance: ["admin"], proof: ["admin"], flag: ["resident"],
   noticeAdd: ["admin"], noticeRemove: ["admin"],
   authoritySet: ["admin"], authorityRemove: ["admin"], handoff: ["admin"], handoffStatus: ["admin"],
-  agentStart: ALL, agentDraft: ALL, agentApprove: ALL, agentSend: ALL, agentRef: ALL, agentEscalate: ["admin"],
-  withdraw: ALL, spam: ALL, hide: ["admin"], restore: ["admin"],
+  agentStart: ALL, agentDraft: ALL, agentApprove: ALL, agentSend: ALL, agentReply: ["admin"], agentRef: ALL, agentEscalate: ["admin"],
+  withdraw: ALL, spam: ["admin"], hide: ["admin"], restore: ["admin"],
   approveResolution: ["admin"], rejectResolution: ["admin"], reporterConfirm: ALL, closeUnconfirmed: ["admin"], feedback: ALL, update: ALL,
   demo: ALL, reset: ALL,
 };
 export const can = (r: Role, t: Action["t"]) => !!CAN[t]?.includes(r);
+/** Different coordinators needed to verify a report, and to hide one as spam. */
+export const COORDS_TO_VERIFY = 2, SPAM_FLAGS_TO_HIDE = 2;
 
 const ago = (m: number) => Date.now() - m * 60000;
 const svg = (body: string) => "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200"><rect width="320" height="200" fill="#10192e"/><rect y="120" width="320" height="80" fill="#1b2540"/><rect y="150" width="320" height="4" fill="#2a3658"/>${body}</svg>`);
@@ -222,6 +227,8 @@ export const DEMO = [
 export const DEMO_HINDI = "हमारी गली में बहुत कचरा जमा हो गया है, बदबू आ रही है और बच्चे बीमार हो सकते हैं।";
 
 const uid = (p: string) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+/** A plain email address check. The server uses it before emailing a complaint to an authority. */
+export const isEmail = (v: unknown): v is string => typeof v === "string" && v.length <= 120 && /^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;"]{2,}$/.test(v);
 const str = (v: unknown, max: number, label: string) => {
   if (typeof v !== "string" || !v.trim()) throw new Error(`${label} is required`);
   return v.trim().slice(0, max);
@@ -292,7 +299,8 @@ export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; ln
       if (i.author === who.name) throw new Error("You cannot flag your own report");
       if (i.flags.includes(who.name)) throw new Error("You already flagged this report");
       i.flags.push(who.name);
-      if (i.flags.length >= 3 && !i.hidden) { i.hidden = true; ev("A report was hidden after several flags and is waiting for a coordinator", "alert"); }
+      if (i.flags.length >= SPAM_FLAGS_TO_HIDE && !i.hidden) { i.hidden = true; ev("A report was hidden after two coordinators flagged it as spam", "alert"); }
+      else log(i, `Flagged as spam by a coordinator (${i.flags.length} of ${SPAM_FLAGS_TO_HIDE})`, "alert");
       break;
     }
     case "hide": { const i = issue(a.id); i.hidden = true; ev("A coordinator hid a report", "info"); break; }
@@ -300,7 +308,13 @@ export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; ln
     case "verify": {
       const i = issue(a.id);
       if (!["verified", "disputed", "review"].includes(a.v)) throw new Error("Invalid verification state");
-      i.verif = a.v; if (a.v === "verified") cred("verify", i.id); log(i, `Marked ${a.v} by a coordinator`, a.v === "verified" ? "ok" : "info"); break;
+      if (a.v !== "verified") { i.verifiedBy = []; i.verif = a.v; log(i, `Marked ${a.v} by a coordinator`, "info"); break; }
+      const by = i.verifiedBy ?? [];
+      if (by.includes(who.name)) throw new Error("You already checked this report. A different coordinator must verify it too");
+      i.verifiedBy = [...by, who.name]; cred("verify", i.id);
+      if (i.verifiedBy.length >= COORDS_TO_VERIFY) { i.verif = "verified"; log(i, `Verified by two coordinators (${i.verifiedBy.length} of ${COORDS_TO_VERIFY})`, "ok"); }
+      else log(i, `Checked by a coordinator (${i.verifiedBy.length} of ${COORDS_TO_VERIFY}). A different coordinator must verify it too`, "info");
+      break;
     }
     case "advance": {
       const i = issue(a.id), next = STATUSES[STATUSES.indexOf(i.status) + 1];
@@ -428,12 +442,32 @@ export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; ln
       if (!owns(i)) throw new Error("Only the author or a coordinator can mark this as sent");
       if (!A.draft.approvedAt) throw new Error("Approve the complaint before sending it");
       if (A.draft.sentAt) throw new Error("This complaint was already sent");
-      if (!["copied", "emailed", "simulated"].includes(a.via)) throw new Error("Invalid way of sending");
+      if (!["copied", "emailed", "mailto", "simulated"].includes(a.via)) throw new Error("Invalid way of sending");
+      const mailed = a.via === "emailed" || a.via === "mailto";
+      if (mailed) {
+        if (who.role !== "admin") throw new Error("Only a coordinator can email a complaint");
+        if (!isEmail(a.emailTo)) throw new Error("Enter a valid email address for the authority");
+      }
       const now = Date.now(), ref = txt(a.ref, 60), wait = routeFor(i.cat).ladder[A.draft.level]?.waitDays;
-      A.draft.sentAt = now; A.draft.via = a.via; A.history.push({ level: A.draft.level, to: A.draft.to, sentAt: now, ref: ref || undefined });
-      i.handoff = { to: A.draft.to, ref, sentAt: now, by: who.name, status: "sent" };
+      A.draft.sentAt = now; A.draft.via = a.via; A.draft.emailedTo = mailed ? a.emailTo : undefined;
+      A.history.push({ level: A.draft.level, to: A.draft.to, sentAt: now, ref: ref || undefined });
+      i.handoff = { to: A.draft.to, email: mailed ? a.emailTo : undefined, ref, sentAt: now, by: who.name, status: "sent" };
       A.escalateAt = wait ? now + wait * 86400000 : undefined; cred("escalate", i.id);
-      log(i, `Complaint sent to ${A.draft.to}${a.via === "simulated" ? " (simulated)" : ""}${ref ? `. Reference ${ref}` : ""}`, "ok"); break;
+      log(i, `Complaint ${a.via === "emailed" ? `emailed to ${a.emailTo}` : a.via === "mailto" ? `emailed to ${a.emailTo} from the coordinator's own email` : `sent to ${A.draft.to}`}${a.via === "simulated" ? " (simulated)" : ""}${ref ? `. Reference ${ref}` : ""}`, "ok"); break;
+    }
+    case "agentReply": {
+      const i = issue(a.id), A = i.agent;
+      if (!A || !i.handoff) throw new Error("Send the complaint first");
+      const text = str(a.text, 1000, "The reply");
+      (A.replies ??= []).push({ t: Date.now(), by: who.name, text });
+      A.replies = A.replies.slice(-20);
+      const ref = txt(a.ref, 60);
+      if (ref) { i.handoff.ref = ref; const last = A.history[A.history.length - 1]; if (last) last.ref = ref; }
+      if (a.status !== undefined) {
+        if (!["acknowledged", "resolved"].includes(a.status)) throw new Error("Invalid status");
+        i.handoff.status = a.status;
+      }
+      log(i, `Authority reply recorded${ref ? `. Reference ${ref}` : ""}${a.status ? `. Marked ${a.status}` : ""}`, "ok"); break;
     }
     case "agentRef": {
       const i = issue(a.id), A = i.agent;
@@ -486,7 +520,7 @@ export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; ln
         if (dup) as("resident", R, { t: "merge", id: dup.id });
         as("resident", R, { t: "agentStart", id: t, lang: "hi", original: DEMO_HINDI, summaryEn: "Garbage has piled up on the street, causing a bad smell, and children's health may be at risk.", source: "scripted" });
       }
-      if (step === 1) { as("admin", C, { t: "advance", id: t }); as("admin", C, { t: "verify", id: t, v: "verified" }); as("admin", C, { t: "agentDraft", id: t }); }
+      if (step === 1) { as("admin", C, { t: "advance", id: t }); as("admin", C, { t: "verify", id: t, v: "verified" }); as("admin", "Coordinator B (demo)", { t: "verify", id: t, v: "verified" }); as("admin", C, { t: "agentDraft", id: t }); }
       if (step === 2) { as("admin", C, { t: "agentApprove", id: t }); as("admin", C, { t: "agentSend", id: t, via: "simulated", ref: "DEMO-2043" }); }
       if (step === 3) { iss().agent!.escalateAt = Date.now() - 1000; dueEscalations(d, Date.now(), nbhd); }
       if (step === 4) as("admin", C, { t: "advance", id: t });

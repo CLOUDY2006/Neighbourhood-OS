@@ -466,8 +466,18 @@ export async function agentAnalyze(text: string): Promise<Analysis> {
 export const agentStart = (id: string, lang: string, original: string, summaryEn: string, source: string) => dispatch({ t: "agentStart", id, lang, original, summaryEn, source });
 export const agentDraft = (id: string, p: { lang?: "en" | "hi"; subject?: string; body?: string }) => dispatch({ t: "agentDraft", id, ...p });
 export const agentApprove = (id: string) => dispatch({ t: "agentApprove", id });
-export const agentSend = (id: string, via: "copied" | "emailed" | "simulated", ref?: string) => dispatch({ t: "agentSend", id, via, ref });
+export const agentSend = (id: string, via: "copied" | "emailed" | "mailto" | "simulated", ref?: string, emailTo?: string) => dispatch({ t: "agentSend", id, via, ref, emailTo });
 export const agentRef = (id: string, ref: string) => dispatch({ t: "agentRef", id, ref });
+export const agentReply = (id: string, text: string, ref?: string, status?: "acknowledged" | "resolved") => dispatch({ t: "agentReply", id, text, ref, status });
+/** True when this server can email complaints (SMTP is set up). Never in the demo, which only simulates sending. */
+export const emailAvailable = async (): Promise<boolean> => (app.mode === "demo" ? false : capabilities().then(c => !!c.email).catch(() => false));
+/** Emails the approved complaint to an authority from the server, with the photo attached, then records it as sent. Coordinators only. */
+export async function agentEmail(id: string, to: string, ref?: string): Promise<{ attached: number }> {
+  if (app.mode !== "live" || !app.nbhd) throw new Error("Emailing works in a real neighbourhood only");
+  const j = await api<{ doc: L.Doc; version: number; role: L.Role; attached: number }>(`/api/n/${enc(app.nbhd.id)}/issues/${enc(id)}/email-complaint`, { to, ref: ref ?? "" });
+  doc = j.doc; ver = j.version; role = L.asRole(j.role); commit();
+  return { attached: j.attached };
+}
 export const agentEscalate = (id: string) => dispatch({ t: "agentEscalate", id });
 
 export const approveResolution = (id: string, note?: string) => dispatch({ t: "approveResolution", id, note });

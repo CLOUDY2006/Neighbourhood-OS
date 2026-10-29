@@ -24,9 +24,11 @@ export async function sendText(to: string, body: string, whatsapp = false) {
   });
   if (!r.ok) throw new Error(`Messaging provider responded with ${r.status}`);
 }
-export async function sendEmail(to: string, subject: string, text: string) {
+export interface MailExtra { replyTo?: string; attachments?: { filename: string; content: Buffer; contentType: string }[] }
+export async function sendEmail(to: string, subject: string, text: string, extra: MailExtra = {}) {
   if (!mailer) throw new Error("Email is not configured on this server");
-  await mailer.sendMail({ from: process.env.SMTP_FROM || process.env.CONTACT_EMAIL, to, subject, text });
+  const from = process.env.SMTP_FROM || process.env.CONTACT_EMAIL;
+  await mailer.sendMail({ from, to, subject, text, replyTo: extra.replyTo, attachments: extra.attachments });
 }
 
 type Msg = { title: string; body: string; urgent?: boolean; kinds?: string[] };

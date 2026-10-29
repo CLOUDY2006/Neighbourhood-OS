@@ -18,8 +18,10 @@ assert.equal(coordinatorBoard(d, coords, clock).rows.length, 3);
 
 // verify, then repeating it earns nothing more
 d = as(d, "admin", A, { t: "verify", id, v: "verified" });
-d = as(d, "admin", A, { t: "verify", id, v: "verified" });
+assert.throws(() => as(d, "admin", A, { t: "verify", id, v: "verified" }), /different coordinator/);
 assert.equal(bd(d)[A].score, 2);
+d = as(d, "admin", B, { t: "verify", id, v: "verified" }); // second coordinator completes the verification
+assert.equal(bd(d)[B].score, 2);
 
 // A resident can never earn coordinator credit
 const before = (d.coordLog ?? []).length;
@@ -33,7 +35,7 @@ d = as(d, "admin", A, { t: "proof", id, text: "filled" });
 d = as(d, "admin", A, { t: "advance", id }); // pending
 d = as(d, "admin", B, { t: "approveResolution", id });
 let t = bd(d);
-assert.equal(t[B].score, 3, "approver gets 3");
+assert.equal(t[B].score, 2 + 3, "second verifier 2 + approver 3");
 assert.equal(t[A].fixes, 1);
 assert.equal(t[A].score, 2 + 1 + 2 + 5, "verify 2 + step 1 + submit 2 + resolved 5"); // advance to review/assigned dedupe to one 'step'
 // Self-approval is still blocked by the reducer

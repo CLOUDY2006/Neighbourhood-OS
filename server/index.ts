@@ -6,7 +6,7 @@ import express from "express";
 import compression from "compression";
 import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
-import { asRole, can, dueEscalations, reportersOf, emptyDoc, reduce, STATUS_LABEL, weeklyDigest, type Action, type Cat, type Doc, type Role } from "../src/logic";
+import { asRole, can, isEmail, dueEscalations, reportersOf, emptyDoc, reduce, STATUS_LABEL, weeklyDigest, type Action, type Cat, type Doc, type Role } from "../src/logic";
 
 import { alertsFor, SEV_RANK, type Alert } from "../src/world";
 import { canModerateChat, chatAccess, chatText, CHAT_DAYS, CHAT_HIDE_AT, CHAT_PAGE, ROOMS, roomsFor, type ChatMsg, type Room } from "../src/chat";
@@ -17,6 +17,7 @@ import { aiAnalyze, aiCompare, aiEnabled, aiImage, aiInsights, aiLabel, aiSugges
 import { getStatusRun, getWardRun, runOwner, startStatusRun, startWardRun, tfEnabled, tfLabel, TinyFishError, trackRun, verifyRoute, wardPages } from "./tinyfish";
 import { getWorld, worldSnapshot } from "./world";
 import { capAlertsFor, capFeedCount, capSnapshot, getCap } from "./cap";
+import { buildComplaintEmail } from "../src/complaintMail";
 import { caps, notify, sendEmail, sendText, sign, twilioReady, twilioToken } from "./notify";
 
 for (const k of ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "DATABASE_URL"]) {
@@ -218,11 +219,13 @@ const LIMITS: Partial<Record<Action["t"], [number, number]>> = {
   report: [10, 86400000], proof: [30, 86400000], spam: [20, 86400000], merge: [40, 86400000], flag: [20, 86400000],
   update: [40, 86400000], feedback: [30, 86400000], reporterConfirm: [30, 86400000], agentStart: [20, 86400000], agentDraft: [60, 86400000], agentSend: [30, 86400000], noticeAdd: [20, 86400000],
 };
-const ADMIN_ACTIONS = new Set(["verify", "advance", "hide", "restore", "handoff", "handoffStatus", "noticeAdd", "noticeRemove", "authoritySet", "authorityRemove", "agentEscalate", "approveResolution", "rejectResolution", "closeUnconfirmed"]);
+const ADMIN_ACTIONS = new Set(["verify", "spam", "agentSend", "agentReply", "advance", "hide", "restore", "handoff", "handoffStatus", "noticeAdd", "noticeRemove", "authoritySet", "authorityRemove", "agentEscalate", "approveResolution", "rejectResolution", "closeUnconfirmed"]);
 
 interface Actor { id: string; handle: string; platformAdmin: boolean }
-async function runAction(id: string, u: Actor, a: Action) {
+async function runAction(id: string, u: Actor, a: Action, internal = false) {
   if (!a || typeof a.t !== "string") throw new HttpError(400, "Invalid request");
+  // "Emailed" can only be recorded by the email route below, after the email was really sent.
+  if (a.t === "agentSend" && a.via === "emailed" && !internal) throw new HttpError(400, "Use the email button to email a complaint");
   rl(`act:${u.id}`, 120, 60000);
   const lim = LIMITS[a.t]; if (lim) rl(`${a.t}:${id}:${u.id}`, lim[0], lim[1]);
   if (a.t === "report") rl(`reportH:${id}:${u.id}`, 4, 3600000);
@@ -280,6 +283,48 @@ async function afterAction(id: string, a: Action, raw: Doc, actor: string) {
     }
   } catch (e) { console.error("afterAction failed:", e); }
 }
+
+/** Emails an approved complaint to an authority, then records it as sent. Coordinators only. */
+const emailing = new Set<string>();
+app.post("/api/n/:id/issues/:iid/email-complaint", ah(async (req, res) => {
+  const u = await authenticate(req); const id = String(req.params.id), iid = String(req.params.iid);
+  if (!isId(id) || !isId(iid)) throw new HttpError(400, "Invalid request");
+  const role = await memberRole(pool, id, u);
+  if (role !== "admin") throw new HttpError(403, "Only a coordinator can email a complaint");
+  if (!caps().email) throw new HttpError(400, "Email is not set up on this server");
+  rl(`emailc:${u.id}`, 10, 3600000); rl(`emailc-n:${id}`, 40, 86400000);
+  const to = String(req.body?.to ?? "").trim(), ref = String(req.body?.ref ?? "").trim().slice(0, 60);
+  if (!isEmail(to)) throw new HttpError(400, "Enter a valid email address for the authority");
+  const n = (await pool.query("select name, doc from neighbourhoods where id = $1", [id])).rows[0];
+  if (!n) throw new HttpError(404, "Neighbourhood not found");
+  const i = (n.doc as Doc).issues.find(x => x.id === iid && !x.hidden);
+  if (!i?.agent) throw new HttpError(400, "Start the AI agent on this report first");
+  if (i.status === "resolved") throw new HttpError(400, "This report is already resolved");
+  if (!i.agent.draft.approvedAt) throw new HttpError(400, "Approve the complaint before sending it");
+  if (i.agent.draft.sentAt) throw new HttpError(400, "This complaint was already sent");
+  const key = `${id}:${iid}`;
+  if (emailing.has(key)) throw new HttpError(409, "This complaint is being sent right now");
+  emailing.add(key);
+  try {
+    // Attach the original photo and up to two proof photos (they stay inside this neighbourhood).
+    const ids = [i.photo, ...i.proof.map(p => p.photo)].filter((p): p is string => !!p && /^[0-9a-f-]{36}$/.test(p)).slice(0, 3);
+    const attachments: { filename: string; content: Buffer; contentType: string }[] = [];
+    let bytes = 0;
+    for (const pid of ids) {
+      const p = (await pool.query("select mime, data from photos where id = $1 and neighbourhood_id = $2", [pid, id])).rows[0];
+      if (!p || bytes + p.data.length > 8_000_000) continue;
+      bytes += p.data.length;
+      attachments.push({ filename: `photo-${attachments.length + 1}.${String(p.mime).includes("png") ? "png" : "jpg"}`, content: p.data, contentType: String(p.mime) });
+    }
+    const mail = buildComplaintEmail(i, n.name, ref);
+    try { await sendEmail(to, mail.subject, mail.text, { replyTo: process.env.SMTP_FROM || process.env.CONTACT_EMAIL, attachments }); }
+    catch (e) { console.warn("Complaint email failed:", (e as Error).message); throw new HttpError(502, "The email could not be sent. Check the address and the server's email settings, then try again"); }
+    let out;
+    try { out = await runAction(id, u, { t: "agentSend", id: iid, via: "emailed", ref, emailTo: to }, true); }
+    catch (e) { throw new HttpError(500, `The email was sent to ${to}, but it could not be recorded: ${(e as Error).message}. Use "I sent it" to record it by hand`); }
+    res.json({ doc: out.doc, result: out.result, version: out.version, role: out.role, attached: attachments.length });
+  } finally { emailing.delete(key); }
+}));
 
 app.post("/api/n/:id/action", ah(async (req, res) => {
   const u = await authenticate(req); const id = String(req.params.id);

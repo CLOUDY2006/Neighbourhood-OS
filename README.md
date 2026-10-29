@@ -28,8 +28,8 @@ It is built with India in mind (English and Hindi, Indian complaint routes and g
 ### The core loop
 
 1. **Report.** A resident clicks the map and types or speaks a short description in English or Hindi. They pick a category and can add a photo. Similar reports nearby are shown, so duplicates get merged instead of piling up.
-2. **Confirm.** Neighbors press "I see this too". Three spam flags from neighbors hide a report until a coordinator reviews it.
-3. **Verify.** Only a human coordinator can mark a report verified. They take it on, send the complaint to the right office and move it through the steps.
+2. **Confirm.** Neighbors press "I see this too". Spam is handled by coordinators: once two different coordinators flag a report as spam, it is hidden.
+3. **Verify.** Only human coordinators verify, and two different coordinators are needed: one checks the report and a second confirms it. They take it on, send the complaint to the right office and move it through the steps.
 4. **Fix.** The coordinator posts proof of the fix, either a photo or a note.
 5. **Prove.** The person who reported the problem confirms the fix, or a second coordinator approves it. A before-and-after slider goes on the issue and the pin turns green.
 
@@ -256,7 +256,8 @@ CAP (Common Alerting Protocol) is the standard format national warning agencies 
 
 - `SMTP_URL`: your mail server as a web-style address, for example `smtps://username:password@smtp.example.com:465`.
 - `SMTP_FROM`: the sender, for example `NEIGHBOURHOOD OS <alerts@example.com>`.
-- The same mail setup is used for alerts, hand-offs to authorities and the weekly summary.
+- The same mail setup is used for alerts, hand-offs to authorities, emailed complaints and the weekly summary.
+- Complaints sent from the server set `Reply-To` to `SMTP_FROM` (or `CONTACT_EMAIL` if that is empty), so use a real mailbox that someone reads. Limits: 10 emailed complaints per coordinator per hour and 40 per neighbourhood per day.
 
 ### Text messages and WhatsApp (Twilio)
 
@@ -277,8 +278,8 @@ CAP (Common Alerting Protocol) is the standard format national warning agencies 
 | Same neighbourhood, same view    | Members read the same server state and the same cached map. Only zoom and pan are personal.                                                                                                                                                                                                  |
 | Where do people belong?          | Automatic area cells of about 1 km, computed in the browser. Named neighbourhoods (200 m to 2 km) can be created and joined by search or invite link. People near a border can join the next area. Up to 5 neighbourhoods per person.                                                        |
 | Location privacy                 | Location is opt-in. Only the area cell is sent. Exact positions are never sent or stored, except a pin a person deliberately places on a report. "You are here" stays on the device.                                                                                                  |
-| Fake or spam reports             | Rate limits per user, a cap of 15 open reports each, the location must fall inside the neighbourhood, a person cannot confirm their own report or confirm twice, and three neighbor flags hide a report until a coordinator reviews it. Authors can withdraw.                                |
-| Fake "verified" claims           | Only a human coordinator can mark a report verified. AI output is always labelled a suggestion. |
+| Fake or spam reports             | Rate limits per user, a cap of 15 open reports each, the location must fall inside the neighbourhood, a person cannot confirm their own report or confirm twice, and two different coordinators flagging a report as spam hides it. Authors can withdraw.                                |
+| Fake "verified" claims           | A report is verified only when two different coordinators have confirmed it. AI output is always labelled a suggestion. |
 | Coordinator abuse                | Every coordinator action is written to an audit log shown to other coordinators. Platform admins can step in.                                                                                                                                                                                |
 | Who becomes a coordinator?       | The first 3 people to join any neighbourhood (named or automatic area), including the creator of a named one. After that, people ask to coordinate, and an existing coordinator (or platform admin) approves in the People tab.                                                              |
 | Is there a coordinator ranking?  | Yes, per neighbourhood (Coordinators tab, visible to every member, names shown). Fixed visible point rules, and it restarts on the 1st of every month (UTC). Only in-app activity counts. Neighbour feedback shows only after 5 ratings. The rules live in `COORD_POINTS` in `src/logic.ts`. |
@@ -335,6 +336,7 @@ A resident reports a problem, typed or spoken, in Hindi or English. The agent th
 3. **Chooses the complaint route** from the editable table in `src/routes.ts`: which authority or channel, what to include, how many days to wait, and the escalation steps.
 4. **Drafts the complaint** in English or Hindi from a fixed template. The AI never writes the legal wording, so it cannot invent rules or deadlines. The author or a coordinator can edit it.
 5. **Waits for a person to approve.** Nothing is sent automatically. The approved text is copied and submitted through the route shown, then marked as sent with the reference number.
+   - **Email it to the authority from your own address.** A coordinator chooses an authority from the directory (or types an address) and presses "Open in Gmail" or "Open in my email app". Their own mail opens with the complaint, a map link and a case id in the subject already filled in, and they press Send there, so it goes from their own (for example official) address and replies land in their own inbox. They then press "I sent it from my email" so the app records it. The app cannot see the inbox and cannot attach the photo through a link, so the coordinator attaches it by hand. After a reply arrives, they paste it into "Record the authority's reply" with any reference number and the new status. If the server has email set up (`SMTP_URL`), a "Send from the server instead" button also emails it with up to three photos attached, from the app's address.
 6. **Schedules escalation.** If there is no response by the deadline, the server prepares the next-level draft, which refers to the earlier complaint, and notifies coordinators. A person still has to approve it. It is cancelled if the issue is resolved.
 7. **Tracks it to the end:** understood, duplicates checked, route, draft, approved, sent, reference received, assigned, proof of fix, verified resolved.
 

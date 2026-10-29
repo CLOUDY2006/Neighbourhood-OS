@@ -155,7 +155,8 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
         <span className={`chip ${grp(i.status)}`}>{S.STATUS_LABEL[i.status]}</span>
         {i.status === "resolved" && i.closure === "unconfirmed" && <span className="chip amber">{t("Closed without confirmation")}</span>}
         {i.hidden && <span className="chip red">Hidden</span>}
-        {S.can(r, "hide") && i.flags.length > 0 && <span className="chip amber">{i.flags.length} flag(s)</span>}
+        {S.can(r, "hide") && i.flags.length > 0 && <span className="chip amber">{i.flags.length} of {S.SPAM_FLAGS_TO_HIDE} spam flag(s)</span>}
+        {S.can(r, "verify") && i.verif !== "verified" && (i.verifiedBy ?? []).length > 0 && <span className="chip amber">{(i.verifiedBy ?? []).length} of {S.COORDS_TO_VERIFY} coordinator checks</span>}
       </div>
       {r === "admin" && (
         <div className="row wrap">
@@ -164,16 +165,16 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
           </button>
         </div>
       )}
-      {!mine && !i.hidden && (
+      {S.can(r, "spam") && !mine && !i.hidden && (
         i.flags.includes(me)
-          ? <small className="dim">{t("Thanks. You reported this one.")}</small>
+          ? <small className="dim">{t("You flagged this one. One more coordinator must flag it to hide it.")}</small>
           : askSpam
             ? (
               <div className="card alertcard">
                 <b>{t("Report this as spam or a wrong report?")}</b>
-                <small className="dim">{t("Use this for fake, joke, duplicate or abusive reports. Coordinators will look at it. If several people report it, it is hidden until a coordinator checks.")}</small>
+                <small className="dim">{t("Use this for fake, joke, duplicate or abusive reports. The report is hidden once two different coordinators have flagged it.")}</small>
                 <div className="row wrap">
-                  <button className="warn" onClick={() => act(async () => { await S.spam(i.id); setAskSpam(false); }, "Thanks. Coordinators will look at it")}>{t("Yes, report it")}</button>
+                  <button className="warn" onClick={() => act(async () => { await S.spam(i.id); setAskSpam(false); }, "Flagged. One more coordinator must flag it to hide it")}>{t("Yes, report it")}</button>
                   <button className="x" onClick={() => setAskSpam(false)}>{t("Cancel")}</button>
                 </div>
               </div>
@@ -271,7 +272,8 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
 
       <div className="row wrap">
         {S.can(r, "merge") && !mine && !i.hidden && i.status !== "resolved" && <button onClick={() => act(() => S.merge(i.id), "Added your confirmation")}>I see this too</button>}
-        {S.can(r, "verify") && i.status !== "resolved" && i.verif !== "verified" && <button onClick={() => act(() => S.setVerif(i.id, "verified"), "Marked verified")}>Mark verified</button>}
+        {S.can(r, "verify") && i.status !== "resolved" && i.verif !== "verified" && !(i.verifiedBy ?? []).includes(me) && <button onClick={() => act(() => S.setVerif(i.id, "verified"), (i.verifiedBy ?? []).length + 1 >= S.COORDS_TO_VERIFY ? "Verified by two coordinators" : "Checked. A different coordinator must verify it too")}>{(i.verifiedBy ?? []).length ? "Verify as second coordinator" : "Mark verified"}</button>}
+        {S.can(r, "verify") && i.verif !== "verified" && (i.verifiedBy ?? []).includes(me) && <small className="dim">{t("You checked this report. Waiting for a different coordinator to verify it.")}</small>}
         {S.can(r, "flag") && i.status === "resolved" && <button className="warn" onClick={() => act(() => S.flag(i.id), "Flag sent to coordinators")}>Not fully fixed (reopen)</button>}
       </div>
       {hasMore && (
