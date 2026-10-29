@@ -10,7 +10,7 @@ import { asRole, can, dist as metresBetween, isEmail, dueEscalations, purgeSafet
 
 import { alertsFor, hazardsNear, SEV_RANK, type Alert } from "../src/world";
 import { canModerateChat, chatAccess, chatText, CHAT_DAYS, CHAT_HIDE_AT, CHAT_PAGE, ROOMS, roomsFor, type ChatMsg, type Room } from "../src/chat";
-import { CELL_R, parseCell } from "../src/geo";
+import { CELL_R, cellOf, parseCell } from "../src/geo";
 import { pool, tx } from "./db";
 import { areaOf, cityOf, fetchMap, geocode, NAMES_ON, placeName } from "./osm";
 import { aiAnalyze, aiCompare, aiEnabled, aiImage, aiInsights, aiLabel, aiSuggest } from "./ai";
@@ -741,18 +741,22 @@ async function inbound(m: Inbound, reply: (t: string) => unknown): Promise<unkno
       const mine = (await pool.query("select m.neighbourhood_id, m.display_name, n.name, n.center_lat, n.center_lng, n.radius_m from members m join neighbourhoods n on n.id = m.neighbourhood_id where m.user_id = $1", [ch.user_id])).rows as { neighbourhood_id: string; display_name: string; name: string; center_lat: number; center_lng: number; radius_m: number }[];
       const ranked = mine.map(h => ({ h, d: metresBetween({ lat: h.center_lat, lng: h.center_lng }, { lat: draft.lat!, lng: draft.lng! }) })).sort((a, b) => a.d - b.d);
       const list = ranked.map(x => `${x.h.name} ${Math.round(x.d)} m (limit ${Math.round(x.h.radius_m * 1.15)} m)`).join("; ");
-      let hit = ranked.find(x => x.d <= x.h.radius_m * 1.15), moved = 0, pt = { lat: draft.lat!, lng: draft.lng! };
-      if (!hit && ranked.length && ranked[0].d <= 3000) {
-        // A member's pin slightly outside their own neighbourhood: keep the report, move the pin to the nearest edge and say so
-        hit = ranked[0]; moved = Math.round(hit.d);
-        const k = (hit.h.radius_m * 0.98) / hit.d;
-        pt = { lat: hit.h.center_lat + (draft.lat! - hit.h.center_lat) * k, lng: hit.h.center_lng + (draft.lng! - hit.h.center_lng) * k };
+      let hit = ranked.find(x => x.d <= x.h.radius_m * 1.15), joinedNote = "";
+      if (!hit && !draft.approx) {
+        // A real pin outside all of this person's neighbourhoods: use the automatic area (about 1 km) the pin is in, and join it
+        const cell = cellOf(draft.lat!, draft.lng!);
+        let n = (await pool.query("select name, center_lat, center_lng, radius_m from neighbourhoods where id = $1", [cell.id])).rows[0];
+        if (!n) n = (await pool.query("insert into neighbourhoods (id, kind, name, center_lat, center_lng, radius_m, doc) values ($1, 'cell', $2, $3, $4, $5, $6) on conflict (id) do update set id = excluded.id returning name, center_lat, center_lng, radius_m", [cell.id, await placeName(cell.lat, cell.lng), cell.lat, cell.lng, CELL_R, JSON.stringify(emptyDoc())])).rows[0];
+        const who: User = { id: ch.user_id, email: "", name: ch.display_name, handle: ch.display_name, platformAdmin: false };
+        await ensureMember(cell.id, who); // throws a clear message if the person is already in 5 neighbourhoods
+        hit = { h: { neighbourhood_id: cell.id, display_name: ch.display_name, name: n.name, center_lat: n.center_lat, center_lng: n.center_lng, radius_m: n.radius_m }, d: metresBetween({ lat: n.center_lat, lng: n.center_lng }, { lat: draft.lat!, lng: draft.lng! }) };
+        joinedNote = ` I added you to the area around your pin: ${n.name}.`;
       }
       if (!hit) throw new HttpError(400, ranked.length ? `That spot is not near any of your neighbourhoods. Distances from their centres: ${list}` : "You are not in a neighbourhood yet");
       const where: Actor = { id: ch.user_id, handle: hit.h.display_name, platformAdmin: false };
-      const out = await runAction(hit.h.neighbourhood_id, where, { t: "report", title, desc: (descOf(draft, channel) + (moved ? `\n[The shared pin was about ${moved} m from the centre of this neighbourhood, outside its area, so it was moved to the nearest edge. Please confirm the location.]` : "")).slice(0, 1000), cat: info.cat, priority: info.priority, lat: pt.lat, lng: pt.lng, photo: draft.photo, agent: { lang: info.lang, original: draft.text!, summaryEn: info.summaryEn, source: info.source } });
+      const out = await runAction(hit.h.neighbourhood_id, where, { t: "report", title, desc: descOf(draft, channel), cat: info.cat, priority: info.priority, lat: draft.lat!, lng: draft.lng!, photo: draft.photo, agent: { lang: info.lang, original: draft.text!, summaryEn: info.summaryEn, source: info.source } });
       await pool.query("delete from text_drafts where user_id = $1 and neighbourhood_id = $2", key);
-      return reply(MSG.done(title, String(out.result), CAT_EN[info.cat as Cat]) + (mine.length > 1 ? ` Neighbourhood: ${hit.h.name}.` : "") + photoNote);
+      return reply(MSG.done(title, String(out.result), CAT_EN[info.cat as Cat]) + (mine.length > 1 || joinedNote ? ` Neighbourhood: ${hit.h.name}.` : "") + joinedNote + photoNote);
     } catch (e) {
       if (e instanceof HttpError && e.status === 429) { await pool.query("delete from text_drafts where user_id = $1 and neighbourhood_id = $2", key); return reply("You have sent several reports this hour. Please try again a little later."); }
       await save({ ...draft, lat: undefined, lng: undefined, approx: false }); // keep the description and photo, ask for the place again
