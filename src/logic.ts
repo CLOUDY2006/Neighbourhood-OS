@@ -60,7 +60,15 @@ export interface Sos {
 export type CoordKind = "verify" | "step" | "submit" | "approve" | "sendback" | "escalate" | "notice" | "reopened";
 export interface CoordEntry { t: number; by: string; k: CoordKind; id?: string }
 // missions, resources, volunteers and sos stay as empty legacy fields so the map component (unchanged) still compiles. Nothing writes to them any more.
-export interface Doc { issues: Issue[]; missions: Mission[]; resources: Resource[]; volunteers: Volunteer[]; events: Ev[]; demo: number; sos?: Sos[]; notices?: Notice[]; authorities?: Authority[]; digestAt?: number; memberCount?: number; coordLog?: CoordEntry[] }
+export interface SafetyPlan {
+  id: string; hazardId: string; hazardTitle: string; hazardType: string; km: number;
+  routes: string; assembly: string; contacts: string; notes: string;
+  status: "pending" | "approved" | "closed"; by: string; created: number;
+  approvedBy?: string; approvedAt?: number; closedBy?: string; closedAt?: number; closedNote?: string;
+}
+/** Coordinators can only write a safety plan while a hazard is this close. The server checks it too. */
+export const SAFETY_KM = 100;
+export interface Doc { issues: Issue[]; missions: Mission[]; resources: Resource[]; volunteers: Volunteer[]; events: Ev[]; demo: number; sos?: Sos[]; safety?: SafetyPlan[]; notices?: Notice[]; authorities?: Authority[]; digestAt?: number; memberCount?: number; coordLog?: CoordEntry[] }
 export interface Who { role: Role; name: string }
 export interface Insights { source: "rules" | "ai"; summary: string; bullets: { title: string; detail: string }[] }
 export interface SuggestInput { title: string; desc: string; cat?: Cat; lat: number; lng: number }
@@ -78,6 +86,14 @@ export type Action =
   | { t: "restore"; id: string }
   | { t: "noticeAdd"; title: string; body: string; urgent: boolean; pinned: boolean }
   | { t: "noticeRemove"; id: string }
+  | { t: "sos"; need: SosNeed; people: number; note: string; lat: number; lng: number; consent: boolean; contact?: string }
+  | { t: "sosAck"; id: string }
+  | { t: "sosStatus"; id: string; status: "helped" | "closed" }
+  | { t: "sosCancel"; id: string }
+  | { t: "safetyPlan"; hazard: { id: string; title: string; type: string; km: number }; routes: string; assembly: string; contacts: string; notes: string }
+  | { t: "safetyApprove"; id: string }
+  | { t: "safetyReject"; id: string; reason: string }
+  | { t: "safetyClose"; id: string }
   | { t: "authoritySet"; name: string; email: string; phone: string }
   | { t: "authorityRemove"; id: string }
   | { t: "handoff"; id: string; authorityId: string; ref: string }
@@ -108,6 +124,8 @@ export const CAN: Record<Action["t"], readonly Role[]> = {
   agentStart: ALL, agentDraft: ALL, agentApprove: ALL, agentSend: ALL, agentReply: ["admin"], agentRef: ALL, agentEscalate: ["admin"],
   withdraw: ALL, spam: ["admin"], hide: ["admin"], restore: ["admin"],
   approveResolution: ["admin"], rejectResolution: ["admin"], reporterConfirm: ALL, closeUnconfirmed: ["admin"], feedback: ALL, update: ALL,
+  sos: ALL, sosCancel: ALL, sosAck: ["admin"], sosStatus: ["admin"],
+  safetyPlan: ["admin"], safetyApprove: ["admin"], safetyReject: ["admin"], safetyClose: ["admin"],
   demo: ALL, reset: ALL,
 };
 export const can = (r: Role, t: Action["t"]) => !!CAN[t]?.includes(r);
@@ -239,10 +257,41 @@ const num = (v: unknown, label: string) => {
 };
 const img = (p: unknown) => (typeof p === "string" && (p === DEMO_BEFORE || p === DEMO_AFTER || /^data:image\/(jpeg|png|webp);base64,/.test(p) ? p.length < 300000 : /^[0-9a-f-]{36}$/.test(p)) ? p : undefined);
 
+export const SOS_NEEDS: SosNeed[] = ["medical", "rescue", "shelter", "food_water", "other"];
+const ACTIVE: SosStatus[] = ["open", "acknowledged", "assigned"];
+const SOS_TTL = 24 * 3600000;
+/** Closes SOS requests after 24 hours and deletes the location, note and phone number of every closed request. */
+export function purgeSos(d: Doc, now = Date.now()) {
+  if (!d.sos) return false;
+  let ch = false;
+  for (const x of d.sos) {
+    if (ACTIVE.includes(x.status) && now > x.expires) { x.status = "closed"; x.closedAt = now; x.log.push({ t: now, by: "System", text: "Expired after 24 hours" }); ch = true; }
+    if (!ACTIVE.includes(x.status) && (x.lat != null || x.lng != null || x.note || x.contact)) { x.lat = null; x.lng = null; x.note = ""; x.contact = undefined; ch = true; }
+  }
+  const keep = d.sos.filter(x => ACTIVE.includes(x.status) || now - (x.closedAt ?? x.created) < 30 * 86400000);
+  if (keep.length !== d.sos.length) { d.sos = keep; ch = true; }
+  return ch;
+}
+/** An SOS is an emergency, so every member sees every request. */
+export const visibleSos = (d: Doc) => d.sos ?? [];
+export const sosActiveCount = (d: Doc) => (d.sos ?? []).filter(x => ACTIVE.includes(x.status)).length;
+/** A plan nobody approves within 3 days is closed, and an approved plan stays up for 7 days unless a coordinator closes it earlier. */
+export function purgeSafety(d: Doc, now = Date.now()) {
+  if (!d.safety) return false;
+  let ch = false;
+  for (const p of d.safety) {
+    if (p.status === "approved" && now - (p.approvedAt ?? p.created) > 7 * 86400000) { p.status = "closed"; p.closedAt = now; p.closedNote = "Expired after 7 days"; ch = true; }
+    if (p.status === "pending" && now - p.created > 3 * 86400000) { p.status = "closed"; p.closedAt = now; p.closedNote = "Not approved within 3 days"; ch = true; }
+  }
+  const keep = d.safety.filter(p => p.status !== "closed" || now - (p.closedAt ?? p.created) < 30 * 86400000);
+  if (keep.length !== d.safety.length) { d.safety = keep; ch = true; }
+  return ch;
+}
+
 export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; lng: number; r: number; name?: string }): { doc: Doc; result?: string } {
   if (!a || !can(who.role, a.t)) throw new Error(`The ${who.role} role is not allowed to do this`);
   let d = structuredClone(doc), result: string | undefined;
-  purgeOld(d); dueEscalations(d, Date.now(), bounds?.name);
+  purgeSos(d); purgeSafety(d); purgeOld(d); dueEscalations(d, Date.now(), bounds?.name);
   if (d.coordLog) d.coordLog = d.coordLog.filter(e => e.t >= prevMonthStart(Date.now())).slice(-800);
   const ev = (text: string, tone = "info", to?: string) => { d.events.unshift({ t: Date.now(), text, tone, to }); d.events = d.events.slice(0, 60); };
   const tell = (i: Issue, text: string) => { if (i.author !== who.name) ev(text, "info", i.author); };
@@ -256,6 +305,9 @@ export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; ln
     if (Math.abs(lat) > 90 || Math.abs(lng) > 180) throw new Error("Invalid location");
     if (bounds && dist(bounds, { lat, lng }) > bounds.r * 1.15) throw new Error("That spot is outside this neighbourhood");
   };
+  const sosOf = (id: string) => { const x = (d.sos ??= []).find(y => y.id === id); if (!x) throw new Error("Request not found"); return x; };
+  const closeSos = (x: Sos, status: SosStatus, text: string) => { x.status = status; x.closedAt = Date.now(); x.lat = null; x.lng = null; x.note = ""; x.contact = undefined; x.log.push({ t: Date.now(), by: who.name, text }); };
+  const planOf = (id: string) => { const p = (d.safety ??= []).find(y => y.id === id); if (!p) throw new Error("Plan not found"); return p; };
   const txt = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
   const nbhd = bounds?.name ?? "our neighbourhood";
   const owns = (i: Issue) => who.role === "admin" || i.author === who.name;
@@ -299,8 +351,12 @@ export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; ln
       if (i.author === who.name) throw new Error("You cannot flag your own report");
       if (i.flags.includes(who.name)) throw new Error("You already flagged this report");
       i.flags.push(who.name);
-      if (i.flags.length >= SPAM_FLAGS_TO_HIDE && !i.hidden) { i.hidden = true; ev("A report was hidden after two coordinators flagged it as spam", "alert"); }
-      else log(i, `Flagged as spam by a coordinator (${i.flags.length} of ${SPAM_FLAGS_TO_HIDE})`, "alert");
+      if (i.flags.length >= SPAM_FLAGS_TO_HIDE) {
+        // Two different coordinators agree it is fake: the report is deleted completely, for everyone. This cannot be undone.
+        d.issues = d.issues.filter(x => x.id !== i.id);
+        ev("A report was removed after two coordinators flagged it as fake or spam", "alert");
+        ev("Your report was removed after two coordinators judged it fake or spam", "alert", i.author);
+      } else log(i, `Flagged as fake or spam by a coordinator (${i.flags.length} of ${SPAM_FLAGS_TO_HIDE})`, "alert");
       break;
     }
     case "hide": { const i = issue(a.id); i.hidden = true; ev("A coordinator hid a report", "info"); break; }
@@ -483,6 +539,63 @@ export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; ln
       if (i.status === "resolved") throw new Error("This issue is already resolved");
       if (!escalate(i, nbhd)) throw new Error("Nothing to escalate yet, or this is the last level. Consider contacting your elected representative or filing a right-to-information request");
       log(i, "Escalation draft prepared. Review and approve it to send", "alert"); break;
+    }
+    case "sos": {
+      if (a.consent !== true) throw new Error("Please agree to share your location with this neighbourhood first");
+      if (!SOS_NEEDS.includes(a.need)) throw new Error("Choose what you need");
+      const lat = num(a.lat, "Latitude"), lng = num(a.lng, "Longitude"), people = Math.round(num(a.people, "Number of people"));
+      inBounds(lat, lng);
+      if (people < 1 || people > 50) throw new Error("Number of people must be between 1 and 50");
+      d.sos ??= [];
+      if (d.sos.some(x => x.author === who.name && ACTIVE.includes(x.status))) throw new Error("You already have an active SOS request");
+      const x: Sos = { id: uid("s"), author: who.name, lat, lng, need: a.need, people, note: (typeof a.note === "string" ? a.note : "").trim().slice(0, 300), contact: typeof a.contact === "string" ? a.contact.slice(0, 30) : undefined, status: "open", assigned: [], created: Date.now(), expires: Date.now() + SOS_TTL, log: [{ t: Date.now(), by: who.name, text: "SOS request sent" }] };
+      d.sos.push(x); ev("A new SOS request is on the map and waiting for a coordinator", "alert"); result = x.id; break;
+    }
+    case "sosAck": {
+      const x = sosOf(a.id);
+      if (x.status === "open") { x.status = "acknowledged"; x.log.push({ t: Date.now(), by: who.name, text: "Seen by a coordinator" }); ev("An SOS request was seen by a coordinator", "info"); }
+      break;
+    }
+    case "sosStatus": {
+      const x = sosOf(a.id);
+      if (who.role !== "admin") throw new Error("Only a coordinator can update this request");
+      if (a.status !== "helped" && a.status !== "closed") throw new Error("Invalid status");
+      closeSos(x, a.status, `Marked ${a.status}. Location and note deleted`); ev(`An SOS request was marked ${a.status}`, "ok"); break;
+    }
+    case "sosCancel": {
+      const x = sosOf(a.id);
+      if (x.author !== who.name) throw new Error("Only the author can cancel this request");
+      closeSos(x, "closed", "Cancelled by the author. Location and note deleted"); break;
+    }
+    case "safetyPlan": {
+      const h = a.hazard;
+      if (!h || typeof h.id !== "string" || typeof h.km !== "number" || !isFinite(h.km)) throw new Error("Choose the hazard this plan is for");
+      if (h.km > SAFETY_KM) throw new Error(`A safety plan can only be made while a hazard is within ${SAFETY_KM} km`);
+      const routes = str(a.routes, 1200, "Escape routes"), assembly = str(a.assembly, 300, "Assembly point");
+      d.safety ??= [];
+      if (d.safety.some(p => p.hazardId === h.id && p.status !== "closed")) throw new Error("There is already a plan for this hazard");
+      const p: SafetyPlan = { id: uid("sp"), hazardId: h.id.slice(0, 80), hazardTitle: txt(h.title, 120), hazardType: txt(h.type, 20), km: Math.round(h.km), routes, assembly, contacts: txt(a.contacts, 400), notes: txt(a.notes, 800), status: "pending", by: who.name, created: Date.now() };
+      d.safety.push(p); ev(`A safety plan for "${p.hazardTitle}" is waiting for another coordinator to approve it`, "alert"); result = p.id; break;
+    }
+    case "safetyApprove": {
+      const p = planOf(a.id);
+      if (p.status !== "pending") throw new Error("This plan is not waiting for approval");
+      if (p.by === who.name) throw new Error("A different coordinator must approve your plan");
+      p.status = "approved"; p.approvedBy = who.name; p.approvedAt = Date.now();
+      ev(`Safety plan approved: ${p.hazardTitle}. Open the Command tab to read it.`, "alert"); break;
+    }
+    case "safetyReject": {
+      const p = planOf(a.id);
+      if (p.status !== "pending") throw new Error("This plan is not waiting for approval");
+      if (p.by === who.name) throw new Error("A different coordinator must review your plan. You can close it instead");
+      p.status = "closed"; p.closedBy = who.name; p.closedAt = Date.now(); p.closedNote = `Sent back by ${who.name}${txt(a.reason, 200) ? `: ${txt(a.reason, 200)}` : ""}`;
+      ev(`A safety plan was sent back: ${p.hazardTitle}`, "info"); break;
+    }
+    case "safetyClose": {
+      const p = planOf(a.id);
+      if (p.status === "closed") break;
+      p.status = "closed"; p.closedBy = who.name; p.closedAt = Date.now(); p.closedNote = `Closed by ${who.name}`;
+      ev(`Safety plan closed: ${p.hazardTitle}`, "info"); break;
     }
     case "noticeAdd": {
       const n: Notice = { id: uid("n"), title: str(a.title, 100, "Title"), body: txt(a.body, 1000), author: who.name, created: Date.now(), pinned: !!a.pinned, urgent: !!a.urgent };

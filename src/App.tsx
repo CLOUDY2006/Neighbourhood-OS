@@ -1,6 +1,6 @@
 import { Component, useEffect, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Bell, Radar, PlusCircle, BarChart3, RotateCcw, Play, UserCog, User, Sun, Moon, LogOut, MessagesSquare } from "lucide-react";
+import { Bell, Radar, PlusCircle, BarChart3, RotateCcw, Play, UserCog, User, Sun, Moon, LogOut, MessagesSquare, Siren, Globe, ShieldAlert, Ellipsis } from "lucide-react";
 import * as S from "./store";
 import IsoMap, { ViewSwitch, type MapView } from "./IsoMap";
 import { toggleTheme, useTheme } from "./a11y";
@@ -8,6 +8,8 @@ import { go, usePath } from "./route";
 import Landing from "./Landing";
 import { Detail, AiPhoto, PhotoPicker } from "./Detail";
 import { Status } from "./Status";
+import SosPanel from "./SosPanel";
+import { AlertBanner, HazardPopup, SafetyBanner, WorldMap, WorldPanel, nearbyHazards } from "./WorldView";
 import ListView from "./ListView";
 import Onboarding from "./Onboarding";
 import { AgentPanel, AnalysisCard } from "./AgentPanel";
@@ -18,7 +20,7 @@ import { AccessSettings, NotifySettings } from "./Settings";
 import { LANGS, setLang, useLang, useT } from "./i18n";
 
 type Act = (fn: () => unknown, ok?: string) => Promise<void>;
-type Tab = "feed" | "report" | "status" | "chat" | "people" | "account";
+type Tab = "feed" | "report" | "status" | "chat" | "people" | "account" | "sos" | "world";
 type Pt = { lat: number; lng: number } | null;
 
 const grp = (s: S.Status) => (s === "resolved" ? "green" : s === "assigned" || s === "progress" || s === "pending" ? "amber" : "red");
@@ -30,6 +32,8 @@ const ago = (t: number) => {
   return m < 1 ? "now" : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`;
 };
 const TAB_INFO: Record<Tab, [string, string]> = {
+  sos: ["SOS", "Ask for help. While a request is open, everyone in this neighbourhood can see it on the map, because it is an emergency."],
+  world: ["World", "Official hazard feeds from around the world. Scroll down for the safety plans your coordinators write when a hazard is within 100 km."],
   feed: ["Command", "Live overview of the neighbourhood: notices, how much work is in each stage, and every issue. Pick an issue to see its details."],
   report: ["Report a problem", "Click the map to place a pin, describe what is wrong and submit. A coordinator reviews every report."],
   status: ["Locality status", "How fast problems get fixed, where they repeat, a summary for local offices and the ward councillor lookup. Actual numbers are tagged green and estimates amber."],
@@ -65,7 +69,7 @@ function Pipeline({ st }: { st: S.State }) {
   );
 }
 
-function Feed({ st, app, sel, setSel, act, demo, goReport }: { st: S.State; app: S.AppState; sel: string | null; setSel: (id: string | null) => void; act: Act; demo: boolean; goReport: () => void }) {
+function Feed({ st, app, sel, setSel, act, demo, goReport, goWorld }: { st: S.State; app: S.AppState; sel: string | null; setSel: (id: string | null) => void; act: Act; demo: boolean; goReport: () => void; goWorld: () => void }) {
   const t = useT();
   const open = st.issues.filter(i => i.status === "reported" || i.status === "review").length;
   const prog = st.issues.filter(i => i.status === "assigned" || i.status === "progress").length;
@@ -88,6 +92,8 @@ function Feed({ st, app, sel, setSel, act, demo, goReport }: { st: S.State; app:
   );
   return (
     <>
+      <AlertBanner alerts={app.alerts} onWorld={goWorld} />
+      <SafetyBanner st={st} app={app} goWorld={goWorld} />
       <div className="stats"><div className="red"><b>{open}</b>{t("Open")}</div><div className="amber"><b>{prog}</b>{t("In progress")}</div><div className="green"><b>{done}</b>{t("Fixed")}</div></div>
       {st.issues.some(i => i.status === "pending" && !i.hidden) && (
         <div className="card alertcard">
@@ -102,7 +108,7 @@ function Feed({ st, app, sel, setSel, act, demo, goReport }: { st: S.State; app:
           <b>Guided AI agent demo</b>
           <p className="dim">{st.demo < S.DEMO.length ? `Step ${st.demo + 1} of ${S.DEMO.length}: ${S.DEMO[st.demo]}` : "Demo finished. Reset to run it again."}</p>
           {st.demo === 0 && <p className="hindi">“{S.DEMO_HINDI}”</p>}
-          <div className="row wrap"><button className="go" onClick={() => act(() => S.runDemo())}><Play size={14} /> Run next step</button></div>
+          <div className="row wrap"><button className="go" onClick={() => act(() => S.runDemo())}><Play size={14} /> Run next step</button><button className="warn" onClick={() => S.toggleDemoAlert()}>{app.alerts.length ? "Clear simulated alert" : "Simulate an earthquake alert"}</button></div>
         </div>
       )}
       {!demo && st.issues.length === 0 && (
@@ -324,19 +330,28 @@ function Main({ app }: { app: S.AppState }) {
   const unread = myEvents.filter(e => e.t > seen).length;
   const asOf = tt.on && tt.days > 0 ? Date.now() - tt.days * 86400000 : null;
   const stView: S.State = asOf ? { ...S.docAsOf(st, asOf), role: st.role } : st;
-  const NAV: [Tab, string, typeof Radar][] = [["feed", "Command", Radar], ["report", "Report", PlusCircle], ["status", "Status", BarChart3], ["chat", "Chat", MessagesSquare], ["people", "People", UserCog], ["account", "Account", User]];
+  const near = nearbyHazards(app);
+  const [selEv, setSelEv] = useState<string | null>(null);
+  const NAV: [Tab, string, typeof Radar][] = [["feed", "Command", Radar], ["report", "Report", PlusCircle], ["status", "Status", BarChart3], ["chat", "Chat", MessagesSquare], ["sos", "SOS", Siren]];
+  const MORE: [Tab, string, typeof Radar][] = [["people", "People", UserCog], ["world", "World", Globe]];
   const chatNew = S.chatUnread(app, st.role);
   const tabNow: Tab = tab;
   const [more, setMore] = useState(false);
   const theme = useTheme();
-  const TabIcon = NAV.find(x => x[0] === tabNow)?.[2] ?? Radar;
-  const navBtn = ([k, l, Ic]: [Tab, string, typeof Radar]) => <button key={k} className={tabNow === k ? "on" : ""} onClick={() => { setTab(k); setMore(false); }} aria-label={t(l)} aria-current={tabNow === k ? "page" : undefined} title={t(l)}><Ic size={20} /><span>{t(l)}</span>{k === "chat" && tabNow !== "chat" && chatNew && <i className="dot" aria-label={t("new messages")} />}</button>;
+  const TabIcon = [...NAV, ...MORE, ["account", "Account", User] as [Tab, string, typeof Radar]].find(x => x[0] === tabNow)?.[2] ?? Radar;
+  const navBtn = ([k, l, Ic]: [Tab, string, typeof Radar]) => <button key={k} className={`${tabNow === k ? "on" : ""} ${k === "sos" ? "sostab" : ""}`} onClick={() => { setTab(k); setMore(false); }} aria-label={t(l)} aria-current={tabNow === k ? "page" : undefined} title={t(l)}><Ic size={20} /><span>{t(l)}</span>{k === "chat" && tabNow !== "chat" && chatNew && <i className="dot" aria-label={t("new messages")} />}</button>;
   useEffect(() => {
     if (!more) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMore(false); };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [more]);
+  // The world feed is loaded here, not only on the World tab, so coordinators see right away when a hazard is within 100 km.
+  useEffect(() => {
+    S.loadWorld().catch(() => undefined);
+    const id = setInterval(() => { S.loadWorld().catch(() => undefined); }, 600000);
+    return () => clearInterval(id);
+  }, [app.mode, app.nbhd?.id]);
 
   return (
     <div className="app">
@@ -344,10 +359,18 @@ function Main({ app }: { app: S.AppState }) {
       <nav className={`side ${more ? "more-open" : ""}`} aria-label="Main">
         <div className="logo" aria-hidden="true">N</div>
         {NAV.map(navBtn)}
+        <button className={`morebtn ${!NAV.some(x => x[0] === tabNow) ? "on" : ""}`} aria-expanded={more} onClick={() => setMore(!more)}><Ellipsis size={20} /><span>More</span></button>
+        <div className="moreset">
+          <hr className="sep" />
+          {MORE.map(navBtn)}
+          <hr className="sep" />
+          {navBtn(["account", "Account", User])}
+        </div>
       </nav>
       {more && <div className="scrim" onClick={() => setMore(false)} />}
       <header className="top">
         <div className="brand">NEIGHBOURHOOD OS<small>{demo ? "Simulated demo" : `${n.kind === "named" ? "Named neighbourhood" : "Area neighbourhood"}`} · {n.name}</small></div>
+        {near.length > 0 && <span className="crisis"><ShieldAlert size={14} /> {t("Hazard within")} {near[0].km} km</span>}
         <span className={`mode ${demo ? "" : "live"}`}>{demo ? t("Demo mode") : `${t("Live")} · ${t(RL[st.role])}`}</span>
         {!demo && (!app.online || app.stale) && <span className="mode off">{t("Offline")}</span>}
         {app.queued > 0 && <span className="mode off">{app.queued} {t("waiting to send")}</span>}
@@ -376,15 +399,17 @@ function Main({ app }: { app: S.AppState }) {
         ) : <button onClick={() => { S.leave(); go("/signin"); }}>{t("Switch neighbourhood")}</button>}
       </header>
       <main className="center">
-        <div className="layer" hidden={view === "list"}>
+        <div className="layer" hidden={tabNow === "world" || view === "list"}>
           <IsoMap st={stView} name={n.name} center={{ lat: n.lat, lng: n.lng }} map={app.map} note={app.mapNote} sel={sel}
-            onSel={id => { setSel(id); setTab("feed"); }}
-            pick={pick} onPick={(lat, lng) => setPick({ lat, lng })} filter={filter} setFilter={setFilter} picking={tabNow === "report"}
+            sos={S.visibleSos(st)} alertText={near.length ? `${t("Hazard within")} ${near[0].km} km` : null} onAlert={() => setTab("world")}
+            onSel={id => { if (S.visibleSos(st).some(x => x.id === id)) setTab("sos"); else { setSel(id); setTab("feed"); } }}
+            pick={pick} onPick={(lat, lng) => setPick({ lat, lng })} filter={filter} setFilter={setFilter} picking={tabNow === "report" || tabNow === "sos"}
             view={view} setView={setView} heat={heat} setHeat={setHeat}
             timeOn={tt.on} onTime={() => setTt(o => (o.on ? { on: false, days: 0 } : { on: true, days: 14 }))} />
         </div>
-        {view === "list" && <div className="layer scroll"><ListView st={stView} filter={filter} sel={sel} onSel={id => { setSel(id); setTab("feed"); }} /><ViewSwitch view={view} setView={setView} /></div>}
-        {tt.on && view !== "list" && (
+        {view === "list" && tabNow !== "world" && <div className="layer scroll"><ListView st={stView} filter={filter} sel={sel} onSel={id => { setSel(id); setTab("feed"); }} /><ViewSwitch view={view} setView={setView} /></div>}
+        {tabNow === "world" && <div className="layer"><WorldMap events={app.world ?? []} mine={{ lat: n.lat, lng: n.lng, name: n.name }} sel={selEv} onSel={setSelEv} alerts={app.alerts} /></div>}
+        {tt.on && tabNow !== "world" && view !== "list" && (
           <div className="hud timebar glass">
             <b>Then vs now</b>
             <input type="range" min={0} max={60} value={tt.days} onChange={e => setTt({ on: true, days: Number(e.target.value) })} aria-label="Days ago" />
@@ -394,21 +419,24 @@ function Main({ app }: { app: S.AppState }) {
         )}
       </main>
       <aside id="panel" tabIndex={-1} className="panel" aria-labelledby="panel-title">
-        <div className="phead">
+        <div className={`phead ${tabNow === "sos" ? "red" : ""}`}>
           <span className="picon" aria-hidden="true"><TabIcon size={18} /></span>
           <div><h2 id="panel-title">{t(TAB_INFO[tabNow][0])}</h2><p>{TAB_INFO[tabNow][1]}</p></div>
         </div>
         <AnimatePresence mode="wait"><motion.div className="pbody" key={tabNow} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.14 }}>
         <TabGuard name={tabNow}>
-          {tabNow === "feed" && <Feed st={st} app={app} sel={sel} setSel={setSel} act={act} demo={demo} goReport={() => setTab("report")} />}
+          {tabNow === "feed" && <Feed st={st} app={app} sel={sel} setSel={setSel} act={act} demo={demo} goReport={() => setTab("report")} goWorld={() => setTab("world")} />}
           {tabNow === "report" && <Report pick={pick} act={act} done={id => { setSel(id); setPick(null); setTab("feed"); }} />}
-          {tabNow === "chat" && <ChatPanel st={st} app={app} act={act} />}
+          {tabNow === "chat" && <ChatPanel st={st} app={app} act={act} onSos={() => setTab("sos")} />}
+          {tabNow === "sos" && <SosPanel st={st} app={app} pick={pick} setPick={setPick} act={act} />}
+          {tabNow === "world" && <WorldPanel st={st} app={app} sel={selEv} onSel={setSelEv} act={act} />}
           {tabNow === "status" && <Status st={st} app={app} act={act} demo={demo} />}
           {tabNow === "people" && <People st={st} act={act} demo={demo} />}
           {tabNow === "account" && <Account st={st} app={app} act={act} />}
         </TabGuard>
         </motion.div></AnimatePresence>
       </aside>
+      <HazardPopup app={app} st={st} goWorld={() => setTab("world")} goPlan={() => { setSel(null); setTab("feed"); }} />
       <div className="toastwrap"><AnimatePresence>{toast && <motion.div key={toast.m} className={`toast ${toast.bad ? "bad" : ""}`} role="status" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>{toast.m}</motion.div>}</AnimatePresence></div>
     </div>
   );

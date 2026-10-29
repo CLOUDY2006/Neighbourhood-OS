@@ -54,7 +54,7 @@ export class QueuedError extends Error {}
 class HttpErr extends Error { constructor(public status: number, m: string) { super(m); } }
 const QKEY = "nos-queue";
 interface Queued { nid: string; a: L.Action; at: number }
-const QUEUEABLE = new Set<string>(["report", "merge", "proof", "flag", "spam"]);
+const QUEUEABLE = new Set<string>(["report", "merge", "proof", "sos", "flag", "spam"]);
 function readQ(): Queued[] { try { return JSON.parse(localStorage.getItem(QKEY) || "[]"); } catch { return []; } }
 function writeQ(q: Queued[]) { try { localStorage.setItem(QKEY, JSON.stringify(q)); } catch { /* ignore */ } setApp({ queued: q.filter(x => x.nid === app.nbhd?.id).length }); }
 const sameQ = (x: Queued, y: Queued) => x.at === y.at && x.nid === y.nid;
@@ -510,3 +510,17 @@ export async function demoAnswerAsReporter(id: string, ok: boolean, note?: strin
   doc = j.doc; commit(); return j.result;
 }
 export const addUpdate = (id: string, text: string, photo?: string) => dispatch({ t: "update", id, text, photo });
+export const sos = (i: { need: L.SosNeed; people: number; note: string; lat: number; lng: number; consent: boolean }) => dispatch({ t: "sos", ...i });
+export const sosAck = (id: string) => dispatch({ t: "sosAck", id });
+export const sosStatus = (id: string, status: "helped" | "closed") => dispatch({ t: "sosStatus", id, status });
+export const sosCancel = (id: string) => dispatch({ t: "sosCancel", id });
+export const safetyPlan = (i: { hazard: { id: string; title: string; type: string; km: number }; routes: string; assembly: string; contacts: string; notes: string }) => dispatch({ t: "safetyPlan", ...i });
+export const safetyApprove = (id: string) => dispatch({ t: "safetyApprove", id });
+export const safetyReject = (id: string, reason: string) => dispatch({ t: "safetyReject", id, reason });
+export const safetyClose = (id: string) => dispatch({ t: "safetyClose", id });
+/** Demo only: approve a plan as a second coordinator, so one person can try the whole flow. Simulated. */
+export async function demoSafetyApprove(id: string): Promise<string | undefined> {
+  if (app.mode !== "demo") throw new Error("This shortcut only works in the demo");
+  const j = L.reduce(doc, { role: "admin", name: "Coordinator Asha (demo)" }, { t: "safetyApprove", id }, app.nbhd ? { lat: app.nbhd.lat, lng: app.nbhd.lng, r: 1e7, name: app.nbhd.name } : undefined);
+  doc = j.doc; commit(); return j.result;
+}

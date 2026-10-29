@@ -1,4 +1,4 @@
-import { dist } from "./logic";
+import { dist, SAFETY_KM } from "./logic";
 
 export type HazardType = "earthquake" | "wildfire" | "flood" | "storm" | "volcano" | "other";
 export type Sev = "info" | "watch" | "warning" | "severe";
@@ -26,6 +26,14 @@ export function alertsFor(events: WorldEvent[], c: { lat: number; lng: number })
     .filter(a => a.radiusKm > 0 && a.km <= a.radiusKm && SEV_RANK[a.sev] >= 1 && now - a.time < (a.type === "earthquake" ? 3 : 14) * 86400000)
     .sort((a, b) => SEV_RANK[b.sev] - SEV_RANK[a.sev] || a.km - b.km)
     .slice(0, 5);
+}
+/** Hazards within 100 km (and recent enough to matter). Coordinators can write a safety plan only while one of these exists. */
+export function hazardsNear(events: WorldEvent[], c: { lat: number; lng: number }, km = SAFETY_KM): Alert[] {
+  const now = Date.now();
+  return events
+    .map(e => ({ ...e, km: Math.round(dist(c, e) / 1000), radiusKm: km }))
+    .filter(a => a.km <= km && SEV_RANK[a.sev] >= 1 && now - a.time < (a.type === "earthquake" ? 3 : 14) * 86400000)
+    .sort((a, b) => SEV_RANK[b.sev] - SEV_RANK[a.sev] || a.km - b.km);
 }
 export const isOfficial = (al: Alert[]) => al.some(a => SEV_RANK[a.sev] >= 2);
 

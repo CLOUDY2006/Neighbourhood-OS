@@ -6,9 +6,9 @@ import express from "express";
 import compression from "compression";
 import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
-import { asRole, can, isEmail, dueEscalations, reportersOf, emptyDoc, reduce, STATUS_LABEL, weeklyDigest, type Action, type Cat, type Doc, type Role } from "../src/logic";
+import { asRole, can, isEmail, dueEscalations, purgeSafety, purgeSos, reportersOf, emptyDoc, reduce, SAFETY_KM, STATUS_LABEL, weeklyDigest, type Action, type Cat, type Doc, type Role } from "../src/logic";
 
-import { alertsFor, SEV_RANK, type Alert } from "../src/world";
+import { alertsFor, hazardsNear, SEV_RANK, type Alert } from "../src/world";
 import { canModerateChat, chatAccess, chatText, CHAT_DAYS, CHAT_HIDE_AT, CHAT_PAGE, ROOMS, roomsFor, type ChatMsg, type Room } from "../src/chat";
 import { CELL_R, parseCell } from "../src/geo";
 import { pool, tx } from "./db";
@@ -69,8 +69,12 @@ async function memberRole(c: Q, nid: string, u: User): Promise<Role> {
 }
 const info = (n: any, role: Role, members?: number) => ({ id: n.id, kind: n.kind, name: n.name, lat: n.center_lat, lng: n.center_lng, r: n.radius_m, role, ...(members == null ? {} : { members }) });
 const viewDoc = (d: Doc, role: Role, handle: string, memberCount = 0): Doc => {
-  // Older neighbourhoods may still hold volunteer, mission, resource or SOS data. It is never sent to anyone.
-  const base: Doc = { ...d, memberCount, missions: [], resources: [], volunteers: [], sos: [], events: d.events.filter(e => !e.to || e.to === handle) };
+  // Older neighbourhoods may still hold volunteer, mission or resource data. It is never sent to anyone.
+  // Every member sees every SOS request, because it is an emergency. A phone number from a text-message SOS stays with its author and the coordinators.
+  const sos = (d.sos ?? []).map(x => (role === "admin" || x.author === handle ? x : { ...x, contact: undefined }));
+  // Safety plans waiting for approval are for coordinators. Everyone sees the approved ones.
+  const safety = (d.safety ?? []).filter(p => role === "admin" || p.status === "approved");
+  const base: Doc = { ...d, memberCount, missions: [], resources: [], volunteers: [], sos, safety, events: d.events.filter(e => !e.to || e.to === handle) };
   if (role === "admin") return base;
   return {
     ...base, authorities: undefined,
@@ -218,9 +222,9 @@ app.get("/api/n/:id/state", ah(async (req, res) => {
 
 const LIMITS: Partial<Record<Action["t"], [number, number]>> = {
   report: [10, 86400000], proof: [30, 86400000], spam: [20, 86400000], merge: [40, 86400000], flag: [20, 86400000],
-  update: [40, 86400000], feedback: [30, 86400000], reporterConfirm: [30, 86400000], agentStart: [20, 86400000], agentDraft: [60, 86400000], agentSend: [30, 86400000], noticeAdd: [20, 86400000],
+  sos: [3, 86400000], safetyPlan: [10, 86400000], update: [40, 86400000], feedback: [30, 86400000], reporterConfirm: [30, 86400000], agentStart: [20, 86400000], agentDraft: [60, 86400000], agentSend: [30, 86400000], noticeAdd: [20, 86400000],
 };
-const ADMIN_ACTIONS = new Set(["verify", "spam", "agentSend", "agentReply", "advance", "hide", "restore", "handoff", "handoffStatus", "noticeAdd", "noticeRemove", "authoritySet", "authorityRemove", "agentEscalate", "approveResolution", "rejectResolution", "closeUnconfirmed"]);
+const ADMIN_ACTIONS = new Set(["verify", "spam", "agentSend", "agentReply", "advance", "hide", "restore", "handoff", "handoffStatus", "noticeAdd", "noticeRemove", "authoritySet", "authorityRemove", "agentEscalate", "approveResolution", "rejectResolution", "closeUnconfirmed", "sosAck", "sosStatus", "safetyPlan", "safetyApprove", "safetyReject", "safetyClose"]);
 
 interface Actor { id: string; handle: string; platformAdmin: boolean }
 async function runAction(id: string, u: Actor, a: Action, internal = false) {
@@ -241,8 +245,15 @@ async function runAction(id: string, u: Actor, a: Action, internal = false) {
       if (!/^[0-9a-f-]{36}$/.test(String(a.photo))) throw new HttpError(400, "Upload the photo first");
       if (!(await c.query("select 1 from photos where id = $1 and neighbourhood_id = $2 and user_id = $3", [a.photo, id, u.id])).rows[0]) throw new HttpError(400, "Photo not found");
     }
+    // A safety plan is only allowed while a hazard is within 100 km. The server looks the hazard up itself, so a browser cannot claim one.
+    let act: Action = a;
+    if (a.t === "safetyPlan") {
+      const found = [...alertsOf(n), ...hazardsNear(worldSnapshot().events, { lat: n.center_lat, lng: n.center_lng })].find(h => h.id === a.hazard?.id && h.km <= SAFETY_KM);
+      if (!found) throw new HttpError(403, `No hazard is within ${SAFETY_KM} km right now, so a safety plan cannot be created`);
+      act = { ...a, hazard: { id: found.id, title: found.title, type: found.type, km: found.km } };
+    }
     let r;
-    try { r = reduce(n.doc, { role, name: u.handle }, a, { lat: n.center_lat, lng: n.center_lng, r: n.radius_m, name: n.name }); } catch (e) { throw new HttpError(400, (e as Error).message); }
+    try { r = reduce(n.doc, { role, name: u.handle }, act, { lat: n.center_lat, lng: n.center_lng, r: n.radius_m, name: n.name }); } catch (e) { throw new HttpError(400, (e as Error).message); }
     const version = n.version + 1;
     await c.query("update neighbourhoods set doc = $2, version = version + 1 where id = $1", [id, JSON.stringify(r.doc)]);
     if (ADMIN_ACTIONS.has(a.t)) await c.query("insert into audit_log (neighbourhood_id, user_id, who, action, detail) values ($1, $2, $3, $4, $5)", [id, u.id, u.handle, a.t, JSON.stringify({ id: (a as any).id ?? (a as any).mid ?? null }).slice(0, 200)]);
@@ -254,7 +265,13 @@ async function runAction(id: string, u: Actor, a: Action, internal = false) {
 
 async function afterAction(id: string, a: Action, raw: Doc, actor: string) {
   try {
-    if (a.t === "noticeAdd" && a.urgent) await notify(id, "all", { title: a.title, body: a.body.slice(0, 140), urgent: true });
+    if (a.t === "sos") await notify(id, "admins", { title: "New SOS request", body: "A neighbour asked for help and it is on the map. Open the SOS tab.", urgent: true });
+    else if (a.t === "safetyPlan") await notify(id, "admins", { title: "A safety plan needs approval", body: "A coordinator wrote a safety plan for a nearby hazard. Open the World tab to review it.", urgent: true });
+    else if (a.t === "safetyApprove") {
+      const p = raw.safety?.find(x => x.id === a.id);
+      if (p) await notify(id, "all", { title: `Safety plan: ${p.hazardTitle}`.slice(0, 80), body: "Your coordinators approved a safety plan. Open the Command tab to read it.", urgent: true });
+    }
+    else if (a.t === "noticeAdd" && a.urgent) await notify(id, "all", { title: a.title, body: a.body.slice(0, 140), urgent: true });
     else if (a.t === "advance" || a.t === "approveResolution" || a.t === "rejectResolution" || a.t === "reporterConfirm" || a.t === "closeUnconfirmed") {
       const i = raw.issues.find(x => x.id === a.id);
       if (i) {
@@ -811,13 +828,25 @@ app.delete("/api/me", ah(async (req, res) => {
 async function purgeAll() {
   try { await pool.query(`delete from chat_messages where created_at < now() - interval '${CHAT_DAYS} days'`); } catch (e) { console.error("Chat purge failed:", e); }
   try {
-    // Missions, volunteers, SOS requests, check-ins, the care register, emergency plans and exchange posts no longer exist.
-    // Older neighbourhoods may still hold them (including locations and phone numbers), so they are wiped here once.
-    await pool.query(`update neighbourhoods set doc = (doc - 'checkin' - 'care' - 'plan' - 'shares' - 'sosActive') || '{"sos":[],"volunteers":[],"missions":[],"resources":[]}'::jsonb, version = version + 1
+    // Missions, volunteers, resources, check-ins, the care register, old emergency plans and exchange posts no longer exist.
+    // Older neighbourhoods may still hold them, so they are wiped here once. SOS requests and safety plans are kept.
+    await pool.query(`update neighbourhoods set doc = (doc - 'checkin' - 'care' - 'plan' - 'shares' - 'sosActive') || '{"volunteers":[],"missions":[],"resources":[]}'::jsonb, version = version + 1
       where doc ?| array['checkin', 'care', 'plan', 'shares', 'sosActive']
-        or jsonb_array_length(coalesce(doc->'sos', '[]'::jsonb)) > 0 or jsonb_array_length(coalesce(doc->'volunteers', '[]'::jsonb)) > 0
+        or jsonb_array_length(coalesce(doc->'volunteers', '[]'::jsonb)) > 0
         or jsonb_array_length(coalesce(doc->'missions', '[]'::jsonb)) > 0 or jsonb_array_length(coalesce(doc->'resources', '[]'::jsonb)) > 0`);
   } catch (e) { console.error("Legacy data cleanup failed:", e); }
+  try {
+    // SOS requests close after 24 hours and lose their location, note and phone number. Old safety plans close too.
+    const r = await pool.query("select id from neighbourhoods where jsonb_array_length(coalesce(doc->'sos', '[]'::jsonb)) > 0 or jsonb_array_length(coalesce(doc->'safety', '[]'::jsonb)) > 0");
+    for (const { id } of r.rows) {
+      await tx(async c => {
+        const n = (await c.query("select doc from neighbourhoods where id = $1 for update", [id])).rows[0];
+        if (!n) return;
+        const a = purgeSos(n.doc), b = purgeSafety(n.doc);
+        if (a || b) await c.query("update neighbourhoods set doc = $2, version = version + 1 where id = $1", [id, JSON.stringify(n.doc)]);
+      });
+    }
+  } catch (e) { console.error("SOS purge failed:", e); }
 }
 async function escalationJob() {
   try {

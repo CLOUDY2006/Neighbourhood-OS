@@ -15,13 +15,14 @@ type Pt2 = { x: number; y: number };
 
 const cl = (n: number, a: number, b: number) => Math.max(a, Math.min(b, n));
 const grp = (s: S.Status) => (s === "resolved" ? "green" : s === "assigned" || s === "progress" || s === "pending" ? "amber" : "red");
+const SOS_LABEL: Record<S.SosNeed, string> = { medical: "Medical", rescue: "Rescue", shelter: "Shelter", food_water: "Food or water", other: "Help" };
 const trunc = (t: string) => (t.length > 22 ? t.slice(0, 21) + "…" : t);
 const CI: Record<S.Cat, LucideIcon> = { pothole: Construction, garbage: Trash2, streetlight: Lightbulb, water: Droplets, unsafe: AlertTriangle, blocked: Ban, other: Wrench };
 const prefersCalm = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const TILTS = [TILT0, 0.68, 0.36];
 const TILT_NAME = (t: number) => (t > 0.6 ? "high, looking down" : t < 0.42 ? "low, street level" : "standard");
 
-interface Item { id: string; kind: "issue"; ax: number; ay: number; col: string; Icon: LucideIcon; label: string; n?: number; pulse: boolean; prog?: number }
+interface Item { id: string; kind: "issue" | "sos"; ax: number; ay: number; col: string; Icon: LucideIcon; label: string; n?: number; pulse: boolean; prog?: number }
 function layout(its: Item[], lift: number) {
   const pos = its.map(i => ({ x: i.ax, y: i.ay - lift }));
   for (let it = 0; it < 70; it++) {
@@ -48,6 +49,7 @@ export function ViewSwitch({ view, setView }: { view: MapView; setView: (v: MapV
 
 interface Props {
   st: S.State; name: string; center: { lat: number; lng: number }; map: MapData | null; note: string;
+  sos: S.Sos[]; alertText?: string | null; onAlert?: () => void;
   sel: string | null; onSel: (id: string) => void; pick: { lat: number; lng: number } | null;
   onPick: (lat: number, lng: number) => void; filter: S.Status[]; setFilter: (f: S.Status[]) => void;
   picking: boolean;
@@ -56,7 +58,7 @@ interface Props {
 }
 const GROUPS: [string, S.Status[], string][] = [["Open", ["reported", "review"], "red"], ["In progress", ["assigned", "progress", "pending"], "amber"], ["Fixed", ["resolved"], "green"]];
 
-export default function IsoMap({ st, name, center, map, note, sel, onSel, pick, onPick, filter, setFilter, picking, view, setView, heat, setHeat, timeOn, onTime }: Props) {
+export default function IsoMap({ st, name, center, map, note, sos, alertText, onAlert, sel, onSel, pick, onPick, filter, setFilter, picking, view, setView, heat, setHeat, timeOn, onTime }: Props) {
   const theme = useTheme(), pal = palette(theme), a11y = useA11y(), calm = a11y.motion || prefersCalm();
   const flat = view === "flat";
   const box = useRef<HTMLDivElement>(null), svg = useRef<SVGSVGElement>(null), cvs = useRef<HTMLCanvasElement>(null), inited = useRef("");
@@ -140,9 +142,15 @@ export default function IsoMap({ st, name, center, map, note, sel, onSel, pick, 
       const a = A(i.lat, i.lng), k = grp(i.status), w = i.agent ? S.workflow(st, i) : null;
       its.push({ id: i.id, kind: "issue", ax: a.x, ay: a.y, col: pal[k], Icon: CI[i.cat], label: trunc(i.title), n: i.reports, pulse: k !== "green", prog: w ? w.done / w.total : undefined });
     });
+    // An open SOS request is an emergency, so it is always drawn, whatever the status filter says.
+    sos.forEach(x => {
+      if (x.lat == null || x.lng == null || !["open", "acknowledged", "assigned"].includes(x.status)) return;
+      const a = A(x.lat, x.lng);
+      its.push({ id: x.id, kind: "sos", ax: a.x, ay: a.y, col: "#ef4444", Icon: Siren, label: `SOS · ${SOS_LABEL[x.need]}`, n: x.people, pulse: true });
+    });
     return { items: its, pos: layout(its, lift) };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [st.issues, filter, center.lat, center.lng, proj, pal]);
+  }, [st.issues, sos, filter, center.lat, center.lng, proj, pal]);
 
   const centerOn = (wx: number, wy: number, k: number) => setV({ k, x: size.w / 2 - wx * k, y: size.h / 2 - wy * k });
   const homeTarget = () => {
@@ -219,11 +227,12 @@ export default function IsoMap({ st, name, center, map, note, sel, onSel, pick, 
     const w = it.label.length * 7 + 24;
     return (
       <g key={it.id} transform={`translate(${p.x},${p.y}) scale(${sc})`} className={`mpin ${on ? "on" : ""}`} style={{ cursor: "pointer", ["--pc" as string]: it.col }}
-        tabIndex={0} role="button" aria-label={`Issue: ${it.label}`}
+        tabIndex={0} role="button" aria-label={`${it.kind === "sos" ? "SOS request" : "Issue"}: ${it.label}`}
         onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSel(it.id); } }}
         onPointerDown={e => e.stopPropagation()} onClick={() => onSel(it.id)}
         onPointerEnter={() => setHov(it.id)} onPointerLeave={() => setHov(null)}>
         {it.prog != null && <circle r="31" fill="none" stroke={it.col} strokeWidth="3.5" strokeLinecap="round" strokeDasharray={`${it.prog * 194.8} 194.8`} transform="rotate(-90)" />}
+        {it.kind === "sos" && <><circle r="30" fill={it.col} fillOpacity=".18" className="ring" /><circle r="46" fill="none" stroke={it.col} strokeWidth="2" className="ring" style={{ animationDelay: ".8s" }} /></>}
         <g className="mpin-head">
           <path d="M-8,19 L0,29 L8,19Z" fill={it.col} />
           <rect className="mpin-bg" x="-22" y="-22" width="44" height="44" rx="13" stroke={on ? selRing : it.col} strokeWidth="2.5" style={on ? { fill: it.col } : undefined} />
@@ -356,6 +365,7 @@ export default function IsoMap({ st, name, center, map, note, sel, onSel, pick, 
       )}
 
       <div className="hud hud-right">
+        {alertText && <button className="active-pill" onClick={onAlert}><AlertTriangle size={16} /> {alertText}</button>}
         <div className="tgroup glass" role="group" aria-label="Zoom">
           <button className="rbtn" {...tip("Zoom in")} onClick={() => zoomAt(size.w / 2, size.h / 2, 1.25)}><Plus size={18} /></button>
           <button className="rbtn" {...tip("Zoom out")} onClick={() => zoomAt(size.w / 2, size.h / 2, 0.8)}><Minus size={18} /></button>

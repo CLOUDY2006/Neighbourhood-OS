@@ -172,9 +172,9 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
             ? (
               <div className="card alertcard">
                 <b>{t("Report this as spam or a wrong report?")}</b>
-                <small className="dim">{t("Use this for fake, joke, duplicate or abusive reports. The report is hidden once two different coordinators have flagged it.")}</small>
+                <small className="dim">{t("Use this for fake, joke, duplicate or abusive reports. The report is deleted for good once two different coordinators have flagged it.")}</small>
                 <div className="row wrap">
-                  <button className="warn" onClick={() => act(async () => { await S.spam(i.id); setAskSpam(false); }, "Flagged. One more coordinator must flag it to hide it")}>{t("Yes, report it")}</button>
+                  <button className="warn" onClick={() => act(async () => { await S.spam(i.id); setAskSpam(false); }, "Flagged. One more coordinator must flag it to delete it")}>{t("Yes, report it")}</button>
                   <button className="x" onClick={() => setAskSpam(false)}>{t("Cancel")}</button>
                 </div>
               </div>

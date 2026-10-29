@@ -3,6 +3,7 @@ import { feature } from "topojson-client";
 import land from "./land.json";
 import * as S from "./store";
 import { useT } from "./i18n";
+import type { Act } from "./ui";
 
 const W = 1000, H = 500;
 const px = (lng: number) => ((lng + 180) / 360) * W;
@@ -102,7 +103,7 @@ export function WorldMap({ events, mine, sel, onSel, alerts }: { events: S.World
   );
 }
 
-export function WorldPanel({ app, sel, onSel }: { app: S.AppState; sel: string | null; onSel: (id: string | null) => void }) {
+export function WorldPanel({ st, app, sel, onSel, act }: { st: S.State; app: S.AppState; sel: string | null; onSel: (id: string | null) => void; act: Act }) {
   const [on, setOn] = useState<S.HazardType[]>([...TYPES]);
   const events = app.world ?? [];
   const n = app.nbhd!;
@@ -122,6 +123,7 @@ export function WorldPanel({ app, sel, onSel }: { app: S.AppState; sel: string |
       ))}
       {sel && (() => { const e = events.find(x => x.id === sel); return e && e.url ? <a className="dim" href={e.url} target="_blank" rel="noopener noreferrer">Open the source page for "{e.title.slice(0, 40)}"</a> : null; })()}
       <small className="dim">Sources: USGS, NASA EONET and GDACS. Always follow your national authorities for official warnings.</small>
+      <SafetyPlans st={st} app={app} act={act} />
     </>
   );
 }
@@ -139,8 +141,203 @@ export function AlertBanner({ alerts, onWorld }: { alerts: S.Alert[]; onWorld: (
           {a.instruction && <p className="pre">{a.instruction}</p>}
         </div>
       ))}
-      {official && <p>{t("Follow your national authorities. If anyone is in danger, call your local emergency number first. Crisis Mode is on: keep reporting problems on the map and check the notices and chat for updates.")}</p>}
+      {official && <p>{t("Follow your national authorities. If anyone is in danger, call your local emergency number first. Read the safety plan from your coordinators below, and check the notices and chat for updates.")}</p>}
       <button onClick={onWorld}>{t("See on the world map")}</button>
+    </div>
+  );
+}
+/** Hazards within 100 km of this neighbourhood: official alerts plus the world feed. Coordinators can write a safety plan only while one exists. */
+export function nearbyHazards(app: S.AppState): S.Alert[] {
+  const n = app.nbhd;
+  if (!n) return [];
+  const seen = new Set<string>();
+  return [...app.alerts.filter(a => a.km <= S.SAFETY_KM), ...S.hazardsNear(app.world ?? [], { lat: n.lat, lng: n.lng })]
+    .filter(a => { if (seen.has(a.id)) return false; seen.add(a.id); return true; })
+    .sort((a, b) => a.km - b.km);
+}
+
+function Row({ label, text }: { label: string; text: string }) {
+  return <><p><b>{label}</b></p><p className="pre">{text}</p></>;
+}
+function PlanBody({ p }: { p: S.SafetyPlan }) {
+  return (
+    <>
+      <Row label="Escape routes" text={p.routes} />
+      <Row label="Assembly point" text={p.assembly} />
+      {p.contacts && <Row label="Emergency contacts" text={p.contacts} />}
+      {p.notes && <Row label="Before you leave" text={p.notes} />}
+    </>
+  );
+}
+
+/** On the normal screen: the approved plan for everyone, and what needs doing for coordinators. */
+export function SafetyBanner({ st, app, goWorld }: { st: S.State; app: S.AppState; goWorld: () => void }) {
+  const t = useT();
+  const all = st.safety ?? [], admin = st.role === "admin";
+  const approved = all.filter(p => p.status === "approved");
+  const pending = admin ? all.filter(p => p.status === "pending") : [];
+  const covered = new Set(all.filter(p => p.status !== "closed").map(p => p.hazardId));
+  const open = admin ? nearbyHazards(app).filter(h => !covered.has(h.id)) : [];
+  return (
+    <>
+      {approved.map(p => (
+        <div key={p.id} className="card alertcard official">
+          <b>{t("Safety plan from your coordinators")}: {p.hazardTitle}</b>
+          <small className="dim">About {p.km} km away · approved by {p.approvedBy} · {ago(p.approvedAt ?? p.created)}</small>
+          <PlanBody p={p} />
+          <small className="dim">{t("This is advice from your neighbourhood coordinators. Follow your national authorities first, and call your local emergency number if anyone is in danger.")}</small>
+        </div>
+      ))}
+      {pending.length > 0 && (
+        <div className="card alertcard">
+          <b>{pending.length} safety plan{pending.length === 1 ? "" : "s"} waiting for approval</b>
+          <button onClick={goWorld}>{t("Review in the World tab")}</button>
+        </div>
+      )}
+      {open.length > 0 && (
+        <div className="card alertcard">
+          <b>{open[0].title}: about {open[0].km} km away</b>
+          <p>{t("A hazard is within 100 km, so you can write a safety plan for the neighbourhood. Another coordinator has to approve it before anyone else sees it.")}</p>
+          <button className="go" onClick={goWorld}>{t("Write a safety plan")}</button>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** Under the world map: approved plans, plans waiting for approval, and the form coordinators use while a hazard is within 100 km. */
+export function SafetyPlans({ st, app, act }: { st: S.State; app: S.AppState; act: Act }) {
+  const t = useT();
+  const admin = st.role === "admin", me = S.myName(), demo = app.mode === "demo";
+  const all = st.safety ?? [];
+  const near = nearbyHazards(app);
+  const covered = new Set(all.filter(p => p.status !== "closed").map(p => p.hazardId));
+  const free = near.filter(h => !covered.has(h.id));
+  const approved = all.filter(p => p.status === "approved"), pending = all.filter(p => p.status === "pending"), closed = all.filter(p => p.status === "closed");
+  const [f, setF] = useState({ hazard: "", routes: "", assembly: "", contacts: "", notes: "" });
+  const [why, setWhy] = useState("");
+  const chosen = free.find(h => h.id === f.hazard) ?? free[0];
+  return (
+    <>
+      <h3>{t("Safety plans")}</h3>
+      {near.length === 0 && <p className="dim">No hazard is within {S.SAFETY_KM} km of this neighbourhood right now. When one is, coordinators can write a safety plan here, and an approved plan appears on the Command tab.</p>}
+      {near.length > 0 && <p className="dim">{near.length} hazard{near.length === 1 ? " is" : "s are"} within {S.SAFETY_KM} km: {near.slice(0, 3).map(h => `${h.title} (${h.km} km)`).join(", ")}.</p>}
+      {approved.length === 0 && pending.length === 0 && <p className="dim">No safety plan has been approved yet.</p>}
+      {approved.map(p => (
+        <div key={p.id} className="card alertcard official">
+          <b>{p.hazardTitle}</b>
+          <small className="dim">About {p.km} km away · approved by {p.approvedBy} · {ago(p.approvedAt ?? p.created)}</small>
+          <PlanBody p={p} />
+          {admin && <button className="warn" onClick={() => act(() => S.safetyClose(p.id), "Plan closed")}>{t("Close this plan")}</button>}
+        </div>
+      ))}
+      {admin && pending.map(p => (
+        <div key={p.id} className="card">
+          <b>{p.hazardTitle}: waiting for approval</b>
+          <small className="dim">Written by {p.by === me ? "you" : p.by} · {ago(p.created)}. Only coordinators can see it until it is approved.</small>
+          <PlanBody p={p} />
+          {p.by === me ? (
+            <>
+              <small className="dim">{t("A different coordinator must approve this plan.")}</small>
+              <div className="row wrap">
+                <button className="warn" onClick={() => act(() => S.safetyClose(p.id), "Plan withdrawn")}>{t("Withdraw")}</button>
+                {demo && <button onClick={() => act(() => S.demoSafetyApprove(p.id), "Approved as another coordinator (demo)")}>{t("Demo: approve as another coordinator")}</button>}
+              </div>
+            </>
+          ) : (
+            <div className="row wrap">
+              <button className="go" onClick={() => act(() => S.safetyApprove(p.id), "Approved. Everyone can read it on the Command tab")}>{t("Approve")}</button>
+              <input value={why} maxLength={200} placeholder={t("Why send it back? (optional)")} onChange={e => setWhy(e.target.value)} aria-label="Reason" />
+              <button className="warn" onClick={() => act(async () => { await S.safetyReject(p.id, why); setWhy(""); }, "Plan sent back")}>{t("Send back")}</button>
+            </div>
+          )}
+        </div>
+      ))}
+      {admin && free.length > 0 && (
+        <div className="form">
+          <h3>{t("Write a safety plan")}</h3>
+          <small className="dim">{t("You can write a plan while a hazard is within 100 km. Another coordinator must approve it before anyone else sees it.")}</small>
+          <select value={chosen?.id ?? ""} onChange={e => setF({ ...f, hazard: e.target.value })} aria-label="Hazard">{free.map(h => <option key={h.id} value={h.id}>{h.title} · {h.km} km</option>)}</select>
+          <textarea rows={3} maxLength={1200} placeholder={t("Escape routes, e.g. leave by Main Street, avoid the river road")} value={f.routes} onChange={e => setF({ ...f, routes: e.target.value })} />
+          <input maxLength={300} placeholder={t("Assembly point, e.g. Community Hall car park")} value={f.assembly} onChange={e => setF({ ...f, assembly: e.target.value })} />
+          <input maxLength={400} placeholder={t("Emergency contacts (optional)")} value={f.contacts} onChange={e => setF({ ...f, contacts: e.target.value })} />
+          <textarea rows={2} maxLength={800} placeholder={t("Before you leave: water, torch, documents, who to check on (optional)")} value={f.notes} onChange={e => setF({ ...f, notes: e.target.value })} />
+          <button className="go" onClick={() => act(async () => {
+            if (!chosen) throw new Error("Choose a hazard");
+            await S.safetyPlan({ hazard: { id: chosen.id, title: chosen.title, type: chosen.type, km: chosen.km }, routes: f.routes, assembly: f.assembly, contacts: f.contacts, notes: f.notes });
+            setF({ hazard: "", routes: "", assembly: "", contacts: "", notes: "" });
+          }, "Plan sent. A different coordinator must approve it")}>{t("Send for approval")}</button>
+        </div>
+      )}
+      {!admin && <small className="dim">{t("Only coordinators can write a safety plan.")}</small>}
+      {admin && closed.length > 0 && (
+        <details>
+          <summary>{t("Closed plans")} ({closed.length})</summary>
+          {closed.map(p => <p key={p.id} className="dim">{p.hazardTitle}: {p.closedNote ?? "Closed"}</p>)}
+        </details>
+      )}
+    </>
+  );
+}
+
+/** A pop-up for everyone (residents and coordinators): a hazard within 100 km, or a newly approved safety plan. Each one shows once per device. */
+export function HazardPopup({ app, st, goWorld, goPlan }: { app: S.AppState; st: S.State; goWorld: () => void; goPlan: () => void }) {
+  const t = useT();
+  const key = `nos-popup-${app.nbhd?.id ?? "x"}`;
+  const [seen, setSeen] = useState<string[]>(() => { try { return JSON.parse(app.mode === "demo" ? "[]" : localStorage.getItem(key) || "[]"); } catch { return []; } });
+  const near = nearbyHazards(app);
+  const plans = (st.safety ?? []).filter(p => p.status === "approved");
+  const items = [
+    ...near.map(h => ({ id: `h:${h.id}`, h, p: null as S.SafetyPlan | null })),
+    ...plans.map(p => ({ id: `p:${p.id}`, h: null as S.Alert | null, p })),
+  ].filter(x => !seen.includes(x.id));
+  const cur = items[0];
+  const done = () => {
+    if (!cur) return;
+    const next = [...seen, cur.id].slice(-80);
+    setSeen(next);
+    if (app.mode !== "demo") { try { localStorage.setItem(key, JSON.stringify(next)); } catch { /* ignore */ } }
+  };
+  // In the demo, a hazard that goes away can pop up again the next time it is simulated.
+  useEffect(() => {
+    if (app.mode !== "demo") return;
+    const live = new Set(near.map(h => `h:${h.id}`));
+    setSeen(o => (o.some(x => x.startsWith("h:") && !live.has(x)) ? o.filter(x => !x.startsWith("h:") || live.has(x)) : o));
+  }, [app.mode, near.map(h => h.id).join(",")]);
+  useEffect(() => {
+    if (!cur) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") done(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  });
+  if (!cur) return null;
+  const admin = st.role === "admin";
+  return (
+    <div role="presentation" onClick={done} style={{ position: "fixed", inset: 0, zIndex: 1000, display: "grid", placeItems: "center", background: "rgba(0,0,0,.55)", padding: 16 }}>
+      <div role="alertdialog" aria-modal="true" aria-labelledby="popup-title" className="card alertcard official" onClick={e => e.stopPropagation()} style={{ maxWidth: 440, width: "100%", maxHeight: "86vh", overflow: "auto", boxShadow: "0 20px 60px rgba(0,0,0,.4)" }}>
+        {cur.h ? (
+          <>
+            <b id="popup-title">{t("Hazard near your neighbourhood")}: {cur.h.title}</b>
+            <p>About {cur.h.km} km from {app.nbhd?.name}. <small className="dim">{cur.h.sev} · {cur.h.src === "CAP" ? "Official alert" : cur.h.src} · {ago(cur.h.time)}</small></p>
+            {cur.h.instruction && <p className="pre">{cur.h.instruction}</p>}
+            <p>{t("Follow your national authorities. If anyone is in danger, call your local emergency number first.")}{admin ? ` ${t("As a coordinator you can write a safety plan for the neighbourhood.")}` : ""}</p>
+            <div className="row wrap">
+              <button className="go" onClick={() => { done(); goWorld(); }}>{admin ? t("Open the World tab") : t("See on the world map")}</button>
+              <button onClick={done}>{t("Dismiss")}</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <b id="popup-title">{t("Safety plan from your coordinators")}: {cur.p!.hazardTitle}</b>
+            <Row label="Escape routes" text={cur.p!.routes} />
+            <Row label="Assembly point" text={cur.p!.assembly} />
+            <div className="row wrap">
+              <button className="go" onClick={() => { done(); goPlan(); }}>{t("Read the full plan")}</button>
+              <button onClick={done}>{t("Dismiss")}</button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
