@@ -622,7 +622,7 @@ app.post("/api/n/:id/channels/:kind", ah(async (req, res) => {
     rl(`code:${u.id}`, 3, 3600000);
     const code = String(Math.floor(100000 + Math.random() * 900000));
     await put(b.phone, false, code);
-    await sendText(b.phone, `NEIGHBOURHOOD OS code: ${code}`, kind === "whatsapp").catch(() => { throw new HttpError(502, "Could not send the code. Check the number"); });
+    await sendText(b.phone, `NEIGHBOURHOOD OS code: ${code}`, kind === "whatsapp").catch((e) => { console.error("sendText failed:", e?.message); throw new HttpError(502, "Could not send the code. Check the number"); });
     return res.json({ sent: true });
   }
   if (typeof b.code === "string") {

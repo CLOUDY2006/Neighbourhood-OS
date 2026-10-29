@@ -24,7 +24,7 @@ export async function sendText(to: string, body: string, whatsapp = false) {
     body: new URLSearchParams({ To: whatsapp ? `whatsapp:${to}` : to, From: from, Body: body.slice(0, 600) }),
     signal: AbortSignal.timeout(15000),
   });
-  if (!r.ok) throw new Error(`Messaging provider responded with ${r.status}`);
+  if (!r.ok) throw new Error(`Messaging provider responded with ${r.status}: ${(await r.text()).slice(0, 300)}`);
 }
 export interface MailExtra { replyTo?: string; attachments?: { filename: string; content: Buffer; contentType: string }[] }
 export async function sendEmail(to: string, subject: string, text: string, extra: MailExtra = {}) {
