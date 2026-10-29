@@ -74,8 +74,10 @@ export default function Onboarding() {
     if (!navigator.geolocation) return reject(new Error("Your browser does not support location. Search for a place instead"));
     navigator.geolocation.getCurrentPosition(p => {
       const c = cellOf(p.coords.latitude, p.coords.longitude);
-      show({ lat: c.lat, lng: c.lng, label: "Your area (about 1 km)" }); resolve();
-    }, () => reject(new Error("Location permission was not given. You can search for a place instead")), { timeout: 10000, maximumAge: 600000 });
+      show({ lat: c.lat, lng: c.lng, label: "Your area (about 1 km)" });
+      if (p.coords.accuracy > 1000) { setBad(true); setMsg(`Your device only knows your location to within about ${(p.coords.accuracy / 1000).toFixed(1)} km, so this area may be wrong. Search for your place below to be sure.`); }
+      resolve();
+    }, () => reject(new Error("Location permission was not given. You can search for a place instead")), { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
   }));
   const submit = () => run(async () => {
     if (mode === "in") await S.signIn(f.email, f.password);
