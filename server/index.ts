@@ -18,6 +18,7 @@ import { getStatusRun, getWardRun, runOwner, startStatusRun, startWardRun, tfEna
 import { getWorld, worldSnapshot } from "./world";
 import { capAlertsFor, capFeedCount, capSnapshot, getCap } from "./cap";
 import { buildComplaintEmail } from "../src/complaintMail";
+import { regionFor, suggestionsFor } from "../src/authorityDirectory";
 import { caps, notify, sendEmail, sendText, sign, twilioReady, twilioToken } from "./notify";
 
 for (const k of ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "DATABASE_URL"]) {
@@ -736,6 +737,19 @@ app.get("/api/n/:id/tinyfish/runs/:runId", ah(async (req, res) => {
   const runId = String(req.params.runId), o = runOwner(runId);
   if (!o || o.nid !== id || o.uid !== u.id) throw new HttpError(404, "Run not found");
   try { res.json(await (o.kind === "ward" ? getWardRun(runId) : getStatusRun(runId))); } catch (e) { tfFail(e); }
+}));
+
+// Official addresses for the state this neighbourhood is in, so a coordinator does not have to look them up.
+// Only the state and city of the neighbourhood's centre are used. A coordinator can always change the address.
+app.post("/api/n/:id/authority-suggestions", ah(async (req, res) => {
+  const u = await authenticate(req); const id = String(req.params.id);
+  if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
+  if ((await memberRole(pool, id, u)) !== "admin") throw new HttpError(403, "Only a coordinator can see authority suggestions");
+  rl(`authsug:${u.id}`, 60, 3600000);
+  const n = (await pool.query("select center_lat, center_lng from neighbourhoods where id = $1", [id])).rows[0];
+  if (!n) throw new HttpError(404, "Neighbourhood not found");
+  const cat = String(req.body?.cat ?? ""), a = await areaOf(n.center_lat, n.center_lng), region = regionFor(a.state);
+  res.json({ place: { city: a.city, state: a.state }, region: region?.label ?? null, entries: region ? suggestionsFor(region, (CATS as string[]).includes(cat) ? (cat as Cat) : undefined) : [] });
 }));
 
 app.post("/api/n/:id/tinyfish/ward/pages", ah(async (req, res) => {

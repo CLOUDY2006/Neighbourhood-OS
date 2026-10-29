@@ -469,6 +469,14 @@ export const agentApprove = (id: string) => dispatch({ t: "agentApprove", id });
 export const agentSend = (id: string, via: "copied" | "emailed" | "mailto" | "simulated", ref?: string, emailTo?: string) => dispatch({ t: "agentSend", id, via, ref, emailTo });
 export const agentRef = (id: string, ref: string) => dispatch({ t: "agentRef", id, ref });
 export const agentReply = (id: string, text: string, ref?: string, status?: "acknowledged" | "resolved") => dispatch({ t: "agentReply", id, text, ref, status });
+export type { DirEntry } from "./authorityDirectory";
+export interface AuthoritySuggestions { place: { city: string; state: string }; region: string | null; entries: import("./authorityDirectory").DirEntry[] }
+/** Official addresses for the state this neighbourhood is in, best fit for the kind of report first. Empty in the demo and for states that are not listed yet. */
+export async function authoritySuggestions(cat?: L.Cat): Promise<AuthoritySuggestions> {
+  const none: AuthoritySuggestions = { place: { city: "", state: "" }, region: null, entries: [] };
+  if (app.mode !== "live" || !app.nbhd) return none;
+  return api<AuthoritySuggestions>(`/api/n/${enc(app.nbhd.id)}/authority-suggestions`, { cat: cat ?? "" }).catch(() => none);
+}
 /** True when this server can email complaints (SMTP is set up). Never in the demo, which only simulates sending. */
 export const emailAvailable = async (): Promise<boolean> => (app.mode === "demo" ? false : capabilities().then(c => !!c.email).catch(() => false));
 /** Emails the approved complaint to an authority from the server, with the photo attached, then records it as sent. Coordinators only. */

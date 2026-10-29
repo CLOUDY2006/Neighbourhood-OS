@@ -371,6 +371,7 @@ Two features in the AI agent panel, and one in the Reports tab, use [TinyFish](h
 - **Notice board:** coordinators post announcements that can be pinned or marked urgent, and an automated weekly summary goes out.
 - **Council reports:** filters, weekly trends, hotspots, a hand-off tracker, CSV export and a print or save-as-PDF view.
 - **Hand-off to authorities:** coordinators keep a directory of authorities, pass an issue on (by email if the authority has an address and email is set up) and track whether it was acknowledged, with overdue ones flagged.
+- **Official addresses by state:** when a coordinator emails a complaint, the "To" box is already filled with the best official address for the neighbourhood's state and the kind of report, with a link to the page where it was read. It is only a suggestion and can be changed. The Reports tab can also add these offices to the neighbourhood's directory in one tap. `src/authorityDirectory.ts` holds the list. Delhi is filled in (MCD, Delhi Jal Board and PWD). Other states show no suggestion until someone adds a region there, listing only addresses seen published by the office itself.
 - **Pulse:** charts with date filters for reported and resolved issues, open issues over time, categories and hours to resolve. Each chart is tagged Actual or Estimate.
 
 ### Removed features

@@ -129,8 +129,13 @@ export function AgentPanel({ i, st, act }: { i: S.Issue; st: S.State; act: Act }
   const t = useT(), app = S.useApp(), demo = app.mode === "demo", me = S.myName(), admin = st.role === "admin", owns = admin || i.author === me;
   const a = i.agent;
   const [ed, setEd] = useState<{ subject: string; body: string } | null>(null), [ref, setRef] = useState("");
-  const [opened, setOpened] = useState(false), [mailOk, setMailOk] = useState<boolean | null>(null), [to, setTo] = useState(""), [reply, setReply] = useState(""), [rref, setRref] = useState(""), [rstat, setRstat] = useState<"" | "acknowledged" | "resolved">("");
+  const [opened, setOpened] = useState(false), [mailOk, setMailOk] = useState<boolean | null>(null), [to, setTo] = useState(""), [edited, setEdited] = useState(false), [sug, setSug] = useState<S.AuthoritySuggestions | null>(null), [reply, setReply] = useState(""), [rref, setRref] = useState(""), [rstat, setRstat] = useState<"" | "acknowledged" | "resolved">("");
   const resolved = i.status === "resolved";
+  useEffect(() => {
+    let on = true;
+    if (admin && !demo && !sent && !resolved) S.authoritySuggestions(i.cat).then(v => { if (on) setSug(v); });
+    return () => { on = false; };
+  }, [i.cat, admin, demo, app.mode]);
   useEffect(() => { let on = true; S.emailAvailable().then(v => { if (on) setMailOk(v); }); return () => { on = false; }; }, [app.mode]);
 
   if (!a) {
@@ -153,7 +158,10 @@ export function AgentPanel({ i, st, act }: { i: S.Issue; st: S.State; act: Act }
   const text = `${ed?.subject ?? d.subject}\n\n${ed?.body ?? d.body}`;
   const needsAction = !resolved && ((owns && !sent) || pending);
   const mailable = (st.authorities ?? []).filter(x => !!x.email), pick = mailable.find(x => x.name === d.to) ?? (mailable.length === 1 ? mailable[0] : undefined);
-  const toAddr = (to || pick?.email || "").trim(), toOk = S.isEmail(toAddr);
+  // The address starts as the neighbourhood's own directory entry, else the best official address for the area. Anything typed wins.
+  const offered = sug?.entries ?? [], shown = edited ? to : (pick?.email || offered[0]?.email || "");
+  const toAddr = shown.trim(), toOk = S.isEmail(toAddr), chosen = offered.find(x => x.email.toLowerCase() === toAddr.toLowerCase());
+  const setAddr = (v: string) => { setTo(v); setEdited(true); };
   const canOwn = admin && !demo && !sent && !resolved, canServer = canOwn && mailOk === true;
   const mailWhy = !demo && !sent && !resolved && approved && !admin ? "Only a coordinator can email a complaint to an authority." : "";
   const mail = canOwn && toOk && !ed ? buildComplaintEmail(i, app.nbhd?.name ?? "", ref) : null;
@@ -219,12 +227,31 @@ export function AgentPanel({ i, st, act }: { i: S.Issue; st: S.State; act: Act }
               <b>{t("Send this complaint from your own email")}</b>
               <small className="dim">{t("Your own email app or Gmail opens with the complaint, subject and map link already filled in. You press Send there, so it goes from your official address and replies come to your own inbox.")}</small>
               {mailable.length > 0 && (
-                <select value={to || pick?.email || ""} onChange={e => setTo(e.target.value)} aria-label={t("Authority")}>
+                <select value={shown} onChange={e => setAddr(e.target.value)} aria-label={t("Authority")}>
                   <option value="">{t("Choose an authority from the directory…")}</option>
                   {mailable.map(x => <option key={x.id} value={x.email}>{x.name} · {x.email}</option>)}
                 </select>
               )}
-              <input type="email" value={to} onChange={e => setTo(e.target.value)} placeholder={mailable.length ? t("or type an email address") : t("Authority email address")} maxLength={120} aria-label={t("Authority email address")} />
+              {offered.length > 0 && (
+                <div className="card">
+                  <b>{t("Official addresses for")} {[sug?.place.city, sug?.region ?? sug?.place.state].filter(Boolean).join(", ")}</b>
+                  <div className="row wrap">
+                    {offered.map(x => <button key={x.id} className={chosen?.id === x.id ? "go" : ""} onClick={() => setAddr(x.email)} aria-pressed={chosen?.id === x.id}>{x.name}</button>)}
+                  </div>
+                  {chosen && (
+                    <small className="dim">
+                      {chosen.note} {chosen.phone ? `${t("Helpline")}: ${chosen.phone}. ` : ""}
+                      {chosen.via === "official" ? t("Published on the office's own website") : t("Listed in official filed records, so check it on the office's website")}, {t("checked")} {chosen.checked}.{" "}
+                      <a href={chosen.source} target="_blank" rel="noopener noreferrer">{t("Open the source")}</a>
+                    </small>
+                  )}
+                  <small className="dim">{t("This is a suggestion. You can change the address below before you send.")}</small>
+                </div>
+              )}
+              {offered.length === 0 && sug && (sug.place.city || sug.place.state) && !mailable.length && (
+                <small className="dim">{t("No official address is on file yet for")} {[sug.place.city, sug.place.state].filter(Boolean).join(", ")}. {t("Type the address of the right office below.")}</small>
+              )}
+              <input type="email" value={shown} onChange={e => setAddr(e.target.value)} placeholder={mailable.length ? t("or type an email address") : t("Authority email address")} maxLength={120} aria-label={t("Authority email address")} />
               <div className="row wrap">
                 <button className="go" disabled={!mail} onClick={() => openOwn("gmail")}>{t("Open in Gmail")}</button>
                 <button disabled={!mail} onClick={() => openOwn("app")}>{t("Open in my email app")}</button>

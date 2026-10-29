@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import * as S from "./store";
 import { useT } from "./i18n";
 import { label, type Act } from "./ui";
@@ -42,9 +42,20 @@ export function HandoffBox({ i, st, act }: { i: S.Issue; st: S.State; act: Act }
 
 function Directory({ st, act }: { st: S.State; act: Act }) {
   const [f, setF] = useState({ name: "", email: "", phone: "" });
+  const [sug, setSug] = useState<S.AuthoritySuggestions | null>(null);
+  useEffect(() => { let on = true; S.authoritySuggestions().then(v => { if (on) setSug(v); }); return () => { on = false; }; }, []);
+  const have = new Set((st.authorities ?? []).map(a => a.email.toLowerCase()).filter(Boolean));
+  const todo = (sug?.entries ?? []).filter(e => !have.has(e.email.toLowerCase()));
   return (
     <div className="card">
       <b>Authorities directory</b>
+      {todo.length > 0 && (
+        <div className="card">
+          <b>Official addresses for {sug?.region ?? sug?.place.state}</b>
+          {todo.map(e => <div key={e.id} className="row between"><span>{e.name}<small className="dim"> {e.email}{e.phone ? ` · ${e.phone}` : ""}</small></span><button onClick={() => act(() => S.authoritySet(e.name, e.email, e.phone ?? ""), "Added to the directory")}>Add</button></div>)}
+          <small className="dim">Published by the offices themselves. Check an address before you rely on it, and edit or remove it below if it is out of date.</small>
+        </div>
+      )}
       {(st.authorities ?? []).map(a => <div key={a.id} className="row between"><span>{a.name}<small className="dim"> {a.email || "no email"}{a.phone ? ` · ${a.phone}` : ""}</small></span><button className="x" onClick={() => act(() => S.authorityRemove(a.id))}>Remove</button></div>)}
       <div className="form">
         <input placeholder="Name, e.g. Ward office" maxLength={60} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} />
