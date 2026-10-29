@@ -660,7 +660,7 @@ async function photoFromMessage(url: string, uid: string, nid: string): Promise<
 
 const esc = (t: string) => t.replace(/[<>&]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" })[c]!);
 app.post("/api/sms", ah(async (req, res) => {
-  const reply = (t: string) => res.type("text/xml").send(`<Response><Message>${esc(t.slice(0, 450))}</Message></Response>`);
+  const reply = (t: string) => { console.log("[sms] replying:", t.slice(0, 120)); return res.type("text/xml").send(`<Response><Message>${esc(t.slice(0, 450))}</Message></Response>`); };
   const token = twilioToken();
   if (!token) throw new HttpError(503, "Messaging is not configured");
   const url = `${(process.env.PUBLIC_URL || "").replace(/\/$/, "")}/api/sms`, given = String(req.headers["x-twilio-signature"] || ""), want = sign(url, req.body as Record<string, string>);
@@ -714,7 +714,7 @@ app.post("/api/sms", ah(async (req, res) => {
       await save({ ...draft, lat: undefined, lng: undefined, approx: false }); // keep the description and photo, ask for the place again
       return reply(`${e instanceof HttpError || e instanceof Error ? e.message : "Something went wrong"}. Send your location again, or CANCEL.`);
     }
-  } catch (e) { return reply(e instanceof HttpError ? e.message : "Something went wrong. Try again."); }
+  } catch (e) { console.error("[sms] handler error:", (e as Error)?.message); return reply(e instanceof HttpError ? e.message : "Something went wrong. Try again."); }
 }));
 
 app.post("/api/n/:id/agent/analyze", ah(async (req, res) => {
