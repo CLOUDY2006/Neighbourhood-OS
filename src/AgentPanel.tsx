@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import * as S from "./store";
 import { useT } from "./i18n";
 import { ago, type Act } from "./ui";
+import { ExternalLink, FileText, Mail, Send } from "lucide-react";
 import { buildComplaintEmail, gmailUrl, mailtoUrl } from "./complaintMail";
 
 const when = (t: number) => new Date(t).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
@@ -129,7 +130,7 @@ export function AgentPanel({ i, st, act }: { i: S.Issue; st: S.State; act: Act }
   const t = useT(), app = S.useApp(), demo = app.mode === "demo", me = S.myName(), admin = st.role === "admin", owns = admin || i.author === me;
   const a = i.agent;
   const [ed, setEd] = useState<{ subject: string; body: string } | null>(null), [ref, setRef] = useState("");
-  const [opened, setOpened] = useState(false), [mailOk, setMailOk] = useState<boolean | null>(null), [to, setTo] = useState(""), [edited, setEdited] = useState(false), [sug, setSug] = useState<S.AuthoritySuggestions | null>(null), [reply, setReply] = useState(""), [rref, setRref] = useState(""), [rstat, setRstat] = useState<"" | "acknowledged" | "resolved">("");
+  const [fb, setFb] = useState(false), [opened, setOpened] = useState(false), [mailOk, setMailOk] = useState<boolean | null>(null), [to, setTo] = useState(""), [edited, setEdited] = useState(false), [sug, setSug] = useState<S.AuthoritySuggestions | null>(null), [reply, setReply] = useState(""), [rref, setRref] = useState(""), [rstat, setRstat] = useState<"" | "acknowledged" | "resolved">("");
   const resolved = i.status === "resolved";
   useEffect(() => {
     let on = true;
@@ -170,9 +171,13 @@ export function AgentPanel({ i, st, act }: { i: S.Issue; st: S.State; act: Act }
     if (!mail) return;
     if (!approved) void act(() => S.agentApprove(i.id));
     setOpened(true);
-    if (kind === "gmail") window.open(gmailUrl(toAddr, mail.subject, mail.text), "_blank", "noopener,noreferrer");
+    if (kind === "gmail") {
+      const w = window.open(gmailUrl(toAddr, mail.subject, mail.text), "_blank");
+      if (w) { try { w.opener = null; } catch { /* ignore */ } } else setFb(true); // pop-up blocked: show the written complaint instead
+    }
     else window.location.href = mailtoUrl(toAddr, mail.subject, mail.text);
   };
+  const blockedHint = <small className="dim">{t("If Gmail did not open (a pop-up may have been blocked), copy the complaint below and send it from your own email, or file it on the portal.")}</small>;
   const sendMail = () => act(async () => {
     if (!approved) await S.agentApprove(i.id);
     await S.agentEmail(i.id, toAddr, ref);
@@ -202,7 +207,7 @@ export function AgentPanel({ i, st, act }: { i: S.Issue; st: S.State; act: Act }
 
       <TinyFishCard i={i} admin={admin} owns={owns} sent={sent} act={act} />
 
-      <b>{t("Complaint draft")}{d.level > 0 ? ` (${t("Escalation")} ${d.level})` : ""}</b>
+      <b>{canOwn ? t("Send the complaint") : t("Complaint draft")}{d.level > 0 ? ` (${t("Escalation")} ${d.level})` : ""}</b>
       <small className="dim">To: {d.to}</small>
       {pending && <p className="errtext">{t("Escalation ready")}: review and approve it to send to {d.to}.</p>}
       {!resolved && owns && !sent && (
@@ -223,9 +228,11 @@ export function AgentPanel({ i, st, act }: { i: S.Issue; st: S.State; act: Act }
           </div>
           {approved && <input placeholder="Reference number, if you already have one (optional)" maxLength={60} value={ref} onChange={e => setRef(e.target.value)} />}
           {canOwn && (
-            <div className="card">
-              <b>{t("Send this complaint from your own email")}</b>
-              <small className="dim">{t("Your own email app or Gmail opens with the complaint, subject and map link already filled in. You press Send there, so it goes from your official address and replies come to your own inbox.")}</small>
+            <div className="card mailbox">
+              <div className="mhead">
+                <span className="mico" aria-hidden="true"><Mail size={18} /></span>
+                <div><b>{t("Send this complaint by email")}</b><small className="dim">{t("Gmail or your email app opens with the complaint, subject and map link already filled in. You press Send there, so it goes from your own address and replies come to your inbox.")}</small></div>
+              </div>
               {mailable.length > 0 && (
                 <select value={shown} onChange={e => setAddr(e.target.value)} aria-label={t("Authority")}>
                   <option value="">{t("Choose an authority from the directory…")}</option>
@@ -252,13 +259,14 @@ export function AgentPanel({ i, st, act }: { i: S.Issue; st: S.State; act: Act }
                 <small className="dim">{t("No official address is on file yet for")} {[sug.place.city, sug.place.state].filter(Boolean).join(", ")}. {t("Type the address of the right office below.")}</small>
               )}
               <input type="email" value={shown} onChange={e => setAddr(e.target.value)} placeholder={mailable.length ? t("or type an email address") : t("Authority email address")} maxLength={120} aria-label={t("Authority email address")} />
-              <div className="row wrap">
-                <button className="go" disabled={!mail} onClick={() => openOwn("gmail")}>{t("Open in Gmail")}</button>
-                <button disabled={!mail} onClick={() => openOwn("app")}>{t("Open in my email app")}</button>
+              <div className="mailbtns">
+                <button className="go" disabled={!mail} onClick={() => openOwn("gmail")}><ExternalLink size={16} />{t("Open in Gmail")}</button>
+                <button disabled={!mail} onClick={() => openOwn("app")}><Mail size={16} />{t("Open in my email app")}</button>
               </div>
+              {ed && <small className="errtext">{t("Save your edits in the written complaint below first, then the email buttons work again.")}</small>}
               {opened && (
-                <div className="row wrap">
-                  <button className="go" onClick={() => act(async () => { await S.agentSend(i.id, "mailto", ref, toAddr); setOpened(false); }, `Recorded as emailed to ${toAddr}`)}>{t("I sent it from my email")}</button>
+                <div className="mailsent">
+                  <button className="go" onClick={() => act(async () => { await S.agentSend(i.id, "mailto", ref, toAddr); setOpened(false); }, `Recorded as emailed to ${toAddr}`)}><Send size={15} />{t("I sent it from my email")}</button>
                   <small className="dim">{t("Press this after you have pressed Send in your email. The app cannot see your inbox.")}</small>
                 </div>
               )}
@@ -270,7 +278,39 @@ export function AgentPanel({ i, st, act }: { i: S.Issue; st: S.State; act: Act }
                   <small className="dim">{t("The server emails it with the photo attached. It comes from the app's address.")}</small>
                 </div>
               )}
+              {!fb && <button type="button" className="linkbtn" onClick={() => setFb(true)}>{t("Gmail not opening? Show the written complaint")}</button>}
             </div>
+          )}
+          {canOwn ? (
+            <details className="fallback" open={fb} onToggle={e => setFb((e.currentTarget as HTMLDetailsElement).open)}>
+              <summary><FileText size={14} /> {t("Written complaint: edit, copy, or file on a portal")}</summary>
+              {fb && blockedHint}
+              <div className="form">
+          <input value={ed?.subject ?? d.subject} onChange={e => setEd({ subject: e.target.value, body: ed?.body ?? d.body })} aria-label="Subject" />
+          <textarea rows={9} value={ed?.body ?? d.body} onChange={e => setEd({ subject: ed?.subject ?? d.subject, body: e.target.value })} aria-label="Complaint text" />
+          <div className="row wrap">
+            {ed && <button onClick={() => act(async () => { await S.agentDraft(i.id, ed); setEd(null); }, "Draft saved")}>{t("Save edits")}</button>}
+            {!approved && <button className="go" disabled={!!ed} onClick={() => act(() => S.agentApprove(i.id), "Approved")}>{t("Approve")}</button>}
+            {approved && !demo && <button onClick={() => act(async () => { await navigator.clipboard.writeText(text); }, "Copied. Paste it into the portal or email")}>{t("Copy complaint")}</button>}
+            {approved && !demo && <button className="go" onClick={() => act(() => S.agentSend(i.id, "copied", ref), "Marked as sent")}>{t("I sent it")}</button>}
+            {approved && demo && <button className="go" onClick={() => act(() => S.agentSend(i.id, "simulated", ref || "DEMO-2043"), "Sent (simulated)")}>{t("Send (simulated)")}</button>}
+          </div>
+          {approved && <input placeholder="Reference number, if you already have one (optional)" maxLength={60} value={ref} onChange={e => setRef(e.target.value)} />}
+              </div>
+            </details>
+          ) : (
+            <>
+          <input value={ed?.subject ?? d.subject} onChange={e => setEd({ subject: e.target.value, body: ed?.body ?? d.body })} aria-label="Subject" />
+          <textarea rows={9} value={ed?.body ?? d.body} onChange={e => setEd({ subject: ed?.subject ?? d.subject, body: e.target.value })} aria-label="Complaint text" />
+          <div className="row wrap">
+            {ed && <button onClick={() => act(async () => { await S.agentDraft(i.id, ed); setEd(null); }, "Draft saved")}>{t("Save edits")}</button>}
+            {!approved && <button className="go" disabled={!!ed} onClick={() => act(() => S.agentApprove(i.id), "Approved")}>{t("Approve")}</button>}
+            {approved && !demo && <button onClick={() => act(async () => { await navigator.clipboard.writeText(text); }, "Copied. Paste it into the portal or email")}>{t("Copy complaint")}</button>}
+            {approved && !demo && <button className="go" onClick={() => act(() => S.agentSend(i.id, "copied", ref), "Marked as sent")}>{t("I sent it")}</button>}
+            {approved && demo && <button className="go" onClick={() => act(() => S.agentSend(i.id, "simulated", ref || "DEMO-2043"), "Sent (simulated)")}>{t("Send (simulated)")}</button>}
+          </div>
+          {approved && <input placeholder="Reference number, if you already have one (optional)" maxLength={60} value={ref} onChange={e => setRef(e.target.value)} />}
+            </>
           )}
           {mailWhy && <small className="errtext">{t(mailWhy)}</small>}
           <small className="dim">{canOwn ? t("Prefer to file on a government portal? Approve, copy the text, submit it there, then mark it as sent.") : "This app does not file on government portals for you. After approving, copy the text and submit it through the route above, then mark it as sent."}</small>
