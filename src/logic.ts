@@ -303,7 +303,7 @@ export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; ln
   const log = (i: Issue, text: string, tone = "info") => { i.log.push({ t: Date.now(), by: who.name, text }); ev(`${i.title}: ${text}`, tone); };
   const inBounds = (lat: number, lng: number) => {
     if (Math.abs(lat) > 90 || Math.abs(lng) > 180) throw new Error("Invalid location");
-    if (bounds && dist(bounds, { lat, lng }) > bounds.r * 1.15) throw new Error("That spot is outside this neighbourhood");
+    if (bounds) { const m = dist(bounds, { lat, lng }); if (m > bounds.r * 1.15) throw new Error(`That spot is outside this neighbourhood (about ${Math.round(m)} m from its centre; up to ${Math.round(bounds.r * 1.15)} m is allowed)`); }
   };
   const sosOf = (id: string) => { const x = (d.sos ??= []).find(y => y.id === id); if (!x) throw new Error("Request not found"); return x; };
   const closeSos = (x: Sos, status: SosStatus, text: string) => { x.status = status; x.closedAt = Date.now(); x.lat = null; x.lng = null; x.note = ""; x.contact = undefined; x.log.push({ t: Date.now(), by: who.name, text }); };
