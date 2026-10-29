@@ -17,12 +17,11 @@ const cl = (n: number, a: number, b: number) => Math.max(a, Math.min(b, n));
 const grp = (s: S.Status) => (s === "resolved" ? "green" : s === "assigned" || s === "progress" || s === "pending" ? "amber" : "red");
 const trunc = (t: string) => (t.length > 22 ? t.slice(0, 21) + "…" : t);
 const CI: Record<S.Cat, LucideIcon> = { pothole: Construction, garbage: Trash2, streetlight: Lightbulb, water: Droplets, unsafe: AlertTriangle, blocked: Ban, other: Wrench };
-const RI: Record<S.Kind, LucideIcon> = { shelter: Home, water: Droplets, aid: Cross, donation: HeartHandshake, assembly: Flag, equipment: Hammer };
 const prefersCalm = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const TILTS = [TILT0, 0.68, 0.36];
 const TILT_NAME = (t: number) => (t > 0.6 ? "high, looking down" : t < 0.42 ? "low, street level" : "standard");
 
-interface Item { id: string; kind: "issue" | "res" | "sos" | "vol" | "mission"; ax: number; ay: number; col: string; Icon: LucideIcon; label: string; n?: number; pulse: boolean; prog?: number; mission?: string; dashed?: boolean }
+interface Item { id: string; kind: "issue"; ax: number; ay: number; col: string; Icon: LucideIcon; label: string; n?: number; pulse: boolean; prog?: number }
 function layout(its: Item[], lift: number) {
   const pos = its.map(i => ({ x: i.ax, y: i.ay - lift }));
   for (let it = 0; it < 70; it++) {
@@ -48,16 +47,16 @@ export function ViewSwitch({ view, setView }: { view: MapView; setView: (v: MapV
 }
 
 interface Props {
-  st: S.State; name: string; center: { lat: number; lng: number }; map: MapData | null; note: string; sos: S.Sos[]; official: boolean;
+  st: S.State; name: string; center: { lat: number; lng: number }; map: MapData | null; note: string;
   sel: string | null; onSel: (id: string) => void; pick: { lat: number; lng: number } | null;
   onPick: (lat: number, lng: number) => void; filter: S.Status[]; setFilter: (f: S.Status[]) => void;
-  res: boolean; setRes: (b: boolean) => void; picking: boolean; zones: { cat: S.Cat; lat: number; lng: number; count: number }[];
-  view: MapView; setView: (v: MapView) => void; heat: boolean; setHeat: (b: boolean) => void; showVol: boolean; setShowVol: (b: boolean) => void;
-  canSeeVol: boolean; sim: Record<string, number | null> | null; timeOn: boolean; onTime: () => void; focus?: { lat: number; lng: number; n: number } | null;
+  picking: boolean;
+  view: MapView; setView: (v: MapView) => void; heat: boolean; setHeat: (b: boolean) => void;
+  timeOn: boolean; onTime: () => void;
 }
 const GROUPS: [string, S.Status[], string][] = [["Open", ["reported", "review"], "red"], ["In progress", ["assigned", "progress", "pending"], "amber"], ["Fixed", ["resolved"], "green"]];
 
-export default function IsoMap({ st, name, center, map, note, sos, official, sel, onSel, pick, onPick, filter, setFilter, res, setRes, picking, zones, view, setView, heat, setHeat, showVol, setShowVol, canSeeVol, sim, timeOn, onTime, focus }: Props) {
+export default function IsoMap({ st, name, center, map, note, sel, onSel, pick, onPick, filter, setFilter, picking, view, setView, heat, setHeat, timeOn, onTime }: Props) {
   const theme = useTheme(), pal = palette(theme), a11y = useA11y(), calm = a11y.motion || prefersCalm();
   const flat = view === "flat";
   const box = useRef<HTMLDivElement>(null), svg = useRef<SVGSVGElement>(null), cvs = useRef<HTMLCanvasElement>(null), inited = useRef("");
@@ -138,34 +137,12 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
   const { items, pos } = useMemo(() => {
     const its: Item[] = [];
     st.issues.filter(i => filter.includes(i.status)).forEach(i => {
-      const a = A(i.lat, i.lng), k = grp(i.status), w = i.agent ? S.workflow(st, i) : null, m = st.missions.find(x => x.id === i.missionId);
-      const day = sim && i.status !== "resolved" ? sim[i.id] : undefined;
-      const col = sim && i.status !== "resolved" ? (day != null && day <= 7 ? pal.green : day != null && day <= 14 ? pal.amber : pal.red) : pal[k];
-      its.push({ id: i.id, kind: "issue", ax: a.x, ay: a.y, col, Icon: CI[i.cat], label: sim && i.status !== "resolved" ? (day != null ? `Day ${day} (simulated)` : "Backlog (simulated)") : trunc(i.title), n: i.reports, pulse: !sim && k !== "green", prog: sim ? undefined : w ? w.done / w.total : undefined, mission: m ? `${m.joined.length}/${m.need}` : undefined, dashed: !!sim && i.status !== "resolved" });
-    });
-    sos.forEach(x => {
-      if (x.lat == null || x.lng == null) return;
-      const a = A(x.lat, x.lng);
-      its.push({ id: x.id, kind: "sos", ax: a.x, ay: a.y, col: pal.red, Icon: Siren, label: "SOS request", pulse: x.status !== "closed" && x.status !== "helped" });
-    });
-    // Community missions with a marked spot get their own pin. Missions linked to a report already show on that report's pin.
-    st.missions.forEach(m => {
-      if (m.done || m.lat == null || m.lng == null) return;
-      const a = A(m.lat, m.lng);
-      its.push({ id: m.id, kind: "mission", ax: a.x, ay: a.y, col: pal.teal, Icon: Users, label: trunc(m.title), pulse: !sim, mission: `${m.joined.length}/${m.need}` });
-    });
-    if (res) st.resources.forEach(r => {
-      const a = A(r.lat, r.lng);
-      its.push({ id: r.id, kind: "res", ax: a.x, ay: a.y, col: r.low ? pal.amber : pal.teal, Icon: RI[r.kind], label: trunc(r.name), pulse: !!r.low });
-    });
-    if (showVol && canSeeVol) st.volunteers.forEach(vo => {
-      if (vo.lat == null || vo.lng == null) return;
-      const a = A(vo.lat, vo.lng);
-      its.push({ id: "v:" + vo.id, kind: "vol", ax: a.x, ay: a.y, col: vo.available ? pal.vol : pal.volOff, Icon: User, label: trunc(vo.name), pulse: false });
+      const a = A(i.lat, i.lng), k = grp(i.status), w = i.agent ? S.workflow(st, i) : null;
+      its.push({ id: i.id, kind: "issue", ax: a.x, ay: a.y, col: pal[k], Icon: CI[i.cat], label: trunc(i.title), n: i.reports, pulse: k !== "green", prog: w ? w.done / w.total : undefined });
     });
     return { items: its, pos: layout(its, lift) };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [st.issues, st.resources, st.missions, st.volunteers, sos, filter, res, showVol, canSeeVol, sim, center.lat, center.lng, proj, pal]);
+  }, [st.issues, filter, center.lat, center.lng, proj, pal]);
 
   const centerOn = (wx: number, wy: number, k: number) => setV({ k, x: size.w / 2 - wx * k, y: size.h / 2 - wy * k });
   const homeTarget = () => {
@@ -173,8 +150,6 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
     const cx = n ? items.reduce((a, i) => a + i.ax, 0) / n : c0.x, cy = n ? items.reduce((a, i) => a + i.ay, 0) / n : c0.y;
     return { wx: cx, wy: cy - lift / 2, k: size.w < 600 ? 0.62 : 0.85 };
   };
-  // The Missions list can ask the map to move to a mission's spot.
-  useEffect(() => { if (focus) { const a = A(focus.lat, focus.lng); centerOn(a.x, a.y - 60, 1.1); } }, [focus?.n]); // eslint-disable-line react-hooks/exhaustive-deps
   const home = () => { const h = homeTarget(); centerOn(h.wx, h.wy, h.k); };
   const zoomAt = (cx: number, cy: number, f: number) => setV(o => { const k = cl(o.k * f, 0.3, 2.4), r = k / o.k; return { k, x: cx - (cx - o.x) * r, y: cy - (cy - o.y) * r }; });
 
@@ -236,36 +211,25 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
   };
   const info = cur ?? llAt(size.w / 2, size.h / 2);
 
-  const resIts = items.filter(i => i.kind === "res");
-  const near = (it: Item) => resIts.reduce<Item | null>((b, r) => (!b || Math.hypot(r.ax - it.ax, r.ay - it.ay) < Math.hypot(b.ax - it.ax, b.ay - it.ay) ? r : b), null);
-  const routes = sim ? [] : st.issues.filter(i => (i.missionId || i.id === sel) && i.status !== "resolved").map(i => {
-    const it = items.find(x => x.id === i.id), r = it && near(it);
-    return it && r ? { id: i.id, it, r, col: i.id === sel ? pal.teal : pal.accent } : null;
-  }).filter(Boolean) as { id: string; it: Item; r: Item; col: string }[];
-  const links = !sim && showVol && canSeeVol ? st.missions.flatMap(m => {
-    const it = items.find(x => x.id === m.issueId);
-    return it && !m.done ? m.joined.flatMap(n => { const vo = st.volunteers.find(x => x.name === n), vi = vo && items.find(x => x.id === "v:" + vo.id); return vi ? [{ k: m.id + n, a: vi, b: it }] : []; }) : [];
-  }) : [];
   const open = st.issues.filter(i => i.status !== "resolved" && !i.hidden);
   const selRing = pal.dark ? "#ffffff" : "#1c1917";
 
   const pin = (it: Item, p: Pt2) => {
-    const on = sel === it.id, small = it.kind === "vol", show = on || hov === it.id || v.k > 1.5 || it.dashed, sc = (on ? 1.12 : 1) * (small ? 0.72 : 1);
-    const w = it.label.length * 7 + 24, round = it.kind === "res" || small;
+    const on = sel === it.id, show = on || hov === it.id || v.k > 1.5, sc = on ? 1.12 : 1;
+    const w = it.label.length * 7 + 24;
     return (
-      <g key={it.id} transform={`translate(${p.x},${p.y}) scale(${sc})`} className={`mpin ${on ? "on" : ""}`} style={{ cursor: small ? "default" : "pointer", ["--pc" as string]: it.col }}
-        tabIndex={small ? -1 : 0} role={small ? undefined : "button"} aria-label={small ? undefined : `${it.kind === "sos" ? "SOS request" : it.kind === "res" ? "Resource" : it.kind === "mission" ? "Mission" : "Issue"}: ${it.label}`}
-        onKeyDown={e => { if ((e.key === "Enter" || e.key === " ") && it.kind !== "res" && !small) { e.preventDefault(); onSel(it.id); } }}
-        onPointerDown={e => e.stopPropagation()} onClick={() => it.kind !== "res" && !small && onSel(it.id)}
+      <g key={it.id} transform={`translate(${p.x},${p.y}) scale(${sc})`} className={`mpin ${on ? "on" : ""}`} style={{ cursor: "pointer", ["--pc" as string]: it.col }}
+        tabIndex={0} role="button" aria-label={`Issue: ${it.label}`}
+        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSel(it.id); } }}
+        onPointerDown={e => e.stopPropagation()} onClick={() => onSel(it.id)}
         onPointerEnter={() => setHov(it.id)} onPointerLeave={() => setHov(null)}>
         {it.prog != null && <circle r="31" fill="none" stroke={it.col} strokeWidth="3.5" strokeLinecap="round" strokeDasharray={`${it.prog * 194.8} 194.8`} transform="rotate(-90)" />}
         <g className="mpin-head">
           <path d="M-8,19 L0,29 L8,19Z" fill={it.col} />
-          <rect className="mpin-bg" x="-22" y="-22" width="44" height="44" rx={round ? 22 : 13} stroke={on ? selRing : it.col} strokeWidth="2.5" strokeDasharray={it.dashed ? "6 4" : undefined} style={on ? { fill: it.col } : undefined} />
+          <rect className="mpin-bg" x="-22" y="-22" width="44" height="44" rx="13" stroke={on ? selRing : it.col} strokeWidth="2.5" style={on ? { fill: it.col } : undefined} />
           <it.Icon x={-12} y={-12} size={24} color={on ? pal.onCol : it.col} strokeWidth={2.2} />
         </g>
         {(it.n ?? 0) > 1 && <g transform="translate(20,-20)"><circle r="10" fill={it.col} style={{ stroke: "var(--pin-bg)" }} strokeWidth="2" /><text textAnchor="middle" y="4" fontSize="11" fontWeight="700" fill={pal.onCol}>{it.n}</text></g>}
-        {it.mission && <g transform="translate(-24,20)"><rect className="mpin-bg" x="-19" y="-10" width="38" height="20" rx="10" stroke={pal.teal} /><text textAnchor="middle" y="4" fontSize="10" fontWeight="600" fill={pal.teal}>👥{it.mission}</text></g>}
         {show && <g transform="translate(0,-46)"><rect className="mpin-label" x={-w / 2} y="-12" width={w} height="24" rx="12" style={{ stroke: it.col }} /><text className="mpin-text" textAnchor="middle" y="4" fontSize="12">{it.label}</text></g>}
       </g>
     );
@@ -312,11 +276,8 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
               {open.map(i => { const a = A(i.lat, i.lng), w = S.priorityScore(st, i).score / 100; return <g key={"h" + i.id}><ellipse cx={a.x} cy={a.y} rx={hy * 1.5} ry={hy * 1.5 * t} fill={pal.heat[0]} fillOpacity={0.12 + 0.22 * w} /><ellipse cx={a.x} cy={a.y} rx={hy} ry={hy * t} fill={pal.heat[1]} fillOpacity={0.2 + 0.4 * w} /></g>; })}
             </g>
           )}
-          {zones.map((z, n) => { const a = A(z.lat, z.lng); return <g key={n} className="crisis-z"><ellipse cx={a.x} cy={a.y} rx={zr} ry={zr * t} fill={pal.red} fillOpacity=".1" stroke={pal.red} strokeWidth="2.5" strokeDasharray="12 9" /><text className="zone-text" x={a.x} y={a.y + zr * t + 22} textAnchor="middle" fontSize="13" fontWeight="700" letterSpacing="3" fill={pal.red}>CRISIS ZONE · {z.count} REPORTS</text></g>; })}
-          {routes.map(r => <path key={r.id} className="flow" d={`M${r.r.ax},${r.r.ay} Q${(r.r.ax + r.it.ax) / 2},${Math.min(r.r.ay, r.it.ay) - 100} ${r.it.ax},${r.it.ay}`} fill="none" stroke={r.col} strokeWidth="3" strokeLinecap="round" strokeDasharray="10 8" />)}
-          {links.map(l => <path key={l.k} className="flow fast" d={`M${l.a.ax},${l.a.ay} Q${(l.a.ax + l.b.ax) / 2},${Math.min(l.a.ay, l.b.ay) - 70} ${l.b.ax},${l.b.ay}`} fill="none" stroke={pal.vol} strokeWidth="2.5" strokeLinecap="round" strokeDasharray="4 7" />)}
           {order.map(({ it, p }) => {
-            const sc = (sel === it.id ? 1.12 : 1) * (it.kind === "vol" ? 0.72 : 1);
+            const sc = sel === it.id ? 1.12 : 1;
             return (
               <g key={"l" + it.id}>
                 {sel === it.id && <line x1={p.x} y1={p.y + 29 * sc} x2={it.ax} y2={it.ay} stroke={it.col} strokeWidth="9" strokeOpacity=".18" strokeLinecap="round" />}
@@ -354,7 +315,6 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
 
       {!map && <div className="maploading"><span className="spinner" />Loading neighbourhood map…</div>}
       {note && <div className="mapnote glass">{note}</div>}
-      {sim && <div className="simbanner glass">SIMULATION: estimates from simple assumptions, not real outcomes</div>}
       {picking && !pick && <div className="pickhint glass"><Crosshair size={14} /> Click the map to choose a location</div>}
 
       <div className="hud hud-top glass">
@@ -365,10 +325,9 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
           <input className="hsearch" placeholder="Find an issue" aria-label="Find an issue" value={q} onChange={e => setQ(e.target.value)}
             onKeyDown={e => {
               if (e.key !== "Enter") return;
-              const s = q.trim().toLowerCase(), h = st.issues.find(i => i.title.toLowerCase().includes(s)), rs = st.resources.find(r => r.name.toLowerCase().includes(s));
-              const ms = h || rs ? undefined : st.missions.find(m => m.title.toLowerCase().includes(s) && S.missionSpot(st, m));
-              const tgt = h ?? rs ?? (ms && S.missionSpot(st, ms)); if (!tgt) return;
-              const a = A(tgt.lat, tgt.lng); centerOn(a.x, a.y - 60, 1.1); if (h) onSel(h.id); else if (ms) onSel(ms.id);
+              const s = q.trim().toLowerCase(), h = st.issues.find(i => i.title.toLowerCase().includes(s));
+              if (!h) return;
+              const a = A(h.lat, h.lng); centerOn(a.x, a.y - 60, 1.1); onSel(h.id);
             }} />
         </label>
       </div>
@@ -397,7 +356,6 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
       )}
 
       <div className="hud hud-right">
-        {(zones.length > 0 || official) && <button className="active-pill" onClick={() => { if (zones.length) { const a = A(zones[0].lat, zones[0].lng); centerOn(a.x, a.y - 40, 1); } }}><AlertTriangle size={16} /> {official ? "Official alert" : "Crisis active"}</button>}
         <div className="tgroup glass" role="group" aria-label="Zoom">
           <button className="rbtn" {...tip("Zoom in")} onClick={() => zoomAt(size.w / 2, size.h / 2, 1.25)}><Plus size={18} /></button>
           <button className="rbtn" {...tip("Zoom out")} onClick={() => zoomAt(size.w / 2, size.h / 2, 0.8)}><Minus size={18} /></button>
@@ -410,7 +368,6 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
         </div>
         <div className="tgroup glass" role="group" aria-label="Map layers">
           <button className={`rbtn ${heat ? "on" : ""}`} aria-pressed={heat} {...tip("Issue heatmap")} onClick={() => setHeat(!heat)}><Flame size={17} /></button>
-          {canSeeVol && <button className={`rbtn ${showVol ? "on" : ""}`} aria-pressed={showVol} {...tip("Volunteers and their missions")} onClick={() => setShowVol(!showVol)}><Users size={17} /></button>}
           <button className={`rbtn ${timeOn ? "on" : ""}`} aria-pressed={timeOn} {...tip("Then vs now")} onClick={onTime}><History size={17} /></button>
         </div>
         <div className="tgroup glass">
@@ -434,8 +391,6 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
               <li><i className="lg-dot red" />Open: reported or under review</li>
               <li><i className="lg-dot amber" />In progress: assigned, being fixed or awaiting approval</li>
               <li><i className="lg-dot green" />Fixed and approved by a coordinator</li>
-              {canSeeVol && <li><i className="lg-dot vol round" />Volunteer's approximate area</li>}
-              <li><i className="lg-ring" />Crisis zone: many reports close together</li>
               <li><i className="lg-prog" />Ring around a pin: AI agent progress</li>
               <li><b className="lg-num">3</b>Neighbors who reported the same problem</li>
             </ul>

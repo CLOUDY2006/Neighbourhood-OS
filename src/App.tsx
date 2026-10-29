@@ -1,4 +1,4 @@
-import { Component, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Component, useEffect, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Bell, Radar, PlusCircle, BarChart3, RotateCcw, Play, UserCog, User, Sun, Moon, LogOut, MessagesSquare } from "lucide-react";
 import * as S from "./store";
@@ -324,7 +324,6 @@ function Main({ app }: { app: S.AppState }) {
   const unread = myEvents.filter(e => e.t > seen).length;
   const asOf = tt.on && tt.days > 0 ? Date.now() - tt.days * 86400000 : null;
   const stView: S.State = asOf ? { ...S.docAsOf(st, asOf), role: st.role } : st;
-  const stMap = useMemo<S.State>(() => ({ ...stView, missions: [], resources: [], volunteers: [] }), [stView]);
   const NAV: [Tab, string, typeof Radar][] = [["feed", "Command", Radar], ["report", "Report", PlusCircle], ["status", "Status", BarChart3], ["chat", "Chat", MessagesSquare], ["people", "People", UserCog], ["account", "Account", User]];
   const chatNew = S.chatUnread(app, st.role);
   const tabNow: Tab = tab;
@@ -378,11 +377,11 @@ function Main({ app }: { app: S.AppState }) {
       </header>
       <main className="center">
         <div className="layer" hidden={view === "list"}>
-          <IsoMap st={stMap} name={n.name} center={{ lat: n.lat, lng: n.lng }} map={app.map} note={app.mapNote} sos={[]} official={false} sel={sel}
+          <IsoMap st={stView} name={n.name} center={{ lat: n.lat, lng: n.lng }} map={app.map} note={app.mapNote} sel={sel}
             onSel={id => { setSel(id); setTab("feed"); }}
-            pick={pick} onPick={(lat, lng) => setPick({ lat, lng })} filter={filter} setFilter={setFilter} res={false} setRes={() => undefined} picking={tabNow === "report"} zones={[]}
-            view={view} setView={setView} heat={heat} setHeat={setHeat} showVol={false} setShowVol={() => undefined} canSeeVol={false}
-            sim={null} timeOn={tt.on} onTime={() => setTt(o => (o.on ? { on: false, days: 0 } : { on: true, days: 14 }))} />
+            pick={pick} onPick={(lat, lng) => setPick({ lat, lng })} filter={filter} setFilter={setFilter} picking={tabNow === "report"}
+            view={view} setView={setView} heat={heat} setHeat={setHeat}
+            timeOn={tt.on} onTime={() => setTt(o => (o.on ? { on: false, days: 0 } : { on: true, days: 14 }))} />
         </div>
         {view === "list" && <div className="layer scroll"><ListView st={stView} filter={filter} sel={sel} onSel={id => { setSel(id); setTab("feed"); }} /><ViewSwitch view={view} setView={setView} /></div>}
         {tt.on && view !== "list" && (

@@ -11,7 +11,6 @@ import { toggleTheme, useA11y, useTheme } from "./a11y";
 import { palette } from "./theme";
 import { genCity } from "./mapdata";
 import { buildModel, drawCars, drawGround, drawObjects, makeProj } from "./city3d";
-import { LAND_D } from "./WorldView";
 import "./landing.css";
 
 const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
@@ -82,7 +81,7 @@ function Nav({ me }: { me: boolean }) {
       <div className="ln-wrap ln-navin">
         <a className="ln-brand" href="/" onClick={e => { e.preventDefault(); window.scrollTo({ top: 0, behavior: prefersCalm() ? "auto" : "smooth" }); }}><span className="logo" aria-hidden="true">N</span><span>NEIGHBOURHOOD OS</span></a>
         <nav className="ln-links" aria-label="Page sections">
-          {[["how", "How it works"], ["features", "Features"], ["crisis", "Crisis mode"], ["roles", "Roles"], ["trust", "Trust"]].map(([id, l]) => <a key={id} href={`#${id}`} onClick={jump(id)}>{l}</a>)}
+          {[["how", "How it works"], ["features", "Features"], ["roles", "Roles"], ["trust", "Trust"]].map(([id, l]) => <a key={id} href={`#${id}`} onClick={jump(id)}>{l}</a>)}
         </nav>
         <div className="ln-actions">
           <button className="iconbtn ln-ghosticon" onClick={toggleTheme} aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}>{theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}</button>
@@ -264,11 +263,11 @@ function Hero() {
 
 /* ---------------------------------------------------------------- sources marquee */
 
-const SOURCES: [LucideIcon, string][] = [[MapPin, "OpenStreetMap"], [Globe, "USGS earthquakes"], [Globe, "NASA EONET"], [AlertTriangle, "GDACS alerts"], [Siren, "Local CAP feeds"], [MessageSquare, "SMS & WhatsApp"], [WifiOff, "Offline-first PWA"], [Sparkles, "AI suggestions"], [Globe, "TinyFish web agent"], [Languages, "English & हिन्दी"]];
+const SOURCES: [LucideIcon, string][] = [[MapPin, "OpenStreetMap"], [MessageSquare, "SMS & WhatsApp"], [WifiOff, "Offline-first PWA"], [Sparkles, "AI suggestions"], [Globe, "TinyFish web agent"], [Languages, "English & हिन्दी"]];
 function Sources() {
   return (
     <section className="ln-sources" aria-label="Data and services">
-      <p>Built on open map data and official public hazard feeds</p>
+      <p>Built on open map data and a few well-labelled services</p>
       <div className="ln-marquee"><div className="ln-track">{[...SOURCES, ...SOURCES].map(([I, l], i) => <span key={i} aria-hidden={i >= SOURCES.length}><I size={16} /> {l}</span>)}</div></div>
     </section>
   );
@@ -368,7 +367,7 @@ function Loop() {
 /* ---------------------------------------------------------------- stats */
 
 function Stats() {
-  const items: [number, string, string?][] = [[5, "steps from report to proof"], [2, "roles, enforced on the server"], [3, "global hazard feeds watched"], [3, "neighbour flags hide a report until it is reviewed"], [2, "languages, with voice input"]];
+  const items: [number, string, string?][] = [[5, "steps from report to proof"], [2, "roles, enforced on the server"], [30, "days chat history is kept", " d"], [3, "neighbour flags hide a report until it is reviewed"], [2, "languages, with voice input"]];
   return (
     <section className="ln-stats" aria-label="At a glance">
       <div className="ln-wrap"><div className="ln-statgrid">
@@ -404,16 +403,6 @@ function AgentViz() {
     </div>
   );
 }
-function WorldViz() {
-  return (
-    <svg className="wv" viewBox="0 120 1000 300" aria-hidden="true">
-      <path d={LAND_D} />
-      {[[705, 205, "red", 0], [180, 200, "amber", 0.8], [780, 300, "teal", 1.6], [540, 250, "red", 2.2], [320, 330, "amber", 1.2]].map(([x, y, c, d], i) => (
-        <g key={i}><circle cx={x as number} cy={y as number} r="16" className={`wv-ring ${c}`} style={{ animationDelay: `${d}s` }} /><circle cx={x as number} cy={y as number} r="6" className={`wv-dot ${c}`} /></g>
-      ))}
-    </svg>
-  );
-}
 function SmsViz({ msgs }: { msgs: [boolean, string][] }) {
   const ref = useRef<HTMLDivElement>(null), seen = useInView(ref, { margin: "-60px" }), i = useCycle(6, 1300, seen);
   return (
@@ -426,7 +415,7 @@ function Features() {
   return (
     <section id="features" className="ln-sec">
       <div className="ln-wrap">
-        <Head eyebrow="Features" title={<>Everything a neighbourhood needs. <em>Nothing</em> it doesn't.</>} sub="From a single pothole to a regional flood, the same calm interface: a live map, a clear queue of work, and honest records." />
+        <Head eyebrow="Features" title={<>Everything a neighbourhood needs. <em>Nothing</em> it doesn't.</>} sub="From a single pothole to a street full of problems, the same calm interface: a live map, a clear queue of work, and honest records." />
         <div className="ln-bento">
           <Spot className="b-agent">
             <div className="ln-ct"><span className="ln-ic violet"><Sparkles size={18} /></span><div><h3>An AI agent that drafts the complaint</h3><p>It understands the report, picks the complaint route and authority, drafts in English or Hindi, and tracks reference numbers. You approve every step; nothing is ever sent automatically.</p></div></div>
@@ -434,8 +423,8 @@ function Features() {
             <span className="ln-tag">AI output is always labelled a suggestion · rule-based fallback without a key</span>
           </Spot>
           <Spot className="b-world" d={0.05}>
-            <div className="ln-ct"><span className="ln-ic red"><Globe size={18} /></span><div><h3>World layer &amp; Crisis Mode</h3><p>USGS, NASA EONET and GDACS feeds. A hazard that overlaps your area raises the alert level.</p></div></div>
-            <WorldViz />
+            <div className="ln-ct"><span className="ln-ic green"><BarChart3 size={18} /></span><div><h3>Locality status</h3><p>Reported vs resolved, hours to fix and hotspots in one place, with council reports you can export as CSV or print to PDF. Every chart says whether it is Actual or an Estimate.</p></div></div>
+            <div className="plv" aria-hidden="true">{[38, 62, 45, 80, 58, 92, 70].map((h, k) => <i key={k} style={{ ["--h" as string]: `${h}%`, animationDelay: `${k * 0.12}s` }} className={k > 4 ? "est" : ""} />)}<span className="chip green">Actual</span><span className="chip amber">Estimate</span></div>
           </Spot>
           <Spot className="b-sos" d={0.1}>
             <div className="ln-ct"><span className="ln-ic teal"><MessageSquare size={18} /></span><div><h3>Neighbourhood chat</h3><p>One room for everyone and a private room for coordinators. Links are blocked, and three reports hide a message.</p></div></div>
@@ -449,19 +438,11 @@ function Features() {
             <div className="ln-ct"><span className="ln-ic teal"><Flag size={18} /></span><div><h3>Notices &amp; priority</h3><p>Coordinators pin notices for the neighbourhood. Every report gets a priority score with the reasons shown.</p></div></div>
             <ul className="rpv"><li><Flag size={14} /> Pinned notice<b>1</b></li><li><BarChart3 size={14} /> Priority score<b className="warn">82 / 100</b></li></ul>
           </Spot>
-          <Spot className="b-pulse" d={0.1}>
-            <div className="ln-ct"><span className="ln-ic green"><BarChart3 size={18} /></span><div><h3>Pulse analytics</h3><p>Reported vs resolved, hours to fix, hotspots. Every chart says whether it is Actual or an Estimate.</p></div></div>
-            <div className="plv" aria-hidden="true">{[38, 62, 45, 80, 58, 92, 70].map((h, k) => <i key={k} style={{ ["--h" as string]: `${h}%`, animationDelay: `${k * 0.12}s` }} className={k > 4 ? "est" : ""} />)}<span className="chip green">Actual</span><span className="chip amber">Estimate</span></div>
-          </Spot>
-          <Spot className="b-reports">
-            <div className="ln-ct"><span className="ln-ic violet"><FileText size={18} /></span><div><h3>Council reports</h3><p>Trends, hotspots and a hand-off tracker for authorities. Export CSV, print to PDF, or share a totals-only public impact page.</p></div></div>
-            <ul className="rpv"><li><ScrollText size={14} /> Passed to authorities<b>4</b></li><li><History size={14} /> Overdue (no fix after 7 days)<b className="warn">1</b></li><li><Lock size={14} /> Exports contain no resident names</li></ul>
-          </Spot>
           <Spot className="b-sms" d={0.05}>
             <div className="ln-ct"><span className="ln-ic teal"><MessageSquare size={18} /></span><div><h3>Works offline, and over SMS</h3><p>Reports queue offline and send when you are back. Text STATUS, FIXED or NOT FIXED.</p></div></div>
             <SmsViz msgs={[[true, "STATUS"], [false, "1 open report: Garbage on Park Road is in progress."], [true, "FIXED"], [false, "Thanks. The report is marked fixed."]]} />
           </Spot>
-          <Spot className="b-lang" d={0.1}>
+          <Spot className="b-lang b-a11y" d={0.1}>
             <div className="ln-ct"><span className="ln-ic amber"><Languages size={18} /></span><div><h3>Hindi &amp; English, by voice</h3><p>Speak a report in either language. The agent writes the English summary.</p></div></div>
             <div className="lgv" aria-hidden="true"><b>Aa</b><b lang="hi">अ</b><div className="wave">{Array.from({ length: 18 }, (_, k) => <i key={k} style={{ animationDelay: `${(k % 6) * 0.11}s` }} />)}</div></div>
           </Spot>
@@ -470,58 +451,6 @@ function Features() {
             <div className="a11v" aria-hidden="true"><span>A</span><span className="m">A</span><span className="l">A</span><i className="tg on" /><Keyboard size={18} /></div>
           </Spot>
         </div>
-      </div>
-    </section>
-  );
-}
-
-/* ---------------------------------------------------------------- crisis */
-
-function CrisisDemo() {
-  const ref = useRef<HTMLDivElement>(null), seen = useInView(ref, { margin: "-80px" }), calm = useReducedMotion();
-  // shown complete until it scrolls into view, then it replays: hazard, alert banner, urgent notice, hold
-  const [s, setS] = useState(2);
-  useEffect(() => {
-    if (!seen || calm) return;
-    const dur = [1000, 1300, 5200];
-    let k = 0, t = 0;
-    const next = () => { t = window.setTimeout(() => { k = (k + 1) % 3; setS(k); next(); }, dur[k]); };
-    setS(0); next();
-    return () => clearTimeout(t);
-  }, [seen, calm]);
-  return (
-    <div className="crd" ref={ref}>
-      <div className="crd-top"><span className="logo" aria-hidden="true">N</span><b>Maple Nagar</b><span className="crd-sim">Simulated example</span></div>
-      <div className="crd-map">
-        <svg viewBox="560 150 260 140" aria-hidden="true"><path d={LAND_D} /><circle cx="705" cy="205" r="18" className="wv-ring red" /><circle cx="705" cy="205" r="5" className="wv-dot red" /><circle cx="722" cy="226" r="4" className="crd-me" /></svg>
-        <div className="crd-ev"><AlertTriangle size={13} /> M6.8 earthquake · about 140 km away · USGS</div>
-      </div>
-      <AnimatePresence>
-        {s >= 1 && <motion.div key="b" className="crd-banner" initial={{ opacity: 0, y: -10, height: 0 }} animate={{ opacity: 1, y: 0, height: "auto" }} exit={{ opacity: 0 }} transition={{ duration: 0.45, ease: EASE }}><ShieldCheck size={15} /><div><b>Crisis mode: official alert</b><small>Follow your national authorities. If anyone is in danger, call 112 first.</small></div></motion.div>}
-        {s >= 2 && <motion.div key="c" className="crd-check" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.45, ease: EASE }}>
-          <b>Urgent notice from your coordinators</b>
-          <small>Avoid the flooded underpass on Main Road. Use the Ring Road.</small>
-        </motion.div>}
-      </AnimatePresence>
-    </div>
-  );
-}
-function Crisis() {
-  const rows: [LucideIcon, string, string][] = [
-    [Globe, "Official feeds, shown as published", "USGS, NASA EONET, GDACS and local CAP alerts. A watch shows a heads-up; warning or severe switches on Crisis Mode."],
-    [ShieldCheck, "Urgent notices", "Coordinators pin an urgent notice and members hear about it by push, email or SMS."],
-    [MessageSquare, "Reports and chat keep working", "Residents keep reporting on the map, coordinators keep verifying them, and neighbours can talk in the chat."],
-  ];
-  return (
-    <section id="crisis" className="ln-sec ln-darkband">
-      <div className="ln-aurora red" aria-hidden="true"><i /><i /></div>
-      <div className="ln-wrap ln-crisisgrid">
-        <div>
-          <Head eyebrow="Crisis Mode" title={<>When the ground shakes, the map <em>changes mode</em>.</>} />
-          <ul className="ln-crlist">{rows.map(([I, t, d], i) => <Reveal key={t} d={0.1 + i * 0.08}><li><span className="ln-ic red"><I size={17} /></span><div><b>{t}</b><p>{d}</p></div></li></Reveal>)}</ul>
-          <Reveal d={0.35}><p className="ln-warnbox"><AlertTriangle size={16} /> This layer only informs; it never starts a rescue by itself. NEIGHBOURHOOD OS is not an emergency service. Call your local emergency number first.</p></Reveal>
-        </div>
-        <Reveal d={0.15}><CrisisDemo /></Reveal>
       </div>
     </section>
   );
@@ -566,10 +495,10 @@ function Roles() {
 
 function Trust() {
   const items: [LucideIcon, string, string][] = [
-    [UserCheck, "Only humans verify", "A report is verified only by a coordinator. A different coordinator must approve every fix."],
+    [UserCheck, "Only humans verify", "A report is verified only by a coordinator. The reporter, or a different coordinator, must confirm every fix."],
     [Sparkles, "AI is always a suggestion", "Summaries, routes, drafts and photo checks are labelled. A rule-based fallback works without any AI key."],
     [FileText, "Simulated data says so", "Demo data and estimates are labelled “simulated” or “estimate” wherever they appear."],
-    [Siren, "Not an emergency service", "The app says so in Chat and Account, and always points to your local emergency number first."],
+    [AlertTriangle, "Not an emergency service", "The app says so in Chat and Account, and always points to your local emergency number first."],
     [Lock, "Location is opt-in", "Only a roughly 1 km area or a pin you choose is stored. Photos are re-encoded in your browser to strip GPS data."],
     [ScrollText, "Every action is logged", "Coordinator actions go to an audit log that other coordinators can read."],
   ];
@@ -640,7 +569,7 @@ function FinalCta({ me }: { me: boolean }) {
         <Reveal className="ln-cta">
           <div className="ln-ctaglow" aria-hidden="true" />
           <h2>See your neighbourhood <em>come alive</em>.</h2>
-          <p>Open the simulated demo, switch between the two roles, run the guided AI agent and simulate an earthquake alert. No account needed.</p>
+          <p>Open the simulated demo, switch between the two roles, and run the guided AI agent. No account needed.</p>
           <div className="ln-ctas">
             <button className="xl ln-white ln-shine" onClick={S.enterDemo}><Play size={16} /> Try the live demo</button>
             <button className="xl ln-outline" onClick={() => go("/signin")}>{me ? "Open my neighbourhoods" : "Sign in or create an account"} <ArrowRight size={16} /></button>
@@ -656,11 +585,11 @@ function Footer() {
       <div className="ln-wrap ln-footgrid">
         <div><a className="ln-brand" href="/"><span className="logo" aria-hidden="true">N</span><span>NEIGHBOURHOOD OS</span></a><p>A live isometric map for every neighbourhood. Report it, fix it, prove it.</p></div>
         <div><b>Product</b><button className="ln-flink" onClick={S.enterDemo}>Live demo</button><button className="ln-flink" onClick={() => go("/signin")}>Sign in</button><a href="#how">How it works</a><a href="#features">Features</a></div>
-        <div><b>Principles</b><a href="#trust">Trust &amp; honest limits</a><a href="#roles">Roles &amp; permissions</a><a href="#crisis">Crisis mode</a></div>
+        <div><b>Principles</b><a href="#trust">Trust &amp; honest limits</a><a href="#roles">Roles &amp; permissions</a></div>
       </div>
       <div className="ln-wrap ln-footnote">
         <p><Siren size={14} /> NEIGHBOURHOOD OS is not an emergency service. In an emergency, call your local emergency number (112 in India).</p>
-        <p>Map data © OpenStreetMap contributors · Hazard data from USGS, NASA EONET and GDACS · Official complaint pages found with TinyFish</p>
+        <p>Map data © OpenStreetMap contributors · Official complaint pages found with TinyFish</p>
       </div>
     </footer>
   );
@@ -681,7 +610,6 @@ export default function Landing() {
           <Stats />
           <Features />
           <TryTinyFish />
-          <Crisis />
           <Roles />
           <Trust />
           <FinalCta me={me} />
