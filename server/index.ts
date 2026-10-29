@@ -664,7 +664,8 @@ app.post("/api/sms", ah(async (req, res) => {
   const token = twilioToken();
   if (!token) throw new HttpError(503, "Messaging is not configured");
   const url = `${(process.env.PUBLIC_URL || "").replace(/\/$/, "")}/api/sms`, given = String(req.headers["x-twilio-signature"] || ""), want = sign(url, req.body as Record<string, string>);
-  if (given.length !== want.length || !timingSafeEqual(Buffer.from(given), Buffer.from(want))) throw new HttpError(403, "Invalid signature");
+  console.log("[sms] incoming from", String(req.body.From || ""), "body:", String(req.body.Body || "").slice(0, 40));
+  if (given.length !== want.length || !timingSafeEqual(Buffer.from(given), Buffer.from(want))) { console.error("[sms] REJECTED: signature mismatch. PUBLIC_URL used:", JSON.stringify(process.env.PUBLIC_URL || ""), "| signature header present:", !!given, "| check PUBLIC_URL and TWILIO_AUTH_TOKEN on Render"); throw new HttpError(403, "Invalid signature"); }
   const from = String(req.body.From || "").replace(/^whatsapp:/, ""), words = String(req.body.Body || "").trim().split(/\s+/);
   rl(`sms:${from}`, 20, 3600000);
   const ch = (await pool.query("select c.user_id, c.neighbourhood_id, m.display_name, n.center_lat, n.center_lng from channels c join members m on m.user_id = c.user_id and m.neighbourhood_id = c.neighbourhood_id join neighbourhoods n on n.id = c.neighbourhood_id where c.kind in ('sms', 'whatsapp') and c.target = $1 and c.verified order by c.created_at desc limit 1", [from])).rows[0];
