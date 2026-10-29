@@ -75,7 +75,7 @@ alter table audit_log enable row level security;
 create table if not exists channels (
   user_id uuid not null,
   neighbourhood_id text not null references neighbourhoods(id) on delete cascade,
-  kind text not null check (kind in ('push', 'email', 'sms', 'whatsapp')),
+  kind text not null check (kind in ('push', 'email', 'sms', 'whatsapp', 'telegram')),
   target text not null,
   verified boolean not null default true,
   code text,

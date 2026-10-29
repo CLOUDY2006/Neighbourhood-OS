@@ -19,7 +19,7 @@ import { getWorld, worldSnapshot } from "./world";
 import { capAlertsFor, capFeedCount, capSnapshot, getCap } from "./cap";
 import { buildComplaintEmail } from "../src/complaintMail";
 import { regionFor, suggestionsFor } from "../src/authorityDirectory";
-import { caps, notify, sendEmail, sendText, sign, twilioAuth, twilioReady, twilioToken } from "./notify";
+import { caps, notify, sendEmail, sendText, sign, tgApi, tgBot, tgSecret, tgSetup, tgToken, twilioAuth, twilioReady, twilioToken } from "./notify";
 import { DRAFT_MINUTES, MAX_PHOTO_BYTES, MSG, descOf, mergeDraft, missing, parseBody, sniff, stripJpegMetadata, titleOf, type Draft } from "./textReport";
 import { CAT_EN, understand } from "../src/agent";
 
@@ -589,8 +589,8 @@ app.get("/api/capabilities", ah(async (req, res) => {
   res.json({ ai: aiEnabled(), tinyfish: tfEnabled(), ...caps(), cap: capFeedCount() });
 }));
 
-const KINDS_CH = ["push", "email", "sms", "whatsapp"];
-const mask = (k: string, t: string) => (k === "push" ? "This device" : k === "email" ? t.replace(/^(.).*(@.*)$/, "$1***$2") : `***${t.slice(-4)}`);
+const KINDS_CH = ["push", "email", "sms", "whatsapp", "telegram"];
+const mask = (k: string, t: string) => (k === "push" ? "This device" : k === "telegram" ? "Telegram chat" : k === "email" ? t.replace(/^(.).*(@.*)$/, "$1***$2") : `***${t.slice(-4)}`);
 app.get("/api/n/:id/channels", ah(async (req, res) => {
   const u = await authenticate(req); const id = String(req.params.id);
   if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
@@ -615,6 +615,14 @@ app.post("/api/n/:id/channels/:kind", ah(async (req, res) => {
   if (kind === "email") {
     if (!caps().email) throw new HttpError(400, "Email is not set up on this server");
     await put(u.email, true, null); return res.json({ ok: true });
+  }
+  if (kind === "telegram") {
+    if (!caps().telegram) throw new HttpError(400, "Telegram is not set up on this server");
+    rl(`tgstart:${u.id}`, 10, 3600000);
+    const code = randomUUID().replace(/-/g, "").slice(0, 12);
+    await put("", false, code);
+    const bot = await tgBot().catch(() => { throw new HttpError(502, "Could not reach Telegram. Check the bot token"); });
+    return res.json({ link: `https://t.me/${bot}?start=${code}`, bot });
   }
   if (typeof b.phone === "string") {
     if (!/^\+[1-9]\d{7,14}$/.test(b.phone)) throw new HttpError(400, "Use the international format, for example +919876543210");
@@ -658,6 +666,20 @@ async function photoFromMessage(url: string, uid: string, nid: string): Promise<
   return (await pool.query("insert into photos (neighbourhood_id, user_id, mime, data) values ($1, $2, $3, $4) returning id", [nid, uid, `image/${kind}`, data])).rows[0].id;
 }
 
+/** Same checks as photoFromMessage, for a photo sent to the Telegram bot. */
+async function photoFromTelegram(fileId: string, uid: string, nid: string): Promise<string> {
+  rl(`photo:${uid}`, 30, 86400000);
+  const f = await tgApi("getFile", { file_id: fileId });
+  const r = await fetch(`https://api.telegram.org/file/bot${tgToken()}/${String(f.file_path)}`, { signal: AbortSignal.timeout(8000) });
+  if (!r.ok) throw new Error("Photo download failed");
+  const raw = Buffer.from(await r.arrayBuffer());
+  if (raw.length > MAX_PHOTO_BYTES) throw new Error("Photo too large");
+  const kind = sniff(raw);
+  if (!kind) throw new Error("Not a JPEG or PNG");
+  const data = kind === "jpeg" ? stripJpegMetadata(raw) : raw;
+  return (await pool.query("insert into photos (neighbourhood_id, user_id, mime, data) values ($1, $2, $3, $4) returning id", [nid, uid, `image/${kind}`, data])).rows[0].id;
+}
+
 const esc = (t: string) => t.replace(/[<>&]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" })[c]!);
 app.post("/api/sms", ah(async (req, res) => {
   const reply = (t: string) => { console.log("[sms] replying:", t.slice(0, 120)); return res.type("text/xml").send(`<Response><Message>${esc(t.slice(0, 450))}</Message></Response>`); };
@@ -666,9 +688,18 @@ app.post("/api/sms", ah(async (req, res) => {
   const url = `${(process.env.PUBLIC_URL || "").replace(/\/$/, "")}/api/sms`, given = String(req.headers["x-twilio-signature"] || ""), want = sign(url, req.body as Record<string, string>);
   console.log("[sms] incoming from", String(req.body.From || ""), "body:", String(req.body.Body || "").slice(0, 40));
   if (given.length !== want.length || !timingSafeEqual(Buffer.from(given), Buffer.from(want))) { console.error("[sms] REJECTED: signature mismatch. PUBLIC_URL used:", JSON.stringify(process.env.PUBLIC_URL || ""), "| signature header present:", !!given, "| check PUBLIC_URL and TWILIO_AUTH_TOKEN on Render"); throw new HttpError(403, "Invalid signature"); }
-  const from = String(req.body.From || "").replace(/^whatsapp:/, ""), words = String(req.body.Body || "").trim().split(/\s+/);
+  const from = String(req.body.From || "").replace(/^whatsapp:/, "");
+  const nMedia = Number.parseInt(String(req.body.NumMedia ?? "0"), 10) || 0, mUrl = nMedia > 0 ? String(req.body.MediaUrl0 ?? "") : "";
+  const lat = Number.parseFloat(String(req.body.Latitude ?? "")), lng = Number.parseFloat(String(req.body.Longitude ?? ""));
+  return inbound({ from, kinds: ["sms", "whatsapp"], channel: String(req.body.From || "").startsWith("whatsapp:") ? "WhatsApp" : "SMS", body: String(req.body.Body || ""), lat: Number.isFinite(lat) ? lat : undefined, lng: Number.isFinite(lng) ? lng : undefined, media: mUrl ? (uid, nid) => photoFromMessage(mUrl, uid, nid) : undefined }, reply);
+}));
+
+type Inbound = { from: string; kinds: string[]; channel: "WhatsApp" | "SMS" | "Telegram"; body: string; lat?: number; lng?: number; media?: (uid: string, nid: string) => Promise<string> };
+/** Shared by Twilio (SMS, WhatsApp) and Telegram: the same report-by-message conversation. */
+async function inbound(m: Inbound, reply: (t: string) => unknown): Promise<unknown> {
+  const from = m.from, words = m.body.trim().split(/\s+/);
   rl(`sms:${from}`, 20, 3600000);
-  const ch = (await pool.query("select c.user_id, c.neighbourhood_id, m.display_name, n.center_lat, n.center_lng from channels c join members m on m.user_id = c.user_id and m.neighbourhood_id = c.neighbourhood_id join neighbourhoods n on n.id = c.neighbourhood_id where c.kind in ('sms', 'whatsapp') and c.target = $1 and c.verified order by c.created_at desc limit 1", [from])).rows[0];
+  const ch = (await pool.query("select c.user_id, c.neighbourhood_id, m.display_name, n.center_lat, n.center_lng from channels c join members m on m.user_id = c.user_id and m.neighbourhood_id = c.neighbourhood_id join neighbourhoods n on n.id = c.neighbourhood_id where c.kind = any($2) and c.target = $1 and c.verified order by c.created_at desc limit 1", [from, m.kinds])).rows[0];
   if (!ch) return reply("This number is not linked. Link it in NEIGHBOURHOOD OS under Account, Notifications.");
   const actor: Actor = { id: ch.user_id, handle: ch.display_name, platformAdmin: false }, cmd = (words[0] || "").toUpperCase();
   try {
@@ -683,18 +714,18 @@ app.post("/api/sms", ah(async (req, res) => {
     if (cmd === "STATUS") { const n = (await pool.query("select doc, center_lat, center_lng, radius_m from neighbourhoods where id = $1", [ch.neighbourhood_id])).rows[0]; const al = alertsOf(n).filter(a => SEV_RANK[a.sev] >= 2); return reply(`${n.doc.issues.filter((i: any) => i.status !== "resolved" && !i.hidden).length} open issues. ${al.length ? `ALERT: ${al[0].title}` : "No official alerts."}`); }
 
     // ---- Reporting a problem by message: a description, a place and an optional photo, in any order
-    const channel = String(req.body.From || "").startsWith("whatsapp:") ? "WhatsApp" : "SMS";
-    const pin = { lat: Number.parseFloat(String(req.body.Latitude ?? "")), lng: Number.parseFloat(String(req.body.Longitude ?? "")) };
+    const channel = m.channel;
+    const pin = { lat: m.lat ?? NaN, lng: m.lng ?? NaN };
     const hasPin = Number.isFinite(pin.lat) && Number.isFinite(pin.lng);
-    const mediaUrl = (Number.parseInt(String(req.body.NumMedia ?? "0"), 10) || 0) > 0 ? String(req.body.MediaUrl0 ?? "") : "";
-    const parsed = parseBody(hasPin ? "" : String(req.body.Body || "")); // a shared pin's label is not a description
+    const mediaUrl = m.media;
+    const parsed = parseBody(hasPin ? "" : m.body); // a shared pin's label is not a description
     if (parsed.cmd === "help" && !hasPin && !mediaUrl) return reply(MSG.help);
     const key = [ch.user_id, ch.neighbourhood_id];
     if (parsed.cmd === "cancel") { await pool.query("delete from text_drafts where user_id = $1 and neighbourhood_id = $2", key); return reply(MSG.cancelled); }
     const row = (await pool.query("select text, photo::text as photo, lat, lng, approx from text_drafts where user_id = $1 and neighbourhood_id = $2 and created_at > now() - make_interval(mins => $3)", [...key, DRAFT_MINUTES])).rows[0];
     const prev: Draft | null = row ? { text: row.text ?? undefined, photo: row.photo ?? undefined, lat: row.lat ?? undefined, lng: row.lng ?? undefined, approx: !!row.approx } : null;
     let photoNote = "", photo: string | undefined;
-    if (mediaUrl) { try { photo = await photoFromMessage(mediaUrl, ch.user_id, ch.neighbourhood_id); } catch (e) { console.warn("Photo from message skipped:", (e as Error).message); photoNote = MSG.photoSkipped; } }
+    if (mediaUrl) { try { photo = await m.media!(ch.user_id, ch.neighbourhood_id); } catch (e) { console.warn("Photo from message skipped:", (e as Error).message); photoNote = MSG.photoSkipped; } }
     const draft = mergeDraft(prev, { text: parsed.text, photo, lat: hasPin ? pin.lat : parsed.lat, lng: hasPin ? pin.lng : parsed.lng, centre: parsed.cmd === "centre" }, { lat: ch.center_lat, lng: ch.center_lng });
     const save = (d: Draft) => pool.query("insert into text_drafts (user_id, neighbourhood_id, text, photo, lat, lng, approx, created_at) values ($1, $2, $3, $4, $5, $6, $7, now()) on conflict (user_id, neighbourhood_id) do update set text = $3, photo = $4, lat = $5, lng = $6, approx = $7, created_at = now()", [...key, d.text ?? null, d.photo ?? null, d.lat ?? null, d.lng ?? null, !!d.approx]);
     const need = missing(draft);
@@ -715,7 +746,35 @@ app.post("/api/sms", ah(async (req, res) => {
       return reply(`${e instanceof HttpError || e instanceof Error ? e.message : "Something went wrong"}. Send your location again, or CANCEL.`);
     }
   } catch (e) { console.error("[sms] handler error:", (e as Error)?.message); return reply(e instanceof HttpError ? e.message : "Something went wrong. Try again."); }
-}));
+}
+
+/** Telegram webhook. Telegram calls it with every message sent to the bot (registered by tgSetup at startup). */
+const tgText = (t: string) => t.replace(/WhatsApp: tap \+ then Location\. SMS: paste a map link or type CENTRE( to use the neighbourhood centre)?\./, "Telegram: tap the paperclip, then Location, or type CENTRE to use the neighbourhood centre.");
+app.post("/api/telegram", async (req, res) => {
+  try {
+    if (!tgToken()) return res.sendStatus(503);
+    if (String(req.headers["x-telegram-bot-api-secret-token"] || "") !== tgSecret()) { console.error("[tg] REJECTED: wrong secret header"); return res.sendStatus(403); }
+    const msg = req.body?.message;
+    if (!msg?.chat?.id || msg.chat.type !== "private") return res.json({});
+    const chatId = String(msg.chat.id);
+    const reply = (t: string) => { console.log("[tg] replying:", t.slice(0, 120)); return res.json({ method: "sendMessage", chat_id: msg.chat.id, text: tgText(t).slice(0, 3500) }); };
+    const text = String(msg.text ?? msg.caption ?? "").trim();
+    console.log("[tg] incoming from chat", chatId, "text:", text.slice(0, 40));
+    const start = /^\/start(?:@\w+)?(?:\s+(\w+))?$/.exec(text);
+    if (start) {
+      if (!start[1]) return reply("Hello! To link this chat, open NEIGHBOURHOOD OS, go to Account, Notifications, and press Link Telegram.");
+      const r = await pool.query("update channels set target = $1, verified = true, code = null where kind = 'telegram' and not verified and code = $2 and code_at > now() - interval '10 minutes' returning user_id", [chatId, start[1]]);
+      return reply(r.rowCount ? "Linked. You can now report a problem here: send a short description (and a photo if you can), then share your location. Send HELP for the steps." : "That link has expired or was already used. Press Link Telegram in the app again.");
+    }
+    const photos = Array.isArray(msg.photo) ? (msg.photo as { file_id: string; file_size?: number }[]).filter(p => (p.file_size ?? 0) <= MAX_PHOTO_BYTES) : [];
+    const fileId = photos.length ? photos[photos.length - 1].file_id : "";
+    const loc = msg.location as { latitude?: number; longitude?: number } | undefined;
+    await inbound({ from: chatId, kinds: ["telegram"], channel: "Telegram", body: text.replace(/^\/(\w+)(@\w+)?/, "$1"), lat: loc?.latitude, lng: loc?.longitude, media: fileId ? (uid, nid) => photoFromTelegram(fileId, uid, nid) : undefined }, reply);
+  } catch (e) {
+    console.error("[tg] handler error:", (e as Error)?.message);
+    if (!res.headersSent) res.json({}); // always answer 200 so Telegram does not keep retrying
+  }
+});
 
 app.post("/api/n/:id/agent/analyze", ah(async (req, res) => {
   const u = await authenticate(req); const id = String(req.params.id);
@@ -994,6 +1053,23 @@ async function ensureSchema() {
       update members set role = 'resident' where role in ('volunteer', 'moderator');
     `);
   } catch (e) { console.error("Schema check failed. Run database/schema.sql in the Supabase SQL editor:", (e as Error).message); }
+  // Messaging tables and the Telegram channel kind (kept apart so a problem above cannot block them)
+  try {
+    await pool.query(`
+      create table if not exists text_drafts (
+        user_id uuid not null,
+        neighbourhood_id text not null references neighbourhoods(id) on delete cascade,
+        text text, photo uuid, lat double precision, lng double precision,
+        approx boolean not null default false,
+        created_at timestamptz not null default now(),
+        primary key (user_id, neighbourhood_id)
+      );
+      alter table text_drafts enable row level security;
+      alter table channels drop constraint if exists channels_kind_check;
+      alter table channels add constraint channels_kind_check check (kind in ('push', 'email', 'sms', 'whatsapp', 'telegram'));
+      create index if not exists channels_tg_idx on channels (target) where kind = 'telegram';
+    `);
+  } catch (e) { console.error("Messaging schema check failed. Run database/add-telegram.sql in the Supabase SQL editor:", (e as Error).message); }
 }
 void ensureSchema();
-app.listen(PORT, () => console.log(`API on http://localhost:${PORT} · AI: ${aiLabel()} · TinyFish: ${tfLabel()}${existsSync(dist) ? " · serving built app" : ""}`));
+app.listen(PORT, () => { void tgSetup(); console.log(`API on http://localhost:${PORT} · AI: ${aiLabel()} · TinyFish: ${tfLabel()}${existsSync(dist) ? " · serving built app" : ""}`); });

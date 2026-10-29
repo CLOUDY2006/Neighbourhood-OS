@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import nodemailer from "nodemailer";
 import webpush from "web-push";
 import { pool } from "./db";
@@ -8,7 +8,33 @@ if (VAPID.pub && VAPID.priv) webpush.setVapidDetails(process.env.VAPID_SUBJECT |
 const mailer = process.env.SMTP_URL ? nodemailer.createTransport(process.env.SMTP_URL) : null;
 const TW = { sid: process.env.TWILIO_ACCOUNT_SID, token: process.env.TWILIO_AUTH_TOKEN, from: process.env.TWILIO_FROM, wa: process.env.TWILIO_WHATSAPP_FROM };
 
-export const caps = () => ({ push: VAPID.pub && VAPID.priv ? VAPID.pub : null, email: !!mailer, sms: !!(TW.sid && TW.token && TW.from), whatsapp: !!(TW.sid && TW.token && TW.wa) });
+const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+export const caps = () => ({ push: VAPID.pub && VAPID.priv ? VAPID.pub : null, email: !!mailer, sms: !!(TW.sid && TW.token && TW.from), whatsapp: !!(TW.sid && TW.token && TW.wa), telegram: !!TG_TOKEN });
+
+// ---- Telegram (free, no templates: the bot can message anyone who pressed Start)
+export const tgToken = () => TG_TOKEN;
+/** The secret Telegram sends back with every update, so only Telegram can call our webhook. */
+export const tgSecret = () => createHash("sha256").update(`tg:${TG_TOKEN ?? ""}`).digest("hex").slice(0, 48);
+export async function tgApi(method: string, body: Record<string, unknown>): Promise<any> {
+  if (!TG_TOKEN) throw new Error("Telegram is not configured on this server");
+  const r = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/${method}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
+  const j = (await r.json().catch(() => ({}))) as { ok?: boolean; result?: unknown; description?: string };
+  if (!r.ok || !j.ok) throw new Error(`Telegram ${method} failed: ${j.description ?? r.status}`);
+  return j.result;
+}
+export const tgSend = (chatId: string, text: string) => tgApi("sendMessage", { chat_id: chatId, text: text.slice(0, 3500) });
+let botName: string | null = null;
+export async function tgBot(): Promise<string> { if (!botName) botName = String((await tgApi("getMe", {})).username); return botName; }
+/** Called once at startup: points Telegram at this server. Needs PUBLIC_URL. */
+export async function tgSetup() {
+  if (!TG_TOKEN) return;
+  const base = (process.env.PUBLIC_URL || "").replace(/\/$/, "");
+  if (!base) { console.warn("[tg] TELEGRAM_BOT_TOKEN is set but PUBLIC_URL is empty, so the webhook was not registered"); return; }
+  try {
+    await tgApi("setWebhook", { url: `${base}/api/telegram`, secret_token: tgSecret(), allowed_updates: ["message"] });
+    console.log("[tg] webhook set to", `${base}/api/telegram`, "bot:", await tgBot());
+  } catch (e) { console.error("[tg] setup failed:", (e as Error).message); }
+}
 export const twilioReady = () => !!(TW.sid && TW.token);
 export const twilioToken = () => TW.token;
 /** Basic-auth header for downloading a photo a person sent to the Twilio number. */
@@ -54,6 +80,7 @@ export async function notify(nid: string, who: "all" | "admins" | { name: string
       try {
         if (c.kind === "push") await webpush.sendNotification(JSON.parse(c.target), JSON.stringify({ title: msg.title, body: msg.body.slice(0, 160), url: "/" }));
         else if (c.kind === "email") await sendEmail(c.target, msg.title, msg.body);
+        else if (c.kind === "telegram") await tgSend(c.target, `${msg.title}\n${msg.body}`);
         else if (c.kind === "sms" || c.kind === "whatsapp") await sendText(c.target, `${msg.title}: ${msg.body}`, c.kind === "whatsapp");
       } catch (e) {
         const code = (e as { statusCode?: number }).statusCode;

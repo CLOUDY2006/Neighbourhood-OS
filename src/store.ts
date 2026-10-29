@@ -368,7 +368,7 @@ export const authorityRemove = (id: string) => dispatch({ t: "authorityRemove", 
 export const handoff = (id: string, authorityId: string, ref: string) => dispatch({ t: "handoff", id, authorityId, ref });
 export const handoffStatus = (id: string, status: L.Handoff["status"], ref?: string) => dispatch({ t: "handoffStatus", id, status, ref });
 
-export interface Caps { ai: boolean; tinyfish?: boolean; push: string | null; email: boolean; sms: boolean; whatsapp: boolean; cap: number }
+export interface Caps { ai: boolean; tinyfish?: boolean; push: string | null; email: boolean; sms: boolean; whatsapp: boolean; telegram?: boolean; cap: number }
 export interface Chan { kind: string; target: string; verified: boolean }
 export const capabilities = () => api<Caps>("/api/capabilities");
 export const channels = () => api<Chan[]>(`/api/n/${enc(app.nbhd!.id)}/channels`);

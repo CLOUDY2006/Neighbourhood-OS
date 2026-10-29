@@ -71,7 +71,7 @@ export function titleOf(text: string) {
 }
 
 /** The description saved with the report. Says so when the place is only the neighbourhood centre. */
-export const descOf = (d: Draft, channel: "WhatsApp" | "SMS") =>
+export const descOf = (d: Draft, channel: "WhatsApp" | "SMS" | "Telegram") =>
   `${d.text ?? ""}\n\n[Sent by ${channel}.${d.approx ? " The exact spot was not shared, so the pin is at the neighbourhood centre. Please confirm the location." : ""}]`.slice(0, 1000);
 
 // ---- what we say back (short, because SMS is short)

@@ -21,7 +21,7 @@ export function AccessSettings() {
 
 export function NotifySettings({ act }: { act: Act }) {
   const [caps, setCaps] = useState<S.Caps | null>(null), [ch, setCh] = useState<S.Chan[]>([]);
-  const [phone, setPhone] = useState({ sms: "", whatsapp: "" }), [code, setCode] = useState({ sms: "", whatsapp: "" }), [sent, setSent] = useState<Record<string, boolean>>({});
+  const [tgLink, setTgLink] = useState(""), [phone, setPhone] = useState({ sms: "", whatsapp: "" }), [code, setCode] = useState({ sms: "", whatsapp: "" }), [sent, setSent] = useState<Record<string, boolean>>({});
   const load = () => { S.capabilities().then(setCaps).catch(() => setCaps(null)); S.channels().then(setCh).catch(() => setCh([])); };
   useEffect(load, []);
   const has = (k: string) => ch.find(c => c.kind === k);
@@ -41,6 +41,23 @@ export function NotifySettings({ act }: { act: Act }) {
       </div>
     );
   };
+  const telegramRow = (ok: boolean) => {
+    const c = has("telegram");
+    return (
+      <div className="form" key="telegram">
+        <b>Telegram</b>
+        {!ok && <small className="dim">Not set up on this server.</small>}
+        {ok && c?.verified && <div className="row between"><span>Linked</span><button onClick={() => act(async () => { await S.removeChannel("telegram"); setTgLink(""); load(); }, "Removed")}>Remove</button></div>}
+        {ok && !c?.verified && (
+          <>
+            <button onClick={() => act(async () => { const r = (await S.setChannel("telegram", { start: true })) as unknown as { link: string }; setTgLink(r.link); load(); }, "Link ready")}>Link Telegram</button>
+            {tgLink && <small className="dim">Open <a href={tgLink} target="_blank" rel="noreferrer">{tgLink}</a>, press Start in Telegram, then press Check.</small>}
+            {tgLink && <button onClick={load}>Check</button>}
+          </>
+        )}
+      </div>
+    );
+  };
   return (
     <div className="card">
       <b>Notifications</b>
@@ -55,7 +72,8 @@ export function NotifySettings({ act }: { act: Act }) {
               : <button disabled={!caps.email} onClick={() => act(async () => { await S.setChannel("email"); load(); }, "Turned on")}>{caps.email ? "Turn on" : "Not set up"}</button>}</div>
           {phoneRow("sms", "Text message (SMS)", caps.sms)}
           {phoneRow("whatsapp", "WhatsApp", caps.whatsapp)}
-          {(caps.sms || caps.whatsapp) && <small className="dim">Once linked you can report a problem by message: send a short description (and a photo if you can), then share your location. On WhatsApp tap + then Location. On SMS paste a map link or send CENTRE. You can also send STATUS to hear about your reports, or FIXED or NOT FIXED when you are asked whether a problem was fixed.</small>}
+          {telegramRow(!!caps.telegram)}
+          {(caps.sms || caps.whatsapp || caps.telegram) && <small className="dim">Once linked you can report a problem by message: send a short description (and a photo if you can), then share your location. On WhatsApp tap + then Location. On SMS paste a map link or send CENTRE. You can also send STATUS to hear about your reports, or FIXED or NOT FIXED when you are asked whether a problem was fixed.</small>}
           {caps.cap > 0 ? <small className="dim">{caps.cap} official alert feed(s) are connected for this server.</small> : <small className="dim">No national alert feed is connected on this server yet.</small>}
         </>
       )}
