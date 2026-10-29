@@ -3,7 +3,6 @@ import { Flag, MapPin } from "lucide-react";
 import * as S from "./store";
 import { useT } from "./i18n";
 import { AgentPanel } from "./AgentPanel";
-import { PlanSheet, PlanSummary, printPlan } from "./PlanSheet";
 import { HandoffBox } from "./Reports";
 import { ago, grp, VL, type Act } from "./ui";
 import { osmLink } from "./geo";
@@ -122,9 +121,9 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
   const [note, setNote] = useState(""), [photo, setPhoto] = useState<string>(), [prev, setPrev] = useState<string>();
   const [up, setUp] = useState({ text: "", photo: undefined as string | undefined });
   const [reason, setReason] = useState(""), [fb, setFb] = useState(""), [rnote, setRnote] = useState(""), [askSpam, setAskSpam] = useState(false);
-  const m = st.missions.find(x => x.id === i.missionId), mine = i.author === me;
+  const mine = i.author === me;
   const next = S.STATUSES[S.STATUSES.indexOf(i.status) + 1], idx = S.STATUSES.indexOf(i.status);
-  const ps = S.priorityScore(st, i), plan = S.actionPlan(st, i), after = S.afterPhoto(i);
+  const ps = S.priorityScore(st, i), after = S.afterPhoto(i);
   const fbs = Object.values(i.feedback ?? {}), good = fbs.filter(f => f.ok).length, bad = fbs.length - good;
   const hasMore = (S.can(r, "flag") && i.status !== "resolved") || (mine && i.status === "reported" && !i.hidden) || (S.can(r, "verify") && i.status !== "resolved" && i.verif !== "disputed") || S.can(r, "hide");
   const hasVol = r === "admin" || !!i.handoff;
@@ -288,16 +287,6 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
       )}
 
       <AgentPanel i={i} st={st} act={act} />
-
-      <details className="card">
-        <summary>{t("Action plan")} &middot; {plan.progress.done}/{plan.progress.total} {t("steps done")}</summary>
-        <PlanSummary plan={plan} />
-        <small className="dim">{t("This plan is a suggestion built from fixed rules. A coordinator approves it before anything happens.")}</small>
-        <div className="row wrap">
-          <button onClick={printPlan}>{t("Print or save as PDF")}</button>
-        </div>
-      </details>
-      <PlanSheet plan={plan} issue={i} photo={i.photo ? <Photo src={i.photo} alt="Before photo" /> : undefined} />
 
       <details className="fold">
         <summary>{ps.level === "resolved" ? t("Priority details") : `${t("How urgent")}: ${ps.level} (${ps.score}/100)`}</summary>

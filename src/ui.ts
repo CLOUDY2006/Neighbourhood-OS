@@ -8,4 +8,4 @@ export const ago = (t: number) => {
 export const label = (s: string) => s.replace(/_/g, " ");
 export const grp = (s: Status) => (s === "resolved" ? "green" : s === "assigned" || s === "progress" || s === "pending" ? "amber" : "red");
 export const VL: Record<Verif, string> = { unverified: "Unverified", review: "Under review", verified: "Verified by coordinator", disputed: "Disputed", resolved: "Resolved" };
-export const RL: Record<Role, string> = { resident: "Resident", volunteer: "Volunteer", moderator: "Moderator", admin: "Coordinator" };
+export const RL: Record<Role, string> = { resident: "Resident", admin: "Coordinator" };

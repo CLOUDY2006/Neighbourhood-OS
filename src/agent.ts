@@ -85,22 +85,9 @@ export function draftComplaint(a: DraftInput): { subject: string; body: string }
   return { subject: `${CAT_EN[a.cat]} at ${a.nbhd}${a.level > 0 ? " (follow-up)" : ""}`, body: lines.join("\n") };
 }
 
-export function proposeMission(i: Pick<Issue, "cat" | "title">) {
-  const short = i.title.length > 50 ? i.title.slice(0, 49) + "…" : i.title;
-  switch (i.cat) {
-    case "garbage": return { title: `Community cleanup: ${short}`, need: 6, safety: "Bring gloves and bags. Do not handle sharp, medical or chemical waste." };
-    case "water": return { title: `Follow-up crew: ${short}`, need: 2, safety: "Do not touch pipes or valves. Document the problem and follow up with the water department." };
-    case "streetlight": return { title: `Follow-up crew: ${short}`, need: 2, safety: "Never touch electrical equipment. Document and follow up with the department." };
-    case "pothole": return { title: `Follow-up crew: ${short}`, need: 2, safety: "Place a visible warning only if it is safe to do so." };
-    case "blocked": return { title: `Follow-up crew: ${short}`, need: 2, safety: "Do not try to move large objects such as trees. Warn others from a safe distance and contact the authority." };
-    case "unsafe": return { title: `Follow-up crew: ${short}`, need: 2, safety: "Keep people away from the hazard and contact the authority. Do not try to repair it." };
-    default: return { title: `Community follow-up: ${short}`, need: 3, safety: "Stay safe and follow the coordinator's instructions." };
-  }
-}
-
 export interface Step { id: string; label: string; done: boolean; note?: string }
 export function workflow(d: Doc, i: Issue) {
-  const a = i.agent, m = d.missions.find(x => x.id === i.missionId), sent = !!a && a.history.length > 0;
+  const a = i.agent, sent = !!a && a.history.length > 0;
   const steps: Step[] = [
     { id: "understood", label: "Report understood", done: !!a, note: a ? `${a.lang === "hi" ? "Hindi" : a.lang === "en" ? "English" : "Other language"}, ${a.source}` : undefined },
     { id: "dups", label: "Duplicates checked", done: !!a, note: i.reports > 1 ? `${i.reports} reports merged` : "No duplicates" },
@@ -109,8 +96,6 @@ export function workflow(d: Doc, i: Issue) {
     { id: "approved", label: "Approved by a person", done: !!a && (!!a.draft.approvedAt || sent) },
     { id: "sent", label: "Sent to the authority", done: sent, note: sent ? a!.history[a!.history.length - 1].to : undefined },
     { id: "ref", label: "Reference number received", done: !!i.handoff?.ref, note: i.handoff?.ref || undefined },
-    { id: "mission", label: "Community mission created", done: !!m, note: m?.title },
-    { id: "volunteers", label: "Volunteers joined", done: !!m && m.joined.length >= 1, note: m ? `${m.joined.length} of ${m.need}` : undefined },
     { id: "proof", label: "Proof of fix uploaded", done: i.proof.length > 0 },
     { id: "verified", label: "Verified resolved", done: i.status === "resolved" && i.verif === "resolved" },
   ];

@@ -139,7 +139,7 @@ export function AlertBanner({ alerts, onWorld }: { alerts: S.Alert[]; onWorld: (
           {a.instruction && <p className="pre">{a.instruction}</p>}
         </div>
       ))}
-      {official && <p>{t("Follow your national authorities. If anyone is in danger, call your local emergency number first. Crisis Mode is on: use the SOS tab if you need help and the Resources tab to find shelters.")}</p>}
+      {official && <p>{t("Follow your national authorities. If anyone is in danger, call your local emergency number first. Crisis Mode is on: keep reporting problems on the map and check the notices and chat for updates.")}</p>}
       <button onClick={onWorld}>{t("See on the world map")}</button>
     </div>
   );

@@ -44,7 +44,7 @@ export function NotifySettings({ act }: { act: Act }) {
   return (
     <div className="card">
       <b>Notifications</b>
-      <small className="dim">Choose how to hear about alerts, SOS assignments, check-ins and urgent notices for this neighbourhood.</small>
+      <small className="dim">Choose how to hear about updates on reports, urgent notices and chat messages that were hidden in this neighbourhood.</small>
       {caps && (
         <>
           <div className="row between"><span>Push on this device</span>
@@ -55,23 +55,11 @@ export function NotifySettings({ act }: { act: Act }) {
               : <button disabled={!caps.email} onClick={() => act(async () => { await S.setChannel("email"); load(); }, "Turned on")}>{caps.email ? "Turn on" : "Not set up"}</button>}</div>
           {phoneRow("sms", "Text message (SMS)", caps.sms)}
           {phoneRow("whatsapp", "WhatsApp", caps.whatsapp)}
-          {(caps.sms || caps.whatsapp) && <small className="dim">Once linked you can text this service: SAFE, NEED HELP, STATUS, or SOS followed by medical, rescue, shelter or food, the number of people and where you are. Texting SOS shares your phone number with coordinators until the request is closed.</small>}
+          {(caps.sms || caps.whatsapp) && <small className="dim">Once linked you can text this service: STATUS to hear about your reports, or FIXED or NOT FIXED when you are asked whether a problem was fixed.</small>}
           {caps.cap > 0 ? <small className="dim">{caps.cap} official alert feed(s) are connected for this server.</small> : <small className="dim">No national alert feed is connected on this server yet.</small>}
         </>
       )}
       {!caps && <small className="dim">Loading…</small>}
-    </div>
-  );
-}
-
-export function MyImpact({ st }: { st: S.State }) {
-  const s = S.myStats(st, S.myName()), got = S.BADGES.filter(b => b.test(s));
-  return (
-    <div className="card">
-      <b>My impact</b>
-      <small className="dim">Counts only reports that a coordinator verified and fixes that were completed, so spam does not earn anything.</small>
-      <p>{s.reports} verified reports · {s.confirms} confirmations · {s.proofs} proofs of fix · {s.missions} missions · {s.sos} people helped · {s.shares} exchanges</p>
-      <div className="skills">{got.map(b => <span key={b.id} className="chip sel">{b.label}</span>)}{!got.length && <small className="dim">No badges yet.</small>}</div>
     </div>
   );
 }

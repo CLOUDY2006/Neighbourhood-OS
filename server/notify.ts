@@ -38,11 +38,11 @@ const allowed = (key: string, urgent?: boolean) => {
   a.push(now); sentLog.set(key, a); return true;
 };
 
-export async function notify(nid: string, who: "all" | "admins" | "reviewers" | { name: string }, msg: Msg) {
+export async function notify(nid: string, who: "all" | "admins" | { name: string }, msg: Msg) {
   try {
     const r = await pool.query("select c.user_id, c.kind, c.target, m.display_name, m.role from channels c join members m on m.user_id = c.user_id and m.neighbourhood_id = c.neighbourhood_id where c.neighbourhood_id = $1 and c.verified", [nid]);
     for (const c of r.rows) {
-      if (who === "admins" ? c.role !== "admin" : who === "reviewers" ? c.role !== "admin" && c.role !== "moderator" : typeof who === "object" ? c.display_name !== who.name : false) continue;
+      if (who === "admins" ? c.role !== "admin" : typeof who === "object" ? c.display_name !== who.name : false) continue;
       if (msg.kinds && !msg.kinds.includes(c.kind)) continue;
       if (!allowed(`${c.user_id}:${nid}`, msg.urgent)) continue;
       try {

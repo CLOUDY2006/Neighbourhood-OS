@@ -135,7 +135,7 @@ export function AgentPanel({ i, st, act }: { i: S.Issue; st: S.State; act: Act }
     return (
       <div className="card">
         <b>{t("AI agent")}</b>
-        <small className="dim">The agent understands the report, picks the complaint route, drafts the complaint, and suggests a community mission. You approve every step.</small>
+        <small className="dim">The agent understands the report, picks the complaint route, and drafts the complaint. You approve every step.</small>
         <button className="go" onClick={() => act(async () => {
           const text = `${i.title}. ${i.desc}`, an = await S.agentAnalyze(text);
           await S.agentStart(i.id, an.lang, text, an.summaryEn, an.source);
@@ -146,7 +146,7 @@ export function AgentPanel({ i, st, act }: { i: S.Issue; st: S.State; act: Act }
 
   const w = S.workflow(st, i), route = S.routeFor(i.cat), d = a.draft, sent = !!d.sentAt, approved = !!d.approvedAt;
   const last = a.history[a.history.length - 1], pending = !!last && d.level > last.level && !resolved;
-  const next = route.ladder[d.level], mp = S.proposeMission(i), m = st.missions.find(x => x.id === i.missionId);
+  const next = route.ladder[d.level];
   const text = `${ed?.subject ?? d.subject}\n\n${ed?.body ?? d.body}`;
   const needsAction = !resolved && ((owns && !sent) || pending);
 
@@ -212,14 +212,6 @@ export function AgentPanel({ i, st, act }: { i: S.Issue; st: S.State; act: Act }
       {sent && admin && !resolved && !pending && next && <button onClick={() => act(() => S.agentEscalate(i.id), "Escalation draft prepared")}>{t("Prepare escalation now")}</button>}
       {resolved && pending && <small className="dim">The issue was resolved, so the escalation is not needed.</small>}
 
-      {admin && !m && !resolved && (
-        <div className="card">
-          <b>{t("Suggested mission")}</b>
-          <p>{mp.title} · {mp.need} volunteers</p>
-          <small className="dim">{mp.safety}</small>
-          <button onClick={() => act(() => S.mission(mp.title, mp.need, i.id), "Mission created")}>{t("Create this mission")}</button>
-        </div>
-      )}
       <small className="dim">Prepared {ago(a.created)} · {a.source === "ai" ? "AI-assisted" : a.source === "scripted" ? "simulated demo" : "rule-based"}. Drafts are suggestions and can be edited.</small>
       </div>
     </details>

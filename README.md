@@ -2,7 +2,7 @@
 
 **Every neighbourhood, live in 3D. Report it. Fix it. Prove it.**
 
-NEIGHBOURHOOD OS is a civic community platform. Each neighbourhood gets its own live 3D isometric map, built from real OpenStreetMap streets and buildings. Residents pin problems on it (a pothole, overflowing garbage, a broken streetlight), neighbors confirm them, coordinators verify and assign them, volunteers fix them, and proof of the fix goes back on the map. When an official hazard alert covers the area, the same map switches into Crisis Mode with safety check-ins and consent-based SOS requests.
+NEIGHBOURHOOD OS is a civic community platform. Each neighbourhood gets its own live 3D isometric map, built from real OpenStreetMap streets and buildings. Residents pin problems on it (a pothole, overflowing garbage, a broken streetlight), neighbors confirm them, coordinators verify them and see the fix through, and proof of the fix goes back on the map. When an official hazard alert covers the area, the same map switches into Crisis Mode. There are two roles: residents and coordinators.
 
 It is built with India in mind (English and Hindi, Indian complaint routes and government sites), and works anywhere OpenStreetMap has data.
 
@@ -29,9 +29,9 @@ It is built with India in mind (English and Hindi, Indian complaint routes and g
 
 1. **Report.** A resident clicks the map and types or speaks a short description in English or Hindi. They pick a category and can add a photo. Similar reports nearby are shown, so duplicates get merged instead of piling up.
 2. **Confirm.** Neighbors press "I see this too". Three spam flags from neighbors hide a report until a coordinator reviews it.
-3. **Verify and assign.** Only a human coordinator or moderator can mark a report verified. They approve an action plan, which creates a community mission, and assign volunteers.
-4. **Fix.** Volunteers join the mission and post proof, either a photo or a note.
-5. **Prove.** The person who reported the problem confirms the fix, or a second reviewer approves it. A before-and-after slider goes on the issue and the pin turns green.
+3. **Verify.** Only a human coordinator can mark a report verified. They take it on, send the complaint to the right office and move it through the steps.
+4. **Fix.** The coordinator posts proof of the fix, either a photo or a note.
+5. **Prove.** The person who reported the problem confirms the fix, or a second coordinator approves it. A before-and-after slider goes on the issue and the pin turns green.
 
 Alongside the loop, an **AI agent** turns each report into a complaint addressed to the right local authority. A **TinyFish web agent** checks that route against the city's official websites. Nothing is sent without a person approving it.
 
@@ -47,45 +47,30 @@ Alongside the loop, an **AI agent** turns each report into a complaint addressed
 | Area                        | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Landing and sign-in         | Public landing page at `/` with a live 3D city, the five-step loop and a "Find your city's real complaint page" box. Sign-in and neighbourhood picker at `/signin`, which shows how many people have joined each neighbourhood and how many coordinator spots are left.                                                                                                                                                                                                    |
-| Live 3D map                 | Real OpenStreetMap roads, buildings, parks and water drawn as an isometric city, with moving cars and a night look in dark mode. Housing society names appear as soft labels, and a "Near …" chip names the closest one. 3D, Flat and List views. You can rotate and tilt the camera, search for issues, missions and resources, and switch on a priority heatmap, the volunteer overlay, a "Then vs now" slider and "You are here". The real map loads in the background. |
+| Live 3D map                 | Real OpenStreetMap roads, buildings, parks and water drawn as an isometric city, with moving cars and a night look in dark mode. Housing society names appear as soft labels, and a "Near …" chip names the closest one. 3D, Flat and List views. You can rotate and tilt the camera, search for issues, and switch on a priority heatmap, a "Then vs now" slider and "You are here". The real map loads in the background. |
 | Issues                      | Seven categories (pothole, garbage, streetlight, water, unsafe, blocked road, other). Six stages from Reported to Resolved, with one guided next-step button per stage. A priority score out of 100 that lists its reasons. Duplicate detection and spam handling.                                                                                                                                                                                                         |
 | AI agent                    | Understands the report (language, category, priority, English summary), picks the complaint route, drafts the complaint in English or Hindi, waits for approval, records reference numbers and prepares escalations. Falls back to simple rules without an API key.                                                                                                                                                                                                        |
 | TinyFish web agent          | "Verify this route" finds a city's official complaint pages, helplines and trackers from live web pages. "Check status" sends a read-only agent to a public complaint tracker. "Find your ward councillor" looks up the area's ward and councillor on the city corporation's website.                                                                                                                                                                                                                                                                                             |
-| Missions and volunteers     | Missions with a meeting spot on the map, their own pin, progress and volunteer hours. Volunteer skills, availability and emergency abilities. Suggested volunteers for each issue.                                                                                                                                                                                                                                                                                         |
-| Coordinator ranking         | A Coordinators tab, open to every member, ranks the neighbourhood's coordinators and moderators each month by verified work, using fixed point rules shown on the tab.                                                                                                                                                                                                                                                                                                     |
-| Resources and exchange      | Shelters, water points, aid posts and equipment, with shortage flags. Neighbor offers and requests with a message thread.                                                                                                                                                                                                                                                                                                                                                  |
-| Neighbourhood chat          | Chat rooms that belong to one neighbourhood: one for everyone, one for volunteers and coordinators, and one for coordinators and moderators. Nobody outside the neighbourhood can read them. Reporting, moderator hide and restore, unread dots, and messages deleted after 30 days. |
+| Coordinator ranking         | A People tab, open to every member, ranks the neighbourhood's coordinators each month by verified work, using fixed point rules shown on the tab. |
+| Neighbourhood chat          | Two rooms that belong to one neighbourhood: one for everyone and one for coordinators. Nobody outside the neighbourhood can read them. Reporting, coordinator hide and restore, unread dots, and messages deleted after 30 days. |
 | World layer and Crisis Mode | A global hazard map from USGS, NASA EONET and GDACS, plus local CAP feeds. An alert that overlaps the neighbourhood switches on Crisis Mode.                                                                                                                                                                                                                                                                                                                               |
-| SOS                         | Consent-based help requests, visible only to coordinators and the assigned volunteer. The location is wiped when the request closes, or after 24 hours.                                                                                                                                                                                                                                                                                                                    |
-| Safety and preparedness     | Safety check-ins ("I am safe" / "I need help"), an optional extra-help register, an emergency plan, a notice board and an automated weekly summary.                                                                                                                                                                                                                                                                                                                        |
-| Reporting to authorities    | Council reports with trends and hotspots, hand-offs to authorities with overdue flags, CSV and PDF export, and a public page that shows totals only.                                                                                                                                                                                                                                                                                                                       |
-| Analytics                   | Pulse charts tagged Actual or Estimate, AI insights, badges that count only verified work, and a What-if simulator for coordinators.                                                                                                                                                                                                                                                                                                                                       |
-| Notifications and offline   | In-app bell, web push, email, SMS and WhatsApp, with text commands SAFE, NEED HELP, FIXED, NOT FIXED, STATUS and SOS. The app can be installed, and actions taken offline are sent when the connection returns.                                                                                                                                                                                                                                                            |
+| Notices                     | A notice board with pinned and urgent notices, and an automated weekly summary. |
+| Reporting to authorities    | Council reports with trends and hotspots, hand-offs to authorities with overdue flags, and CSV and PDF export. |
+| Analytics                   | Pulse charts tagged Actual or Estimate, and AI insights. Pulse and Reports share one Status tab. |
+| Notifications and offline   | In-app bell, web push, email, SMS and WhatsApp, with text commands FIXED, NOT FIXED and STATUS. The app can be installed, and actions taken offline are sent when the connection returns. |
 | Accessibility               | English and Hindi, voice input, a keyboard-accessible map, three text sizes, high contrast, reduced motion, and light and dark themes.                                                                                                                                                                                                                                                                                                                                     |
 
 ### Roles
 
 The server enforces every permission from the table in `src/logic.ts`. In the code, the coordinator role is called `admin`.
 
-<<<<<<< HEAD
 | Role | Who | What they can do |
 |---|---|---|
-| Resident | Every new member | Report, confirm, flag, report spam, add updates, answer "Is the problem fixed?" on their own reports, send SOS, reply to check-ins, use the neighbor exchange, approve the agent's complaint for their own report. |
-| Volunteer | A resident who opts in under Account | Everything a resident can except flagging, plus join missions, set skills and availability, share an approximate area, and post proof of a fix. |
-| Moderator | Set by a coordinator in the People tab | Verify or dispute reports, hide and restore them, approve or reject fixes (never their own), close a fix without confirmation. A moderator can also report, confirm, send an SOS, answer a check-in and use the demo, like any neighbour. |
-| Coordinator | Whoever creates a named neighbourhood, or a member a coordinator promotes | Everything a member can, plus move issues forward, create missions, assign volunteers, manage resources and SOS, run check-ins, post notices, hand issues to authorities, run TinyFish status checks and ward councillor lookups, and use What-if, Reports and People. |
+| Resident | Every new member | Report, confirm, flag, report spam, add updates, answer "Is the problem fixed?" on their own reports, use the chat, and approve the agent's complaint for their own report. |
+| Coordinator | One of the first 3 people to join a neighbourhood (including the creator of a named one), or a member a coordinator promotes | Everything a resident can do, plus verify or dispute reports, move issues forward, post proof of a fix, approve someone else's fix (never their own), close a fix without confirmation, hide and restore reports and chat messages, post notices, hand issues off to authorities and manage members. |
 | Platform admin | Emails listed in `PLATFORM_ADMINS` | Acts as a coordinator in any neighbourhood. |
-=======
-| Role           | Who                                                                                                                          | What they can do                                                                                                                                                                                                                                                |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Resident       | Every new member                                                                                                             | Report, confirm, flag, report spam, add updates, answer "Is the problem fixed?" on their own reports, send SOS, reply to check-ins, use the neighbor exchange, approve the agent's complaint for their own report.                                              |
-| Volunteer      | A resident who opts in under Account                                                                                         | Everything a resident can except flagging, plus join missions, set skills and availability, share an approximate area, and post proof of a fix.                                                                                                                 |
-| Moderator      | Set by a coordinator in the People tab                                                                                       | Verify or dispute reports, hide and restore them, approve or reject fixes (never their own), close a fix without confirmation.                                                                                                                                  |
-| Coordinator    | One of the first 3 people to join a neighbourhood (including the creator of a named one), or a member a coordinator promotes | Everything a member can, plus move issues forward, create missions at a spot on the map, assign volunteers, manage resources and SOS, run check-ins, post notices, hand issues to authorities, run TinyFish status checks and ward councillor lookups, and use What-if, Reports and People. |
-| Platform admin | Emails listed in `PLATFORM_ADMINS`                                                                                           | Acts as a coordinator in any neighbourhood.                                                                                                                                                                                                                     |
->>>>>>> 1850accf324f9481c763680489e047ffedaa0475
 
-A neighbourhood cannot lose its last coordinator. Coordinators and moderators also get an "Open location in OpenStreetMap" button on each issue, and are ranked each month on the Coordinators tab, which every member can see (see [Coordinators and the monthly ranking](#coordinators-and-the-monthly-ranking)). In the demo, the Role menu in the header lets you preview every role.
+A neighbourhood cannot lose its last coordinator. Coordinators also get an "Open location in OpenStreetMap" button on each issue, and are ranked each month on the People tab, which every member can see (see [Coordinators and the monthly ranking](#coordinators-and-the-monthly-ranking)).
 
 ### Trust principles
 
@@ -102,9 +87,9 @@ No keys, database or account are needed for the demo.
 
 1. `npm install` then `npm run dev`, and open http://localhost:5173.
 2. On the landing page, press **Try the live demo**.
-3. In the Command tab, press **Run next step** nine times to play the AI agent flow on a Hindi report.
-4. Use the **Role** menu in the header to see the app as a resident, volunteer, moderator or coordinator.
-5. Press **Simulate an earthquake alert** to switch the neighbourhood into Crisis Mode, then open the SOS and Prepare tabs.
+3. In the Command tab, press **Run next step** eight times to play the AI agent flow on a Hindi report.
+4. Use the **Role** menu in the header to see the app as a resident or a coordinator.
+5. Press **Simulate an earthquake alert** to switch the neighbourhood into Crisis Mode.
 
 ## How it is built
 
@@ -131,29 +116,25 @@ src/                     React web app (also runs the whole demo in the browser)
   logic.ts               shared rules, permissions, validation and demo data (the server uses it too)
   store.ts               app state, polling, offline queue, demo and live modes
   route.ts               the two public paths: / (landing) and /signin
-  App.tsx                app shell plus the Command, Report, Missions, Resources, Coordinators, People and Account tabs
+  App.tsx                app shell plus the Command, Report, Status, Chat, People and Account tabs
   Landing.tsx            public landing page (styles in landing.css)
   Onboarding.tsx         sign-in and neighbourhood picker
   Detail.tsx             issue detail, the richest screen
   AgentPanel.tsx         AI agent panel, TinyFish card and report analysis card
   agent.ts, routes.ts    agent steps and the editable table of complaint routes per category
-  plan.ts                priority score, effort estimates and action plans
+  plan.ts                priority score, effort estimates and the "then vs now" status replay
   IsoMap.tsx, city3d.ts  map component and the canvas 3D city renderer
   places.ts              housing society labels and the "Near …" chip
   mapdata.ts, geo.ts     OpenStreetMap shapes, area cells, projections, schematic city
-  here.ts, Swarm.tsx     "You are here" and volunteer approximate areas
+  here.ts                "You are here"
   ListView.tsx           List view of the map
   WorldView.tsx, world.ts  world hazard map, alert banner and overlap rules
-  SosPanel.tsx           SOS tab
-  Prepare.tsx            check-ins, emergency plan, extra-help register
-  Exchange.tsx, Notices.tsx  neighbor exchange and notice board
+  Notices.tsx            notice board
   ChatPanel.tsx, chat.ts  neighbourhood chat tab, and the room and message rules the server shares
-  Pulse.tsx              analytics charts
-  Simulator.tsx, sim.ts  What-if simulator
+  Pulse.tsx, Status.tsx  analytics charts, and the Status tab that joins Pulse and Reports
   Reports.tsx            council reports, authorities directory, hand-offs
   WardCard.tsx           ward councillor lookup with TinyFish (Reports tab)
-  PublicImpact.tsx       public totals-only page
-  Settings.tsx           notifications, display settings, badges
+  Settings.tsx           notifications and display settings
   i18n.ts, Voice.tsx, a11y.ts, theme.ts  Hindi strings, voice input, accessibility and theme
 server/
   index.ts               Express API, SMS webhook and background jobs
@@ -192,7 +173,7 @@ Optional: `npm run seed` adds a clearly labelled fictional neighbourhood, "Maple
 
 ### Upgrading an existing install
 
-Run `database/schema.sql` again in the Supabase SQL editor. It is safe to repeat, and adds anything newer versions need, such as the `channels` table for notifications, the `chat_messages` table and the moderator role. It also renames tables and columns from older versions to the `neighbourhood` spelling, keeping their data. If you copied files over an older project, delete `src/Agent.tsx` and `src/Sim.tsx`, which were renamed `AgentPanel.tsx` and `Simulator.tsx`.
+Run `database/schema.sql` again in the Supabase SQL editor. It is safe to repeat, and adds anything newer versions need, such as the `channels` table for notifications and the `chat_messages` table. It also turns every volunteer or moderator into a resident and limits roles to resident and coordinator. It also renames tables and columns from older versions to the `neighbourhood` spelling, keeping their data. If a message says the old chat rooms do not match, the older rooms stay valid and are simply unused.
 
 ## Deploying to Render
 
@@ -295,32 +276,32 @@ CAP (Common Alerting Protocol) is the standard format national warning agencies 
 | Every neighbourhood is different | Each neighbourhood is its own record with its own data and its own map, built from real OpenStreetMap data around its center.                                                                                                                                                                |
 | Same neighbourhood, same view    | Members read the same server state and the same cached map. Only zoom and pan are personal.                                                                                                                                                                                                  |
 | Where do people belong?          | Automatic area cells of about 1 km, computed in the browser. Named neighbourhoods (200 m to 2 km) can be created and joined by search or invite link. People near a border can join the next area. Up to 5 neighbourhoods per person.                                                        |
-| Location privacy                 | Location is opt-in. Only the area cell is sent. Exact positions are never sent or stored, except a pin a person deliberately places on a report or SOS. "You are here" stays on the device.                                                                                                  |
+| Location privacy                 | Location is opt-in. Only the area cell is sent. Exact positions are never sent or stored, except a pin a person deliberately places on a report. "You are here" stays on the device.                                                                                                  |
 | Fake or spam reports             | Rate limits per user, a cap of 15 open reports each, the location must fall inside the neighbourhood, a person cannot confirm their own report or confirm twice, and three neighbor flags hide a report until a coordinator reviews it. Authors can withdraw.                                |
-| Fake "verified" claims           | Only a human coordinator or moderator can mark a report verified. AI output is always labelled a suggestion.                                                                                                                                                                                 |
+| Fake "verified" claims           | Only a human coordinator can mark a report verified. AI output is always labelled a suggestion. |
 | Coordinator abuse                | Every coordinator action is written to an audit log shown to other coordinators. Platform admins can step in.                                                                                                                                                                                |
 | Who becomes a coordinator?       | The first 3 people to join any neighbourhood (named or automatic area), including the creator of a named one. After that, people ask to coordinate, and an existing coordinator (or platform admin) approves in the People tab.                                                              |
 | Is there a coordinator ranking?  | Yes, per neighbourhood (Coordinators tab, visible to every member, names shown). Fixed visible point rules, and it restarts on the 1st of every month (UTC). Only in-app activity counts. Neighbour feedback shows only after 5 ratings. The rules live in `COORD_POINTS` in `src/logic.ts`. |
 | Empty neighbourhoods             | A guided empty state explains how to report, invite neighbors and ask for a coordinator.                                                                                                                                                                                                     |
 | Data and accounts                | Accounts through Supabase Auth. Roles are enforced on the server. Deleting an account removes memberships and photos and replaces the person's name with "Former member".                                                                                                                    |
-| Emergencies                      | The app states in several places that it is not an emergency service. SOS locations are consent-based, restricted and deleted automatically.                                                                                                                                                 |
+| Emergencies                      | The app states in several places that it is not an emergency service. Chat tells people to call the local emergency number first. |
 | Worldwide awareness              | Official public hazard feeds are shown globally and can switch a neighbourhood into Crisis Mode. Crowd reports stay local.                                                                                                                                                                   |
 
 ### Fix review and reporter confirmation
 
 The lifecycle is Reported, Under review, Assigned, In progress, Resolution pending review, Resolved. Once proof exists, a coordinator submits the fix for review. It is then resolved in one of three ways, and the issue records which one:
 
-- **By a reviewer.** A different coordinator or a moderator approves it, or sends it back with a reason. The person who submitted the fix can never approve it, and approval is blocked while more neighbors say "not fully fixed" than "looks fixed".
+- **By a reviewer.** A different coordinator approves it, or sends it back with a reason. The person who submitted the fix can never approve it, and approval is blocked while more neighbors say "not fully fixed" than "looks fixed".
 - **By the reporter.** The person who reported the problem, and everyone who confirmed it, are asked "Is the problem fixed?" in the app and through their notification channels. By text they can reply `FIXED` or `NOT FIXED` when exactly one fix is waiting for them. "Yes" resolves it, labelled "Confirmed by the reporter". "No" sends it back to In progress with their note. This works with a single coordinator, but it is a weaker check than a second reviewer, because a person with a second account could fake it.
 - **Without confirmation.** If nobody answers within 7 days, the coordinator can close it as "Closed without confirmation". This is labelled, never counts as verified, earns no points, is written to the audit log, and a reporter can still reopen it.
 
-Each issue also has a before-and-after photo slider, resident updates, an assignment history, a suggested action plan (steps, department, volunteers, effort, materials, safety notes, printable) and a priority score out of 100 from fixed rules, which only sorts the list. The "After" photo is the newest proof photo, so new evidence after a rejected fix replaces the old one, while older proof stays in the evidence list. Coordinators and moderators can open the issue's exact spot in OpenStreetMap, with the same link the complaint draft uses.
+Each issue also has a before-and-after photo slider, resident updates, an assignment history and a priority score out of 100 from fixed rules, which only sorts the list. The "After" photo is the newest proof photo, so new evidence after a rejected fix replaces the old one, while older proof stays in the evidence list. Coordinators can open the issue's exact spot in OpenStreetMap, with the same link the complaint draft uses.
 
 ### Coordinators and the monthly ranking
 
 **Founding coordinators.** The first 3 people to join any neighbourhood, named or an automatic area, become coordinators. Joins are handled one at a time, so two people cannot take the same spot, and each promotion is written to the audit log as "founding member". Before joining, the neighbourhood picker shows how many people have joined and how many of the 3 coordinator spots are left. After that, people ask to coordinate, and a coordinator (or platform admin) approves them in the People tab.
 
-**The Coordinators tab.** Every member can open it, from the rail or the More sheet on phones. It ranks the neighbourhood's coordinators and moderators for the current month. Each card shows the person's points, fixes approved, reviews, missions, escalations and any fixes sent back. Neighbour feedback ("X% say fixed") appears once a person has 5 ratings. The table starts again on the 1st of every month (UTC), so old work never competes with new work. In the demo, names and numbers are simulated.
+**The People tab.** Every member can open it. It ranks the neighbourhood's coordinators for the current month and lists the members. Each card shows the person's points, fixes approved, reviews, escalations and any fixes sent back. Neighbour feedback ("X% say fixed") appears once a person has 5 ratings. The table starts again on the 1st of every month (UTC), so old work never competes with new work. In the demo, names and numbers are simulated.
 
 **How points work.** The rules are fixed and printed on the tab. They live in `COORD_POINTS` in `src/logic.ts`.
 
@@ -333,19 +314,11 @@ Each issue also has a before-and-after photo slider, resident updates, an assign
 | ...and the reporter confirmed it                       | 2 more  |
 | Approve someone else's fix                             | 3       |
 | Send a weak fix back                                   | 1       |
-| Create a mission                                       | 2       |
-| Assign a volunteer to a mission                        | 1       |
 | Send a complaint to an authority, or hand an issue off | 2       |
 | Post a notice (at most 3 count each month)             | 1       |
 | A fix you submitted is sent back or reopened           | minus 2 |
 
 Each kind of action counts once per report, so repeating a click earns nothing. Only activity inside the app counts; work done by phone or in person does not.
-
-### Missions with meeting spots
-
-- When a coordinator creates a community mission on the Missions tab, the map switches to picking mode and they click where the mission happens. "Create mission" stays disabled until a spot is chosen, and the spot must be inside the neighbourhood.
-- Open missions with a spot get their own pin on the map: a square marker with a people icon and a "joined/needed" badge. Missions linked to a report show on that report's pin instead.
-- Each mission card has "Show on map", which moves the map to the spot (or to the linked report), or says "No location marked" for older missions. Tapping a mission pin opens its card, and the map search finds missions too.
 
 ### Map loading and society names
 
@@ -363,8 +336,7 @@ A resident reports a problem, typed or spoken, in Hindi or English. The agent th
 4. **Drafts the complaint** in English or Hindi from a fixed template. The AI never writes the legal wording, so it cannot invent rules or deadlines. The author or a coordinator can edit it.
 5. **Waits for a person to approve.** Nothing is sent automatically. The approved text is copied and submitted through the route shown, then marked as sent with the reference number.
 6. **Schedules escalation.** If there is no response by the deadline, the server prepares the next-level draft, which refers to the earlier complaint, and notifies coordinators. A person still has to approve it. It is cancelled if the issue is resolved.
-7. **Suggests a community mission.** Garbage gets a cleanup. Water, lights, roads and hazards get a safe follow-up crew that does not touch pipes, wires or open manholes.
-8. **Tracks it to the end:** understood, duplicates checked, route, draft, approved, sent, reference received, mission, volunteers, proof of fix, verified resolved.
+7. **Tracks it to the end:** understood, duplicates checked, route, draft, approved, sent, reference received, assigned, proof of fix, verified resolved.
 
 **Check before relying on it:** the authority names and escalation steps in `src/routes.ts` are generic. Different cities use different portals and offices, so check each entry against your city's official website and edit it.
 
@@ -387,30 +359,21 @@ Two features in the AI agent panel, and one in the Reports tab, use [TinyFish](h
 ### World layer and Crisis Mode
 
 - **World tab:** a global map of official hazard events from USGS (earthquakes), NASA EONET (wildfires, floods, storms, volcanoes) and GDACS (cyclones, floods, volcanoes, wildfires). The server fetches and caches them for 10 minutes, so browsers never call those services directly. Each event shows its source, time and a link. The layer only informs; it never starts a rescue by itself.
-- **Automatic Crisis Mode:** each neighbourhood's state includes the hazards that overlap it (for example a magnitude 6 earthquake within 150 km, or a fire within 25 km). A "watch" level shows a heads-up banner. A "warning" or "severe" level switches on Crisis Mode: an official alert banner, a red alert chip, an emergency-services-first notice and a prominent SOS tab. A cluster of 3 or more open reports of one type within 250 m also turns on the crisis chip.
+- **Automatic Crisis Mode:** each neighbourhood's state includes the hazards that overlap it (for example a magnitude 6 earthquake within 150 km, or a fire within 25 km). A "watch" level shows a heads-up banner. A "warning" or "severe" level switches on Crisis Mode: an official alert banner, a red alert chip, and an emergency-services-first notice. A cluster of 3 or more open reports of one type within 250 m also turns on the crisis chip.
 - **Demo:** the Command tab has a "Simulate an earthquake alert" button, so the escalation can be shown without waiting for a real event.
 
-### SOS requests
+### Notices, notifications and reporting
 
-- The form needs an explicit consent tick. The exact location is chosen on the map or from the device, and is only sent when the person presses Send.
-- Only the author, the neighbourhood's coordinators and a volunteer a coordinator assigns can see the request and its location. Everyone else sees only a count.
-- Closing, cancelling or marking a request helped deletes its location and note immediately. Anything still open is closed and wiped after 24 hours.
-- One active request per person, at most 3 a day. Coordinators see the nearest shelter or aid post and can assign available volunteers.
-- Texting `SOS medical 3 <where you are>` to the Twilio number works too, from a number linked under Account, Notifications. It shares the phone number with coordinators until the request is closed.
-- Every screen says to call the local emergency number first.
-
-### Community, preparedness and reporting
-
-- **Works on a bad connection:** the app can be installed. The map is cached, the last known state is shown with an "Offline" label, and reports, SOS requests, confirmations, proofs, check-in replies and exchange messages made offline are saved on the device and sent when the connection returns. Photos need a connection.
-- **Notifications:** in-app bell, web push, email, SMS and WhatsApp, with a limit per person per hour. Alerts go out for official alerts near a neighbourhood, SOS requests (to coordinators), assignments, fix confirmations, safety check-ins and urgent notices.
-- **Safety check-ins:** a coordinator starts a check-in, members answer "I am safe" or "I need help", and coordinators see who has not replied, with neighbors on the extra-help register listed first. The register is optional, consent-based and visible only to coordinators.
-- **Preparedness:** an emergency plan with evacuation routes and contacts, assembly points and shared equipment, and a summary of volunteer abilities.
-- **Neighbor exchange and notice board:** offers and requests with a short message thread, and coordinator announcements that can be pinned or marked urgent.
-- **Council reports:** filters, weekly trends, hotspots, a hand-off tracker, CSV export and a print or save-as-PDF view. A public page, `/?impact=<neighbourhood id>`, shows only totals, with no names or locations.
+- **Works on a bad connection:** the app can be installed. The map is cached, the last known state is shown with an "Offline" label, and reports, confirmations, proofs and flags made offline are saved on the device and sent when the connection returns. Photos and chat messages need a connection.
+- **Notifications:** in-app bell, web push, email, SMS and WhatsApp, with a limit per person per hour. Alerts go out for official alerts near a neighbourhood, urgent notices, fixes waiting for review, "Is the problem fixed?" questions, updates on your own reports, escalation drafts and hidden chat messages. Text commands are `STATUS`, `FIXED` and `NOT FIXED`.
+- **Notice board:** coordinators post announcements that can be pinned or marked urgent, and an automated weekly summary goes out.
+- **Council reports:** filters, weekly trends, hotspots, a hand-off tracker, CSV export and a print or save-as-PDF view.
 - **Hand-off to authorities:** coordinators keep a directory of authorities, pass an issue on (by email if the authority has an address and email is set up) and track whether it was acknowledged, with overdue ones flagged.
-- **What-if simulator** (coordinators): change volunteers, team size, hours, the order of work and the assumed authority delay, and compare with today's setup. Everything is labelled an estimate and nothing changes in real reports.
-- **Pulse:** charts with date filters for reported and resolved issues, open issues over time, categories, hours to resolve and volunteer hours. Each chart is tagged Actual or Estimate.
-- **Recognition:** badges and points that count only verified reports and completed fixes, so spam earns nothing. Coordinators and moderators also have a monthly ranking (see [Coordinators and the monthly ranking](#coordinators-and-the-monthly-ranking)).
+- **Pulse:** charts with date filters for reported and resolved issues, open issues over time, categories and hours to resolve. Each chart is tagged Actual or Estimate.
+
+### Removed features
+
+Missions, volunteers, moderators, SOS requests, safety check-ins, the extra-help register, the emergency plan, the neighbour exchange, resources and shelters, the action plan, the What-if simulator, badges and the public impact page were removed. When the server starts it deletes any of that data still stored in older neighbourhoods.
 
 ### Neighbourhood chat
 
@@ -419,13 +382,14 @@ Each neighbourhood has its own chat rooms. A room is always tied to one neighbou
 | Room | Who can read and post |
 |---|---|
 | Neighbourhood | Every member |
-| Volunteers | Volunteers and coordinators |
-| Coordinators | Coordinators and moderators |
+| Coordinators | Coordinators only |
 
-- **Safety:** a banner says chat is not for emergencies and links to SOS. Typing words like "help", "fire" or "बचाओ" shows a "call 112 first" hint. Typing something that looks like a phone number shows a reminder that the whole room will see it.
-- **Spam and abuse:** links are refused, messages are limited to 500 characters, and each person can send at most 8 messages a minute and 300 a day. Members can report a message. After 3 reports from different people it is hidden until a moderator looks. Coordinators and moderators can hide or restore messages in the rooms they belong to. Each hide and restore is written to the audit log. Restoring clears the reports.
-- **Privacy:** messages are deleted after 30 days. People can delete their own messages, and deleting an account removes all of that person's messages and reports. User ids are never sent to the browser, only display names.
+- **Safety:** a banner says chat is not for emergencies and to call 112 first. Typing words like "help" or "fire" shows a "call 112 first" hint. Typing something that looks like a phone number shows a reminder that the whole room will see it.
+- **Spam and abuse:** links are refused, messages are limited to 500 characters, and each person can send at most 8 messages a minute and 300 a day. Members can report a message. After 3 reports from different people it is hidden until a coordinator looks. Coordinators can hide or restore messages in the rooms they belong to. Each hide and restore is written to the audit log. Restoring clears the reports.
+- **Privacy:** messages are deleted after 30 days. People can delete their own messages, and deleting an account removes all of that person's messages and reports. User ids are never sent to the browser.
 - **Unread dots:** the 5-second state poll also returns the newest message id for each room you can open. The browser compares it with what you last saw on this device.
+- **Old roles:** a member who was saved as a volunteer or moderator before the two-role change is treated as a resident, so chat still opens for them. The server also sets those roles to resident when it starts.
+- **Setup:** the server creates the `chat_messages` table on start if it is missing. Running `database/schema.sql` also does it.
 - **Demo:** the chat works in the demo with simulated, labelled messages kept only in the browser. The Role menu changes which rooms you see.
 
 ## Testing
@@ -433,7 +397,7 @@ Each neighbourhood has its own chat rooms. A room is always tied to one neighbou
 | Command               | What it does                                                                                                                                                                                                                                                                                                               |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `npm run check`       | Type-checks the web app and the server.                                                                                                                                                                                                                                                                                    |
-| `npm test`            | Runs 19 test files: shared rules, chat rooms and messages, the action plan, SOS, the CAP parser, the AI agent, fix review, AI providers, "You are here", OpenStreetMap loading, society names, reporter confirmation, the coordinator ranking, the before-and-after photo, mission spots, and the TinyFish module, routes and result ranking (against a local mock). |
+| `npm test`            | Runs the test files: shared rules, the two-role permission table, chat rooms and messages (including old stored roles), the CAP parser, the AI agent, reporter confirmation, the coordinator ranking, the before-and-after photo, AI providers, "You are here", OpenStreetMap loading, society names, and the TinyFish module, routes and result ranking (against a local mock). |
 | `npm run test:render` | Renders the main screens on the server to catch crashes.                                                                                                                                                                                                                                                                   |
 
 ## Honest limits
@@ -448,8 +412,6 @@ Each neighbourhood has its own chat rooms. A room is always tied to one neighbou
 - Hidden reports still appear briefly in the event log by title before being hidden.
 - The world feeds are third-party services whose formats and availability can change. GDACS in particular is parsed defensively, and the app keeps working if a feed fails. Check each provider's terms and attribution requirements before a public launch.
 - Alert radii are simple rules, not a hazard model, and they never replace national warnings.
-- SOS needs a connection. An SOS made offline is queued and sent when the connection returns, which can be too late. Texting SOS works only when Twilio is set up and the person has linked their phone number.
-- A coordinator may not see a request in time. The app says so and points to emergency services.
 - A reporter's "fixed" answer is a weaker check than a second reviewer.
 - Offline queuing, push, email, text messaging and the service worker could not be tested in the build environment. Try them on a real device with real credentials.
 - Hindi translations were written without native review and cover the main screens only.
@@ -460,11 +422,11 @@ Each neighbourhood has its own chat rooms. A room is always tied to one neighbou
 
 ## Known issues
 
-These were found while writing the design brief (section 9 has the full list and suggested fixes):
+These were found while writing the design brief (section 9 has the full list and suggested fixes). The design brief itself was written before the two-role clean-up, so its sections on missions, volunteers, moderators, SOS, check-ins and the exchange are out of date.
 
-- The demo opens in Crisis Mode. Four open garbage reports near Lakeview Road form a report cluster, so the red crisis chip and pulsing SOS tab are on before any hazard alert.
+- The demo opens in Crisis Mode. Four open garbage reports near Lakeview Road form a report cluster, so the red crisis chip is on before any hazard alert.
 - On phones, the header wraps to three rows and takes about a quarter of the screen.
-- Some copy is out of date: a few labels say only a moderator approves fixes, the landing page says "Claude AI suggestions" although Gemini is the default, the Account text-command help leaves out FIXED and NOT FIXED, and the app manifest still uses the old navy colour.
+- The landing page says "AI suggestions" and the Hindi strings were not all updated for the two-role wording. Changed lines fall back to English.
 - The landing page is English only, and the World panel cannot filter by severity.
 
 **Society names on the map.** When OpenStreetMap has them, named residential areas and apartment buildings are shown as small, soft labels, and a "Near ..." chip shows the society nearest to the middle of the view, so you can place yourself without sharing your location. Labels appear only when zoomed in, never overlap, and do not change the 3D buildings. Maps saved before this feature are fetched once more to add names (the old map is kept if OpenStreetMap is down). Where OpenStreetMap has no name, nothing is shown. The demo city uses made-up names.

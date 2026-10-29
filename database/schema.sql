@@ -39,7 +39,7 @@ create table if not exists members (
   neighbourhood_id text not null references neighbourhoods(id) on delete cascade,
   user_id uuid not null,
   display_name text not null,
-  role text not null default 'resident' check (role in ('resident', 'volunteer', 'moderator', 'admin')),
+  role text not null default 'resident' check (role in ('resident', 'admin')),
   coordinator_requested_at timestamptz,
   joined_at timestamptz not null default now(),
   primary key (neighbourhood_id, user_id)
@@ -86,8 +86,10 @@ create table if not exists channels (
 create index if not exists channels_target_idx on channels (target) where kind in ('sms', 'whatsapp');
 alter table channels enable row level security;
 
+-- Two roles only. Anyone saved as a volunteer or moderator becomes a resident.
+update members set role = 'resident' where role in ('volunteer', 'moderator');
 alter table members drop constraint if exists members_role_check;
-alter table members add constraint members_role_check check (role in ('resident', 'volunteer', 'moderator', 'admin'));
+alter table members add constraint members_role_check check (role in ('resident', 'admin'));
 
 -- Neighbourhood chat. Every message belongs to exactly one neighbourhood and one room in it.
 -- The server checks the sender's own membership row in that neighbourhood, so rooms never span areas.
@@ -96,7 +98,7 @@ create sequence if not exists chat_rev_seq;
 create table if not exists chat_messages (
   id bigserial primary key,
   neighbourhood_id text not null references neighbourhoods(id) on delete cascade,
-  room text not null check (room in ('all', 'volunteers', 'coordinators')),
+  room text not null check (room in ('all', 'volunteers', 'coordinators')), -- 'volunteers' stays allowed only so old messages remain valid; the app no longer uses that room
   user_id uuid not null,
   display_name text not null,
   body text not null check (char_length(body) <= 500),

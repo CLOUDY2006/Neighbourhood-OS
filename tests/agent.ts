@@ -1,5 +1,5 @@
 import { DEMO, DEMO_HINDI, dueEscalations, reduce, seed } from "../src/logic";
-import { detectLang, draftComplaint, proposeMission, understand, workflow } from "../src/agent";
+import { detectLang, draftComplaint, understand, workflow } from "../src/agent";
 import { routeFor } from "../src/routes";
 
 const fail = (m: string, f: () => unknown) => { try { f(); console.log("FAIL", m); } catch (e) { console.log("ok", m, "->", (e as Error).message); } };
@@ -36,7 +36,6 @@ x = d.issues.find(i => i.id === id)!; console.log("level 1 sent, history:", x.ag
 
 const e = draftComplaint({ lang: "en", level: 1, to: "Zonal officer", nbhd: "Test Colony", cat: "water", summaryEn: "Leak", lat: 1, lng: 2, reports: 3, created: Date.now(), hasPhoto: true, verified: true, prev: { to: "Water board", sentAt: Date.now() - 4 * 86400000, ref: "W1" } });
 console.log("en draft ok:", e.subject, "|", e.body.includes("follow-up"), e.body.includes("W1"));
-console.log("missions:", proposeMission({ cat: "garbage", title: "x" }).need, proposeMission({ cat: "unsafe", title: "x" }).safety.slice(0, 30));
 
 let s = seed();
 for (let i = 0; i < DEMO.length; i++) { s = reduce(s, R, { t: "demo" }, { lat: 28.5663, lng: 77.2115, r: 1e7, name: "Maple Nagar" }).doc; const i4 = s.issues.find(q => q.id === "i4")!; const w = workflow(s, i4); console.log(`demo step ${i + 1}: ${w.done}/${w.total} steps, status ${i4.status}, draft level ${i4.agent?.draft.level ?? "-"}`); }

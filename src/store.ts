@@ -11,7 +11,6 @@ export * from "./agent";
 export * from "./routes";
 export * from "./plan";
 export * from "./chat";
-export * from "./sim";
 export type { MapData } from "./mapdata";
 
 export type State = L.Doc & { role: L.Role };
@@ -48,14 +47,14 @@ function commit() {
 function setApp(p: Partial<AppState>) { app = { ...app, ...p }; subsApp.forEach(f => f()); }
 export const useStore = () => useSyncExternalStore(f => { subs.add(f); return () => { subs.delete(f); }; }, () => view, () => view);
 export const useApp = () => useSyncExternalStore(f => { subsApp.add(f); return () => { subsApp.delete(f); }; }, () => app, () => app);
-export const myName = () => (app.mode === "live" ? app.me?.handle ?? "" : `${role === "admin" ? "Coordinator" : role === "moderator" ? "Moderator" : role === "volunteer" ? "Volunteer" : "Resident"} (you)`);
+export const myName = () => (app.mode === "live" ? app.me?.handle ?? "" : `${role === "admin" ? "Coordinator" : "Resident"} (you)`);
 export const can = L.can;
 
 export class QueuedError extends Error {}
 class HttpErr extends Error { constructor(public status: number, m: string) { super(m); } }
 const QKEY = "nos-queue";
 interface Queued { nid: string; a: L.Action; at: number }
-const QUEUEABLE = new Set<string>(["report", "merge", "proof", "sos", "flag", "spam", "checkinReply", "careSet", "shareAdd", "shareMsg", "shareClaim", "availability"]);
+const QUEUEABLE = new Set<string>(["report", "merge", "proof", "flag", "spam"]);
 function readQ(): Queued[] { try { return JSON.parse(localStorage.getItem(QKEY) || "[]"); } catch { return []; } }
 function writeQ(q: Queued[]) { try { localStorage.setItem(QKEY, JSON.stringify(q)); } catch { /* ignore */ } setApp({ queued: q.filter(x => x.nid === app.nbhd?.id).length }); }
 const sameQ = (x: Queued, y: Queued) => x.at === y.at && x.nid === y.nid;
@@ -69,7 +68,7 @@ async function flushQueue() {
     for (const item of mine) {
       try {
         const j = await api<{ doc: L.Doc; version: number; role: L.Role }>(`/api/n/${enc(id)}/action`, item.a);
-        doc = j.doc; ver = j.version; role = j.role; commit();
+        doc = j.doc; ver = j.version; role = L.asRole(j.role); commit();
         writeQ(readQ().filter(x => !sameQ(x, item)));
       } catch (e) {
         if (e instanceof HttpErr) { writeQ(readQ().filter(x => !sameQ(x, item))); setApp({ error: `A saved action could not be sent: ${e.message}` }); } else break;
@@ -85,8 +84,8 @@ function wipeLocal() {
 function cacheDoc() {
   if (app.mode !== "live" || !app.nbhd) return;
   try {
-    const { sos: _s, care: _c, authorities: _a, checkin, ...rest } = doc;
-    localStorage.setItem(`nos-doc-${app.nbhd.id}`, JSON.stringify({ doc: { ...rest, checkin: checkin ? { ...checkin, replies: {} } : undefined }, role }));
+    const { sos: _s, authorities: _a, ...rest } = doc;
+    localStorage.setItem(`nos-doc-${app.nbhd.id}`, JSON.stringify({ doc: rest, role }));
   } catch { /* ignore */ }
 }
 if (typeof window !== "undefined") {
@@ -120,7 +119,7 @@ async function refresh() {
     let changed = false;
     if (app.stale || !app.online) setApp({ stale: false, online: true });
     void flushQueue();
-    if (j.role !== role) { role = j.role; changed = true; }
+    if (L.asRole(j.role) !== role) { role = L.asRole(j.role); changed = true; }
     if (!j.unchanged && j.doc) { ver = j.version; doc = j.doc; changed = true; }
     if (changed) commit();
   } catch { if (!app.stale) setApp({ stale: true }); }
@@ -146,9 +145,9 @@ async function loadMap(n: NInfo, tries = 0) {
 
 export async function enter(n: NInfo) {
   stopPoll();
-  role = n.role; ver = -1; doc = L.emptyDoc();
+  role = L.asRole(n.role); ver = -1; doc = L.emptyDoc();
   let cached = false;
-  try { const c = JSON.parse(localStorage.getItem(`nos-doc-${n.id}`) || "null"); if (c?.doc) { doc = c.doc; role = c.role ?? n.role; cached = true; } } catch { /* ignore */ }
+  try { const c = JSON.parse(localStorage.getItem(`nos-doc-${n.id}`) || "null"); if (c?.doc) { doc = c.doc; role = L.asRole(c.role ?? n.role); cached = true; } } catch { /* ignore */ }
   setApp({ mode: "live", nbhd: n, map: null, mapNote: "", error: "", alerts: [], stale: cached, queued: readQ().filter(x => x.nid === n.id).length, chat: {}, chatSeen: readSeen(n.id) });
   commit();
   try { localStorage.setItem("nos-last-n", n.id); } catch { /* ignore */ }
@@ -176,7 +175,7 @@ export async function dispatch(a: L.Action): Promise<string | undefined> {
   if (app.mode === "live" && app.nbhd) {
     try {
       const j = await api<{ doc: L.Doc; result?: string; version: number; role: L.Role }>(`/api/n/${enc(app.nbhd.id)}/action`, a);
-      doc = j.doc; ver = j.version; role = j.role; commit(); return j.result;
+      doc = j.doc; ver = j.version; role = L.asRole(j.role); commit(); return j.result;
     } catch (e) {
       if (!(e instanceof HttpErr) && QUEUEABLE.has(a.t) && !("photo" in a && a.photo)) {
         writeQ([...readQ(), { nid: app.nbhd.id, a, at: Date.now() }].slice(-50));
@@ -247,7 +246,6 @@ export const members = () => api<Member[]>(`/api/n/${enc(app.nbhd!.id)}/members`
 export const setMemberRole = (userId: string, r: L.Role) => api(`/api/n/${enc(app.nbhd!.id)}/members/${enc(userId)}/role`, { role: r });
 export const coordinators = () => api<{ name: string; role: L.Role }[]>(`/api/n/${enc(app.nbhd!.id)}/coordinators`);
 export const auditLog = () => api<{ at: string; who: string; action: string; detail: string }[]>(`/api/n/${enc(app.nbhd!.id)}/audit`);
-export async function setMyRole(r: "resident" | "volunteer") { const j = await api<{ role: L.Role }>(`/api/n/${enc(app.nbhd!.id)}/me/role`, { role: r }); role = j.role; commit(); }
 export const requestCoordinator = () => api(`/api/n/${enc(app.nbhd!.id)}/coordinator-request`, {});
 export const uploadPhoto = async (dataUrl: string) => (await api<{ id: string }>(`/api/n/${enc(app.nbhd!.id)}/photos`, { photo: dataUrl })).id;
 
@@ -275,21 +273,8 @@ export const hide = (id: string) => dispatch({ t: "hide", id });
 export const restore = (id: string) => dispatch({ t: "restore", id });
 export const setVerif = (id: string, v: L.Verif) => dispatch({ t: "verify", id, v });
 export const advance = (id: string) => dispatch({ t: "advance", id });
-export const mission = (title: string, need: number, issueId?: string, spot?: { lat: number; lng: number } | null) => dispatch({ t: "mission", title, need, issueId, lat: spot?.lat, lng: spot?.lng });
-export const join = (mid: string) => dispatch({ t: "join", mid });
-export const assign = (mid: string, name: string) => dispatch({ t: "assign", mid, name });
 export const addProof = (id: string, text: string, photo?: string) => dispatch({ t: "proof", id, text, photo });
 export const flag = (id: string) => dispatch({ t: "flag", id });
-export const setAvailability = (available: boolean) => dispatch({ t: "availability", available });
-export const setSkills = (skills: L.Cat[]) => dispatch({ t: "skills", skills });
-export const delivery = (id: string, note: string) => dispatch({ t: "delivery", id, note });
-export const shortage = (id: string) => dispatch({ t: "shortage", id });
-export const addResource = (r: { name: string; kind: L.Kind; lat: number; lng: number; note: string }) => dispatch({ t: "addResource", ...r });
-export const sos = (i: { need: L.SosNeed; people: number; note: string; lat: number; lng: number; consent: boolean }) => dispatch({ t: "sos", ...i });
-export const sosAck = (id: string) => dispatch({ t: "sosAck", id });
-export const sosAssign = (id: string, name: string) => dispatch({ t: "sosAssign", id, name });
-export const sosStatus = (id: string, status: "helped" | "closed") => dispatch({ t: "sosStatus", id, status });
-export const sosCancel = (id: string) => dispatch({ t: "sosCancel", id });
 export const runDemo = () => dispatch({ t: "demo" });
 export const reset = () => { if (app.mode === "demo") { demoChat = C.demoChatSeed(); saveDemoChat(); } return dispatch({ t: "reset" }); };
 
@@ -358,7 +343,7 @@ export async function chatReport(room: C.Room, id: number) {
 export async function chatHide(room: C.Room, id: number, hidden: boolean) {
   if (app.mode === "live") { await api(`${chatBase(room)}/${id}/hide`, { hidden }); return; }
   demoRoom(room);
-  if (!C.canModerateChat(role, room)) throw new Error("Only coordinators and moderators can hide messages");
+  if (!C.canModerateChat(role, room)) throw new Error("Only coordinators can hide messages");
   const m = demoMsg(room, id);
   m.state = hidden ? "hidden" : "ok"; if (!hidden) m.reporters = []; m.rev = demoRev(); saveDemoChat();
 }
@@ -376,18 +361,6 @@ export const aiPhoto = (photo: string, mode: "report" | "proof", cat?: string) =
 export const aiSuggest = (i: L.SuggestInput) => api<{ cat: L.Cat; summary: string; needs: string[]; dupId?: string; source: string }>(`${aiBase()}/suggest`, i);
 export const aiInsights = (): Promise<L.Insights> => (app.mode === "live" ? api<L.Insights>(`${aiBase()}/insights`, {}) : Promise.resolve(L.insights(doc)));
 
-export const checkinStart = (title: string) => dispatch({ t: "checkinStart", title });
-export const checkinReply = (ok: boolean, note?: string) => dispatch({ t: "checkinReply", ok, note });
-export const checkinClose = () => dispatch({ t: "checkinClose" });
-export const careSet = (need: string, note: string, consent: boolean) => dispatch({ t: "careSet", need, note, consent });
-export const careRemove = () => dispatch({ t: "careRemove" });
-export const planSet = (routes: string, notes: string, contacts: string) => dispatch({ t: "planSet", routes, notes, contacts });
-export const setAbilities = (abilities: string[]) => dispatch({ t: "abilities", abilities });
-export const shareAdd = (i: { kind: "offer" | "request"; cat: string; title: string; note: string }) => dispatch({ t: "shareAdd", ...i });
-export const shareClaim = (id: string) => dispatch({ t: "shareClaim", id });
-export const shareMsg = (id: string, text: string) => dispatch({ t: "shareMsg", id, text });
-export const shareDone = (id: string) => dispatch({ t: "shareDone", id });
-export const shareRemove = (id: string) => dispatch({ t: "shareRemove", id });
 export const noticeAdd = (i: { title: string; body: string; urgent: boolean; pinned: boolean }) => dispatch({ t: "noticeAdd", ...i });
 export const noticeRemove = (id: string) => dispatch({ t: "noticeRemove", id });
 export const authoritySet = (name: string, email: string, phone: string) => dispatch({ t: "authoritySet", name, email, phone });
@@ -410,7 +383,6 @@ export async function enablePush(key: string) {
   await setChannel("push", { subscription: sub.toJSON() });
 }
 export const aiCompare = (issueId: string, photo: string) => api<{ samePlace: string; fixed: string; note: string; source: string }>(`${aiBase()}/compare`, { issueId, photo });
-export const publicSummary_ = (id: string) => fetch(`/api/public/${enc(id)}/summary`).then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || "Not found"); return j as { name: string; summary: ReturnType<typeof L.publicSummary> }; });
 
 export interface TfRouteCheck {
   city: string; region?: string; cat: L.Cat; checkedAt: number; simulated?: boolean;
@@ -520,6 +492,3 @@ export async function demoAnswerAsReporter(id: string, ok: boolean, note?: strin
   doc = j.doc; commit(); return j.result;
 }
 export const addUpdate = (id: string, text: string, photo?: string) => dispatch({ t: "update", id, text, photo });
-export const actionPlanApprove = (id: string) => dispatch({ t: "actionPlanApprove", id });
-export const volunteerArea = (lat: number, lng: number, consent: boolean) => dispatch({ t: "volunteerArea", lat, lng, consent });
-export const volunteerAreaClear = () => dispatch({ t: "volunteerAreaClear" });

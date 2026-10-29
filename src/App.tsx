@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Component, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Bell, Radar, PlusCircle, BarChart3, RotateCcw, Play, UserCog, User, Sun, Moon, LogOut, MessagesSquare } from "lucide-react";
 import * as S from "./store";
@@ -24,7 +24,7 @@ type Pt = { lat: number; lng: number } | null;
 const grp = (s: S.Status) => (s === "resolved" ? "green" : s === "assigned" || s === "progress" || s === "pending" ? "amber" : "red");
 const LBL = S.STATUS_LABEL;
 const VL: Record<S.Verif, string> = { unverified: "Unverified", review: "Under review", verified: "Verified by coordinator", disputed: "Disputed", resolved: "Resolved" };
-const RL: Record<S.Role, string> = { resident: "Resident", volunteer: "Volunteer", moderator: "Moderator", admin: "Coordinator" };
+const RL: Record<S.Role, string> = { resident: "Resident", admin: "Coordinator" };
 const ago = (t: number) => {
   const m = Math.round((Date.now() - t) / 60000);
   return m < 1 ? "now" : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`;
@@ -32,7 +32,7 @@ const ago = (t: number) => {
 const TAB_INFO: Record<Tab, [string, string]> = {
   feed: ["Command", "Live overview of the neighbourhood: notices, how much work is in each stage, and every issue. Pick an issue to see its details."],
   report: ["Report a problem", "Click the map to place a pin, describe what is wrong and submit. A coordinator reviews every report."],
-  status: ["Locality status", "How fast problems get fixed, where they repeat, and a summary for local offices. Actual numbers are tagged green and estimates amber."],
+  status: ["Locality status", "How fast problems get fixed, where they repeat, a summary for local offices and the ward councillor lookup. Actual numbers are tagged green and estimates amber."],
   chat: ["Chat", "Talk with people in this neighbourhood. Rooms are private to its members. Coordinators also have their own room."],
   people: ["People", "This month's ranking of coordinators, scored by verified work. Coordinators can also manage members and see the activity log."],
   account: ["Account", "Your profile, neighbourhoods, notifications, display settings and privacy."],
@@ -286,6 +286,19 @@ function Account({ st, app, act }: { st: S.State; app: S.AppState; act: Act }) {
   );
 }
 
+/** If one tab throws while drawing, show a message for that tab only instead of blanking the whole app. */
+class TabGuard extends Component<{ children: ReactNode; name: string }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(e: unknown) { console.error("Tab failed to draw:", e); }
+  componentDidUpdate(prev: { name: string }) { if (prev.name !== this.props.name && this.state.failed) this.setState({ failed: false }); }
+  render() {
+    return this.state.failed
+      ? <div className="card" role="alert"><b>Something went wrong in this tab</b><small className="dim">Reload the page. If it keeps happening, switch to another tab.</small></div>
+      : this.props.children;
+  }
+}
+
 function Main({ app }: { app: S.AppState }) {
   const st = S.useStore(), n = app.nbhd!, demo = app.mode === "demo", t = useT(), lang = useLang();
   const [tab, setTab] = useState<Tab>("feed");
@@ -387,12 +400,14 @@ function Main({ app }: { app: S.AppState }) {
           <div><h2 id="panel-title">{t(TAB_INFO[tabNow][0])}</h2><p>{TAB_INFO[tabNow][1]}</p></div>
         </div>
         <AnimatePresence mode="wait"><motion.div className="pbody" key={tabNow} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.14 }}>
-        {tabNow === "feed" && <Feed st={st} app={app} sel={sel} setSel={setSel} act={act} demo={demo} goReport={() => setTab("report")} />}
-        {tabNow === "report" && <Report pick={pick} act={act} done={id => { setSel(id); setPick(null); setTab("feed"); }} />}
-        {tabNow === "chat" && <ChatPanel st={st} app={app} act={act} />}
-        {tabNow === "status" && <Status st={st} app={app} act={act} demo={demo} />}
-        {tabNow === "people" && <People st={st} act={act} demo={demo} />}
-        {tabNow === "account" && <Account st={st} app={app} act={act} />}
+        <TabGuard name={tabNow}>
+          {tabNow === "feed" && <Feed st={st} app={app} sel={sel} setSel={setSel} act={act} demo={demo} goReport={() => setTab("report")} />}
+          {tabNow === "report" && <Report pick={pick} act={act} done={id => { setSel(id); setPick(null); setTab("feed"); }} />}
+          {tabNow === "chat" && <ChatPanel st={st} app={app} act={act} />}
+          {tabNow === "status" && <Status st={st} app={app} act={act} demo={demo} />}
+          {tabNow === "people" && <People st={st} act={act} demo={demo} />}
+          {tabNow === "account" && <Account st={st} app={app} act={act} />}
+        </TabGuard>
         </motion.div></AnimatePresence>
       </aside>
       <div className="toastwrap"><AnimatePresence>{toast && <motion.div key={toast.m} className={`toast ${toast.bad ? "bad" : ""}`} role="status" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>{toast.m}</motion.div>}</AnimatePresence></div>

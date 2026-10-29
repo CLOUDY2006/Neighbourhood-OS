@@ -6,7 +6,7 @@ const throws = (m: string, f: () => unknown, part = "") => { try { f(); bad++; c
 
 const b = { lat: 28.5663, lng: 77.2115, r: 700, name: "Test" };
 const R = { role: "resident" as const, name: "Res #1" }, R2 = { role: "resident" as const, name: "Res #2" }, R3 = { role: "resident" as const, name: "Res #3" };
-const V = { role: "volunteer" as const, name: "Vol #1" }, A = { role: "admin" as const, name: "Adm #1" }, M = { role: "moderator" as const, name: "Mod #1" };
+const V = { role: "resident" as const, name: "Res #4" }, A = { role: "admin" as const, name: "Adm #1" }, M = { role: "admin" as const, name: "Adm #2" };
 const step = (d: Doc, w: typeof R | typeof A | typeof V | typeof M, a: Parameters<typeof reduce>[2]) => reduce(d, w, a, b).doc;
 const get = (d: Doc, id: string) => d.issues.find(i => i.id === id)!;
 
@@ -15,9 +15,9 @@ function pendingDoc(author = R, confirmers: (typeof R)[] = [R2]) {
   let d = step(emptyDoc(), author, { t: "report", title: "Pothole on Main Road", desc: "big hole", cat: "pothole", priority: "high", lat: 28.567, lng: 77.212 });
   const id = d.issues[0].id;
   confirmers.forEach(c => { d = step(d, c, { t: "merge", id }); });
-  d = step(d, A, { t: "advance", id }); d = step(d, A, { t: "actionPlanApprove", id }); d = step(d, V, { t: "join", mid: d.missions[0].id });
+  d = step(d, A, { t: "advance", id }); d = step(d, A, { t: "advance", id });
   for (let n = 0; n < 6 && get(d, id).status !== "pending"; n++) {
-    if (get(d, id).status === "progress" && !get(d, id).proof.length) d = step(d, V, { t: "proof", id, text: "filled the hole" });
+    if (get(d, id).status === "progress" && !get(d, id).proof.length) d = step(d, A, { t: "proof", id, text: "filled the hole" });
     d = step(d, A, { t: "advance", id });
   }
   return { d, id };
@@ -37,15 +37,14 @@ check("canConfirmFix: reporter and confirmer yes, outsider and submitter no", ca
 throws("an outsider cannot answer", () => step(d, R3, { t: "reporterConfirm", id, ok: true }), "Only the person who reported");
 throws("the coordinator who submitted cannot confirm their own fix", () => step(d, A, { t: "reporterConfirm", id, ok: true }), "someone else");
 throws("the submitter still cannot approve it either", () => step(d, A, { t: "approveResolution", id }), "different reviewer");
-throws("a moderator who did not report it cannot use the reporter path", () => step(d, M, { t: "reporterConfirm", id, ok: true }), "Only the person who reported");
+throws("a second coordinator who did not report it cannot use the reporter path", () => step(d, M, { t: "reporterConfirm", id, ok: true }), "Only the person who reported");
 
 // ---- 3. reporter says fixed -> resolved
 const done = step(d, R, { t: "reporterConfirm", id, ok: true, note: "Road is smooth now" });
 check("reporter says fixed: resolved, closure 'reporter'", get(done, id).status === "resolved" && get(done, id).closure === "reporter" && get(done, id).verif === "resolved" && get(done, id).reviewedBy === "Res #1");
 check("the other reporter is told it was resolved", done.events.some(e => e.to === "Res #2" && /confirmed by a reporter/.test(e.text)));
-check("mission is marked done", !get(done, id).missionId || done.missions.find(m => m.id === get(done, id).missionId)!.done === true);
 check("a person who only confirmed the problem can also resolve it", get(step(d, R2, { t: "reporterConfirm", id, ok: true }), id).status === "resolved");
-check("a reporter-confirmed fix still earns the volunteer proof points", statsFor(done).get("Vol #1")?.proofs === 1, `(proofs: ${statsFor(done).get("Vol #1")?.proofs})`);
+check("a reporter-confirmed fix still earns the coordinator proof points", statsFor(done).get("Adm #1")?.proofs === 1, `(proofs: ${statsFor(done).get("Adm #1")?.proofs})`);
 
 // ---- 4. reporter says not fixed -> reopens
 const re = step(d, R2, { t: "reporterConfirm", id, ok: false, note: "Still a hole on the left" });

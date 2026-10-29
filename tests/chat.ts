@@ -5,21 +5,26 @@ let bad = 0;
 const check = (m: string, ok: boolean, extra = "") => { if (!ok) bad++; console.log(ok ? "ok" : "FAIL", m, extra); };
 const throws = (m: string, f: () => unknown, part: string) => { try { f(); bad++; console.log("FAIL", m, "(no error)"); } catch (e) { const t = (e as Error).message; const ok = t.includes(part); if (!ok) bad++; console.log(ok ? "ok" : "FAIL", m, ok ? "" : `-> ${t}`); } };
 
-// ---- who can enter which room
-const want: Record<Role, Room[]> = { resident: ["all"], volunteer: ["all", "volunteers"], moderator: ["all", "coordinators"], admin: ["all", "volunteers", "coordinators"] };
+// ---- who can enter which room (two roles only)
+const want: Record<Role, Room[]> = { resident: ["all"], admin: ["all", "coordinators"] };
 for (const [r, rooms] of Object.entries(want) as [Role, Room[]][]) check(`${r} sees exactly ${rooms.join(", ")}`, JSON.stringify(roomsFor(r).map(x => x.id)) === JSON.stringify(rooms));
-check("every role can use the neighbourhood room", (Object.keys(want) as Role[]).every(r => canRoom(r, "all")));
-check("residents cannot open the volunteer or coordinator rooms", !canRoom("resident", "volunteers") && !canRoom("resident", "coordinators"));
-check("volunteers cannot open the coordinator room", !canRoom("volunteer", "coordinators"));
-check("moderators moderate the rooms they are in, and only those", canModerateChat("moderator", "all") && canModerateChat("moderator", "coordinators") && !canModerateChat("moderator", "volunteers"));
-check("residents and volunteers cannot moderate", ROOMS.every(r => !canModerateChat("resident", r.id) && !canModerateChat("volunteer", r.id)));
+check("both roles can use the neighbourhood room", (Object.keys(want) as Role[]).every(r => canRoom(r, "all")));
+check("residents cannot open the coordinator room", !canRoom("resident", "coordinators"));
+check("coordinators moderate every room they are in", ROOMS.every(r => canModerateChat("admin", r.id)));
+check("residents cannot moderate", ROOMS.every(r => !canModerateChat("resident", r.id)));
+
+// ---- old stored roles (volunteer, moderator) must still get a working chat, never an empty one
+for (const old of ["volunteer", "moderator", "somethingElse"]) {
+  check(`a stored "${old}" role still sees the neighbourhood room`, JSON.stringify(roomsFor(old as Role).map(x => x.id)) === JSON.stringify(["all"]));
+  check(`a stored "${old}" role can open the room and cannot moderate`, chatAccess(old as Role, "all") === "all" && !canModerateChat(old as Role, "all"));
+}
 
 // ---- locality: access comes only from membership in this neighbourhood
 throws("someone who has not joined the neighbourhood is turned away", () => chatAccess(null, "all"), "Join this neighbourhood first");
 throws("a coordinator elsewhere has no role here, so no coordinator room", () => chatAccess(undefined, "coordinators"), "Join this neighbourhood first");
 throws("a resident here cannot enter the coordinator room", () => chatAccess("resident", "coordinators"), "not open to your role");
 throws("unknown rooms are refused", () => chatAccess("admin", "everyone-everywhere"), "Unknown chat room");
-check("a member gets the room they asked for", chatAccess("volunteer", "volunteers") === "volunteers");
+check("a member gets the room they asked for", chatAccess("admin", "coordinators") === "coordinators");
 
 // ---- message text
 check("trims and keeps line breaks", chatText("  hello\nthere  ") === "hello\nthere");

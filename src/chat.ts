@@ -1,9 +1,9 @@
-import type { Role } from "./logic";
+import { asRole, type Role } from "./logic";
 
 // Chat rooms belong to one neighbourhood. A room id is only ever used together with a neighbourhood id,
 // and access comes from the person's membership row in that neighbourhood, so a coordinator in one area
 // never sees the coordinator room of another.
-export type Room = "all" | "volunteers" | "coordinators";
+export type Room = "all" | "coordinators";
 export interface RoomInfo { id: Room; name: string; who: string; roles: readonly Role[] }
 export const ROOMS: readonly RoomInfo[] = [
   { id: "all", name: "Neighbourhood", who: "Everyone who has joined this neighbourhood", roles: ["resident", "admin"] },
@@ -17,9 +17,10 @@ export interface ChatMsg {
 }
 
 export const isRoom = (s: unknown): s is Room => ROOMS.some(r => r.id === s);
-export const canRoom = (role: Role, room: Room) => !!ROOMS.find(r => r.id === room)?.roles.includes(role);
-export const roomsFor = (role: Role) => ROOMS.filter(r => r.roles.includes(role));
-export const canModerateChat = (role: Role, room: Room) => role === "admin" && canRoom(role, room);
+// asRole makes sure an old stored role (volunteer, moderator) still gets the neighbourhood room instead of an empty chat.
+export const canRoom = (role: Role, room: Room) => !!ROOMS.find(r => r.id === room)?.roles.includes(asRole(role));
+export const roomsFor = (role: Role) => ROOMS.filter(r => r.roles.includes(asRole(role)));
+export const canModerateChat = (role: Role, room: Room) => asRole(role) === "admin" && canRoom(role, room);
 
 // `memberRole` is the person's role from their own membership row in this neighbourhood, or null if they have not joined it.
 // Platform admins get no special pass here: chat is for the people who live in the area.

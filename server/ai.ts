@@ -139,7 +139,7 @@ export async function aiImage(photo: string, mode: string, cat?: string) {
 export async function aiInsights(doc: Doc): Promise<Insights> {
   const base = insights(doc);
   const out = await askAI([{ type: "text", text: JSON.stringify({
-    task: "Write a short neighbourhood briefing for coordinators. Keys: summary (one sentence), bullets (array of up to 5 objects with title and detail). Cover recurring problems, areas needing attention, resource shortages and volunteer capacity. Do not invent facts.",
+    task: "Write a short neighbourhood briefing for coordinators. Keys: summary (one sentence), bullets (array of up to 5 objects with title and detail). Cover recurring problems and areas needing attention. Do not invent facts.",
     data: { summary: base.summary, bullets: base.bullets, open: doc.issues.filter(i => i.status !== "resolved" && !i.hidden).map(i => ({ title: i.title, cat: i.cat, priority: i.priority, verif: i.verif, reports: i.reports })) },
   }) }], 700);
   if (!out || !Array.isArray(out.bullets)) return base;

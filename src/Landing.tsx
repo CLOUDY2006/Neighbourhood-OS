@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, MotionConfig, animate, motion, useInView, useMotionValue, useMotionValueEvent, useReducedMotion, useScroll, useSpring, useTransform, type MotionValue } from "framer-motion";
 import {
-  Accessibility, AlertTriangle, ArrowRight, BadgeCheck, BarChart3, Check, CircleCheck, Construction, Cross, Droplets, Eye, FileText, Flag, Globe, Hammer, HeartHandshake,
-  History, Home, Keyboard, Languages, Lightbulb, Lock, MapPin, MessageSquare, Mic, Moon, Play, ScrollText, ShieldCheck, Siren, Sparkles, Sun, Trash2, UserCheck, Users, WifiOff, Wrench,
+  Accessibility, AlertTriangle, ArrowRight, BadgeCheck, BarChart3, Check, CircleCheck, Construction, Droplets, Eye, FileText, Flag, Globe, History, Keyboard, Languages,
+  Lightbulb, Lock, MapPin, MessageSquare, Mic, Moon, Play, ScrollText, ShieldCheck, Siren, Sparkles, Sun, Trash2, UserCheck, Users, WifiOff, Wrench,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import * as S from "./store";
@@ -214,11 +214,11 @@ function HeroVisual() {
       </Float>
       <Float className="f3" d={1.4} mx={smx} my={smy} depth={30}>
         <span className="fi amber"><Users size={15} /></span>
-        <div><small>Mission · Lakeview cleanup</small><b>3 of 4 volunteers joined</b><span className="ln-bar"><i /></span></div>
+        <div><small>Report · Garbage on Park Road</small><b>3 neighbours confirmed it</b><span className="ln-bar"><i /></span></div>
       </Float>
       <Float className="f4" d={1.65} mx={smx} my={smy} depth={44}>
         <span className="fi green"><CircleCheck size={15} /></span>
-        <div><small>Proof of fix</small><b>Approved by a moderator</b><em>The pin turns green</em></div>
+        <div><small>Proof of fix</small><b>Approved by a coordinator</b><em>The pin turns green</em></div>
       </Float>
       <span className="ln-viscap">Live preview · simulated neighbourhood</span>
     </motion.div>
@@ -244,7 +244,7 @@ function Hero() {
             </span>
           </h1>
           <motion.p className="ln-lead" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8, duration: 0.8, ease: EASE }}>
-            NEIGHBOURHOOD OS turns your streets into a live isometric map. Residents report problems, neighbors confirm them, coordinators verify and assign them, volunteers fix them, and proof of the fix goes back on the map.
+            NEIGHBOURHOOD OS turns your streets into a live isometric map. Residents report problems, neighbors confirm them, coordinators verify them and see the fix through, and proof of the fix goes back on the map.
           </motion.p>
           <motion.div className="ln-ctas" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.95, duration: 0.8, ease: EASE }}>
             <button className="go xl ln-shine" onClick={S.enterDemo}><Play size={16} /> Try the live demo</button>
@@ -264,7 +264,7 @@ function Hero() {
 
 /* ---------------------------------------------------------------- sources marquee */
 
-const SOURCES: [LucideIcon, string][] = [[MapPin, "OpenStreetMap"], [Globe, "USGS earthquakes"], [Globe, "NASA EONET"], [AlertTriangle, "GDACS alerts"], [Siren, "Local CAP feeds"], [MessageSquare, "SMS & WhatsApp"], [WifiOff, "Offline-first PWA"], [Sparkles, "Claude AI suggestions"], [Globe, "TinyFish web agent"], [Languages, "English & हिन्दी"]];
+const SOURCES: [LucideIcon, string][] = [[MapPin, "OpenStreetMap"], [Globe, "USGS earthquakes"], [Globe, "NASA EONET"], [AlertTriangle, "GDACS alerts"], [Siren, "Local CAP feeds"], [MessageSquare, "SMS & WhatsApp"], [WifiOff, "Offline-first PWA"], [Sparkles, "AI suggestions"], [Globe, "TinyFish web agent"], [Languages, "English & हिन्दी"]];
 function Sources() {
   return (
     <section className="ln-sources" aria-label="Data and services">
@@ -301,18 +301,18 @@ function MockVerify({ on }: { on: boolean }) {
         {on ? <motion.span key="v" className="chip green mk-chip" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}><BadgeCheck size={12} /> Verified by coordinator</motion.span>
           : <motion.span key="u" className="chip mk-chip" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>Unverified</motion.span>}
       </AnimatePresence>
-      <div className="mk-line"><span className="dotc green" /> Action plan approved</div>
-      <div className="mk-line"><span className="dotc amber" /> Mission created · 4 volunteers</div>
+      <div className="mk-line"><span className="dotc green" /> Complaint draft approved</div>
+      <div className="mk-line"><span className="dotc amber" /> Taken on by a coordinator</div>
     </div>
   );
 }
 function MockFix({ on }: { on: boolean }) {
   return (
     <div className="mk">
-      <div className="mk-line"><b>Lakeview cleanup</b></div>
+      <div className="mk-line"><b>Garbage on Park Road</b></div>
       <div className="mk-prog"><i style={{ width: on ? "75%" : "12%" }} /></div>
-      <div className="mk-line dim">3 of 4 volunteers · 6 h logged</div>
-      <div className="mk-note green"><Check size={11} /> 2 evidence photos uploaded</div>
+      <div className="mk-line dim">In progress · updated today</div>
+      <div className="mk-note green"><Check size={11} /> After photo uploaded</div>
     </div>
   );
 }
@@ -324,16 +324,16 @@ function MockProve({ on }: { on: boolean }) {
         <div className="a"><Sparkles size={18} /><span>After</span></div>
         <i className="bar" />
       </div>
-      <div className="mk-note green"><CircleCheck size={11} /> Approved by a different moderator</div>
+      <div className="mk-note green"><CircleCheck size={11} /> Approved by a different coordinator</div>
     </div>
   );
 }
 const LOOP: { k: string; who: string; Icon: LucideIcon; text: string; Mock: (p: { on: boolean }) => JSX.Element }[] = [
   { k: "Report", who: "Resident", Icon: MapPin, text: "Click the map, type or speak in Hindi or English, pick a category and priority, add a photo. Possible duplicates nearby are flagged.", Mock: MockReport },
   { k: "Confirm", who: "Neighbors", Icon: Users, text: "Neighbors press “I see this too”. Three flags from neighbors hide a report until a coordinator reviews it.", Mock: MockConfirm },
-  { k: "Verify & assign", who: "Coordinator", Icon: BadgeCheck, text: "Only a human can mark a report verified. An approved action plan becomes a community mission with volunteers.", Mock: MockVerify },
-  { k: "Fix", who: "Volunteers", Icon: Wrench, text: "Volunteers join the mission and post progress updates and evidence photos as they work.", Mock: MockFix },
-  { k: "Prove", who: "Moderator", Icon: CircleCheck, text: "A different moderator approves the fix (the four-eyes rule). A before/after slider goes on the issue and the pin turns green.", Mock: MockProve },
+  { k: "Verify", who: "Coordinator", Icon: BadgeCheck, text: "Only a human can mark a report verified. The coordinator then takes it on and sends the complaint to the right office.", Mock: MockVerify },
+  { k: "Fix", who: "Coordinator", Icon: Wrench, text: "The coordinator moves the report along, posts progress updates and uploads the after photo as evidence.", Mock: MockFix },
+  { k: "Prove", who: "Coordinator", Icon: CircleCheck, text: "A different coordinator approves the fix (the four-eyes rule). A before/after slider goes on the issue and the pin turns green.", Mock: MockProve },
 ];
 function Loop() {
   const ref = useRef<HTMLDivElement>(null);
@@ -368,7 +368,7 @@ function Loop() {
 /* ---------------------------------------------------------------- stats */
 
 function Stats() {
-  const items: [number, string, string?][] = [[5, "steps from report to proof"], [4, "roles, enforced on the server"], [3, "global hazard feeds watched"], [24, "hours until SOS locations are wiped", " h"], [2, "languages, with voice input"]];
+  const items: [number, string, string?][] = [[5, "steps from report to proof"], [2, "roles, enforced on the server"], [3, "global hazard feeds watched"], [3, "neighbour flags hide a report until it is reviewed"], [2, "languages, with voice input"]];
   return (
     <section className="ln-stats" aria-label="At a glance">
       <div className="ln-wrap"><div className="ln-statgrid">
@@ -414,9 +414,8 @@ function WorldViz() {
     </svg>
   );
 }
-function SmsViz() {
+function SmsViz({ msgs }: { msgs: [boolean, string][] }) {
   const ref = useRef<HTMLDivElement>(null), seen = useInView(ref, { margin: "-60px" }), i = useCycle(6, 1300, seen);
-  const msgs: [boolean, string][] = [[true, "SAFE"], [false, "Thanks. You are marked safe."], [true, "SOS medical 3 near the school gate"], [false, "Sent to coordinators. If anyone is in danger, call 112 first."]];
   return (
     <div className="smv" ref={ref}>
       {msgs.map(([me, t], k) => <motion.div key={k} className={`sm ${me ? "me" : ""}`} initial={false} animate={{ opacity: k < i ? 1 : 0, y: k < i ? 0 : 8 }} transition={{ duration: 0.35, ease: EASE }}>{t}</motion.div>)}
@@ -439,16 +438,16 @@ function Features() {
             <WorldViz />
           </Spot>
           <Spot className="b-sos" d={0.1}>
-            <div className="ln-ct"><span className="ln-ic red"><Siren size={18} /></span><div><h3>SOS, consent first</h3><p>Ask for help with an explicit consent tick. The location is wiped when the request closes, or after 24 hours.</p></div></div>
-            <div className="sosv" aria-hidden="true"><i /><i /><i /><span><Siren size={22} /></span></div>
+            <div className="ln-ct"><span className="ln-ic teal"><MessageSquare size={18} /></span><div><h3>Neighbourhood chat</h3><p>One room for everyone and a private room for coordinators. Links are blocked, and three reports hide a message.</p></div></div>
+            <SmsViz msgs={[[false, "Is the water back on Main Road?"], [true, "Yes, since 6 pm."], [false, "Thanks. I will mark the report fixed."]]} />
           </Spot>
           <Spot className="b-mission">
-            <div className="ln-ct"><span className="ln-ic amber"><Users size={18} /></span><div><h3>Missions &amp; volunteers</h3><p>Skills, availability and emergency abilities help coordinators match the right people.</p></div></div>
-            <div className="msv"><div className="msv-av">{["AK", "RS", "PN", "MJ"].map(a => <span key={a}>{a}</span>)}</div><div className="mk-prog live"><i /></div><div className="agv-chips"><span className="chip">first aid</span><span className="chip">tools</span><span className="chip">driving</span></div></div>
+            <div className="ln-ct"><span className="ln-ic amber"><MapPin size={18} /></span><div><h3>Ward councillor lookup</h3><p>Coordinators find the ward page for the area and read who the councillor is, so complaints reach the right office.</p></div></div>
+            <ul className="rpv"><li><MapPin size={14} /> Area read from the map<b>Ward 12</b></li><li><ScrollText size={14} /> Source: official ward page</li></ul>
           </Spot>
           <Spot className="b-res" d={0.05}>
-            <div className="ln-ct"><span className="ln-ic teal"><Home size={18} /></span><div><h3>Resource radar</h3><p>Shelters, water points, aid posts and equipment, with deliveries and shortage flags.</p></div></div>
-            <div className="rsv">{([[Home, "Shelter"], [Droplets, "Water"], [Cross, "Aid post"], [HeartHandshake, "Donations"], [Flag, "Assembly"], [Hammer, "Tools"]] as [LucideIcon, string][]).map(([I, l], k) => <span key={l} className={k === 1 ? "low" : ""}><I size={16} />{l}{k === 1 && <em>Low</em>}</span>)}</div>
+            <div className="ln-ct"><span className="ln-ic teal"><Flag size={18} /></span><div><h3>Notices &amp; priority</h3><p>Coordinators pin notices for the neighbourhood. Every report gets a priority score with the reasons shown.</p></div></div>
+            <ul className="rpv"><li><Flag size={14} /> Pinned notice<b>1</b></li><li><BarChart3 size={14} /> Priority score<b className="warn">82 / 100</b></li></ul>
           </Spot>
           <Spot className="b-pulse" d={0.1}>
             <div className="ln-ct"><span className="ln-ic green"><BarChart3 size={18} /></span><div><h3>Pulse analytics</h3><p>Reported vs resolved, hours to fix, hotspots. Every chart says whether it is Actual or an Estimate.</p></div></div>
@@ -459,8 +458,8 @@ function Features() {
             <ul className="rpv"><li><ScrollText size={14} /> Passed to authorities<b>4</b></li><li><History size={14} /> Overdue (no fix after 7 days)<b className="warn">1</b></li><li><Lock size={14} /> Exports contain no resident names</li></ul>
           </Spot>
           <Spot className="b-sms" d={0.05}>
-            <div className="ln-ct"><span className="ln-ic teal"><MessageSquare size={18} /></span><div><h3>Works offline, and over SMS</h3><p>Reports and check-ins queue offline. Text SAFE, NEED HELP, STATUS or SOS.</p></div></div>
-            <SmsViz />
+            <div className="ln-ct"><span className="ln-ic teal"><MessageSquare size={18} /></span><div><h3>Works offline, and over SMS</h3><p>Reports queue offline and send when you are back. Text STATUS, FIXED or NOT FIXED.</p></div></div>
+            <SmsViz msgs={[[true, "STATUS"], [false, "1 open report: Garbage on Park Road is in progress."], [true, "FIXED"], [false, "Thanks. The report is marked fixed."]]} />
           </Spot>
           <Spot className="b-lang" d={0.1}>
             <div className="ln-ct"><span className="ln-ic amber"><Languages size={18} /></span><div><h3>Hindi &amp; English, by voice</h3><p>Speak a report in either language. The agent writes the English summary.</p></div></div>
@@ -480,13 +479,13 @@ function Features() {
 
 function CrisisDemo() {
   const ref = useRef<HTMLDivElement>(null), seen = useInView(ref, { margin: "-80px" }), calm = useReducedMotion();
-  // shown complete until it scrolls into view, then it replays: hazard, alert banner, check-in, SOS, hold
-  const [s, setS] = useState(3);
+  // shown complete until it scrolls into view, then it replays: hazard, alert banner, urgent notice, hold
+  const [s, setS] = useState(2);
   useEffect(() => {
     if (!seen || calm) return;
-    const dur = [1000, 1300, 1300, 5200];
+    const dur = [1000, 1300, 5200];
     let k = 0, t = 0;
-    const next = () => { t = window.setTimeout(() => { k = (k + 1) % 4; setS(k); next(); }, dur[k]); };
+    const next = () => { t = window.setTimeout(() => { k = (k + 1) % 3; setS(k); next(); }, dur[k]); };
     setS(0); next();
     return () => clearTimeout(t);
   }, [seen, calm]);
@@ -500,11 +499,8 @@ function CrisisDemo() {
       <AnimatePresence>
         {s >= 1 && <motion.div key="b" className="crd-banner" initial={{ opacity: 0, y: -10, height: 0 }} animate={{ opacity: 1, y: 0, height: "auto" }} exit={{ opacity: 0 }} transition={{ duration: 0.45, ease: EASE }}><ShieldCheck size={15} /><div><b>Crisis mode: official alert</b><small>Follow your national authorities. If anyone is in danger, call 112 first.</small></div></motion.div>}
         {s >= 2 && <motion.div key="c" className="crd-check" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.45, ease: EASE }}>
-          <b>Safety check-in: are you safe?</b>
-          <div className="crd-counts"><span className="green"><b>42</b>I am safe</span><span className="red"><b>3</b>Need help</span><span><b>11</b>Not replied</span></div>
-        </motion.div>}
-        {s >= 3 && <motion.div key="s" className="crd-sos" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.45, ease: EASE }}>
-          <Siren size={15} /><div><b>Medical help · 3 people</b><small>Volunteer assigned · nearest shelter 220 m</small></div><span className="chip amber">Assigned</span>
+          <b>Urgent notice from your coordinators</b>
+          <small>Avoid the flooded underpass on Main Road. Use the Ring Road.</small>
         </motion.div>}
       </AnimatePresence>
     </div>
@@ -513,8 +509,8 @@ function CrisisDemo() {
 function Crisis() {
   const rows: [LucideIcon, string, string][] = [
     [Globe, "Official feeds, shown as published", "USGS, NASA EONET, GDACS and local CAP alerts. A watch shows a heads-up; warning or severe switches on Crisis Mode."],
-    [ShieldCheck, "Safety check-ins", "Coordinators ask everyone “are you safe?”. Members answer “I am safe” or “I need help”, by app or by SMS."],
-    [Siren, "SOS moves to the front", "The SOS tab is promoted, requests reach the board, and coordinators assign volunteers and point to the nearest shelter."],
+    [ShieldCheck, "Urgent notices", "Coordinators pin an urgent notice and members hear about it by push, email or SMS."],
+    [MessageSquare, "Reports and chat keep working", "Residents keep reporting on the map, coordinators keep verifying them, and neighbours can talk in the chat."],
   ];
   return (
     <section id="crisis" className="ln-sec ln-darkband">
@@ -534,17 +530,15 @@ function Crisis() {
 /* ---------------------------------------------------------------- roles */
 
 const ROLES: { k: string; Icon: LucideIcon; who: string; can: string[] }[] = [
-  { k: "Resident", Icon: UserCheck, who: "Every member", can: ["Report problems and confirm others' reports", "Flag, withdraw and add updates", "Say whether a fix looks done", "Ask for help with SOS and answer check-ins", "Use the neighbor exchange", "Draft and approve the agent's complaint for your own report"] },
-  { k: "Volunteer", Icon: Wrench, who: "Residents who opt in", can: ["Everything a resident can do", "Join missions; set availability, skills and abilities", "Share an approximate area, rounded to about 100 m", "Post proof of a fix", "Update the status of an SOS you are assigned to"] },
-  { k: "Moderator", Icon: BadgeCheck, who: "Set by a coordinator", can: ["Verify or dispute reports", "Hide and restore reports", "Approve or reject resolutions, never your own", "See the volunteer overlay on the map"] },
-  { k: "Coordinator", Icon: ShieldCheck, who: "Creator of a named neighbourhood, or approved by one", can: ["Everything above, plus advancing status", "Create missions and assign volunteers", "Approve action plans, resources and deliveries", "Acknowledge and assign SOS; run safety check-ins", "Post notices and write the preparedness plan", "Hand off to authorities, run What-if and council reports"] },
+  { k: "Resident", Icon: UserCheck, who: "Every member", can: ["Report problems and confirm others' reports", "Flag, withdraw and add updates", "Say whether a fix looks done", "Use the neighbourhood chat", "Get notices and updates on your own reports"] },
+  { k: "Coordinator", Icon: ShieldCheck, who: "Creator of a named neighbourhood, or approved by one", can: ["Everything a resident can do", "Verify or dispute reports and move them through the steps", "Post proof of a fix, and approve fixes by someone else", "Hide and restore reports and chat messages", "Pin notices, hand off to authorities, manage members"] },
 ];
 function Roles() {
   const [r, setR] = useState(0), role = ROLES[r];
   return (
     <section id="roles" className="ln-sec">
       <div className="ln-wrap">
-        <Head eyebrow="Roles" title={<>Four roles. <em>Clear</em> powers.</>} sub="Permissions are enforced on the server, not just hidden in the interface. Every coordinator action is written to an audit log." center />
+        <Head eyebrow="Roles" title={<>Two roles. <em>Clear</em> powers.</>} sub="Permissions are enforced on the server, not just hidden in the interface. Every coordinator action is written to an audit log." center />
         <Reveal className="ln-roles">
           <div className="ln-roletabs" role="tablist" aria-label="Roles">
             {ROLES.map((x, i) => (
@@ -572,10 +566,10 @@ function Roles() {
 
 function Trust() {
   const items: [LucideIcon, string, string][] = [
-    [UserCheck, "Only humans verify", "A report is verified only by a coordinator or moderator. A different moderator must approve every fix."],
+    [UserCheck, "Only humans verify", "A report is verified only by a coordinator. A different coordinator must approve every fix."],
     [Sparkles, "AI is always a suggestion", "Summaries, routes, drafts and photo checks are labelled. A rule-based fallback works without any AI key."],
-    [FileText, "Simulated data says so", "Demo data, What-if projections and estimates are labelled “simulated” or “estimate” wherever they appear."],
-    [Siren, "Not an emergency service", "The app says so on SOS and Account, and always points to your local emergency number first."],
+    [FileText, "Simulated data says so", "Demo data and estimates are labelled “simulated” or “estimate” wherever they appear."],
+    [Siren, "Not an emergency service", "The app says so in Chat and Account, and always points to your local emergency number first."],
     [Lock, "Location is opt-in", "Only a roughly 1 km area or a pin you choose is stored. Photos are re-encoded in your browser to strip GPS data."],
     [ScrollText, "Every action is logged", "Coordinator actions go to an audit log that other coordinators can read."],
   ];
@@ -589,7 +583,7 @@ function Trust() {
           <ul>
             <li>OpenStreetMap coverage varies; a labelled schematic city is drawn when data is thin.</li>
             <li>Location claims are self-asserted, and updates arrive by polling every 5 seconds.</li>
-            <li>SOS needs an internet connection. Hindi translations have not had native review yet.</li>
+            <li>Chat needs an internet connection. Hindi translations have not had native review yet.</li>
             <li>Authority names and escalation steps are generic and must be checked for your city.</li>
           </ul>
         </Reveal>
@@ -646,7 +640,7 @@ function FinalCta({ me }: { me: boolean }) {
         <Reveal className="ln-cta">
           <div className="ln-ctaglow" aria-hidden="true" />
           <h2>See your neighbourhood <em>come alive</em>.</h2>
-          <p>Open the simulated demo, switch between the four roles, run the guided AI agent and simulate an earthquake alert. No account needed.</p>
+          <p>Open the simulated demo, switch between the two roles, run the guided AI agent and simulate an earthquake alert. No account needed.</p>
           <div className="ln-ctas">
             <button className="xl ln-white ln-shine" onClick={S.enterDemo}><Play size={16} /> Try the live demo</button>
             <button className="xl ln-outline" onClick={() => go("/signin")}>{me ? "Open my neighbourhoods" : "Sign in or create an account"} <ArrowRight size={16} /></button>

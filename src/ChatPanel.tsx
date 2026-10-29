@@ -11,24 +11,33 @@ export function ChatPanel({ st, app, act }: { st: S.State; app: S.AppState; act:
   const t = useT(), n = app.nbhd!, demo = app.mode === "demo";
   const rooms = S.roomsFor(st.role);
   const [pick, setPick] = useState<S.Room>(() => { try { return (localStorage.getItem(LAST_ROOM) as S.Room) || "all"; } catch { return "all"; } });
-  const room = rooms.some(r => r.id === pick) ? pick : "all", info = rooms.find(r => r.id === room)!;
+  const room = rooms.some(r => r.id === pick) ? pick : "all", info = rooms.find(r => r.id === room) ?? rooms[0] ?? S.ROOMS[0];
   const mod = S.canModerateChat(st.role, room);
   const [msgs, setMsgs] = useState<S.ChatMsg[]>([]), [more, setMore] = useState(false), [loading, setLoading] = useState(true), [err, setErr] = useState("");
   const [text, setText] = useState(""), [sending, setSending] = useState(false);
   const rev = useRef(-1), list = useRef<HTMLDivElement>(null), stick = useRef(true), keep = useRef<number | null>(null);
 
+  // The first load is retried on every tick until it works, and its error stays on screen until then.
+  // Later ticks only fetch what changed since the last message.
+  const first = async (isLive: () => boolean) => {
+    const p = await S.chatLoad(room);
+    if (!isLive()) return;
+    setMsgs(p.msgs); setMore(!!p.more); rev.current = p.rev; setErr(""); setLoading(false);
+  };
   const pull = async () => {
-    if (rev.current < 0) return;
     const p = await S.chatLoad(room, { since: rev.current });
     if (p.msgs.length) setMsgs(m => merge(m, p.msgs));
     rev.current = Math.max(rev.current, p.rev);
   };
   useEffect(() => {
-    let live = true;
+    let live = true; const isLive = () => live;
     setMsgs([]); setMore(false); setLoading(true); setErr(""); rev.current = -1; stick.current = true;
-    S.chatLoad(room).then(p => { if (!live) return; setMsgs(p.msgs); setMore(!!p.more); rev.current = p.rev; })
-      .catch(e => { if (live) setErr((e as Error).message); }).finally(() => { if (live) setLoading(false); });
-    const iv = setInterval(() => { if (live && document.visibilityState !== "hidden") pull().then(() => setErr("")).catch(() => undefined); }, demo ? 2000 : 4000);
+    first(isLive).catch(e => { if (live) { setErr((e as Error).message); setLoading(false); } });
+    const iv = setInterval(() => {
+      if (!live || document.visibilityState === "hidden") return;
+      if (rev.current < 0) { first(isLive).catch(e => { if (live) setErr((e as Error).message); }); return; }
+      pull().then(() => { if (live) setErr(""); }).catch(() => undefined);
+    }, demo ? 2000 : 4000);
     return () => { live = false; clearInterval(iv); };
   }, [room, n.id, st.role, demo]);
 

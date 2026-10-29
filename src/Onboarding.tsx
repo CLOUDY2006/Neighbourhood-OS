@@ -13,10 +13,10 @@ const LOOP = [
   { Icon: MapPin, k: "Report", d: "Drop a pin, type or speak" },
   { Icon: Users, k: "Confirm", d: "Neighbors say “I see this too”" },
   { Icon: BadgeCheck, k: "Verify", d: "A coordinator checks and assigns" },
-  { Icon: Wrench, k: "Fix", d: "Volunteers fix it and post proof" },
+  { Icon: Wrench, k: "Fix", d: "Coordinators fix it and post proof" },
   { Icon: CircleCheck, k: "Prove", d: "Approved, and the pin turns green" },
 ];
-const STATES = [{ l: "Reported", c: "red" }, { l: "Verified by coordinator", c: "red" }, { l: "Volunteers fixing", c: "amber" }, { l: "Fixed and approved", c: "green" }];
+const STATES = [{ l: "Reported", c: "red" }, { l: "Verified by coordinator", c: "red" }, { l: "Being fixed", c: "amber" }, { l: "Fixed and approved", c: "green" }];
 
 /** Left half of the sign-in page: brand, the five-step loop and a small issue card that moves through it. */
 function AuthArt() {

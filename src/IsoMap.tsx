@@ -362,7 +362,7 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
         <b className="hname">{name}</b>
         <span className="mono">{info.lat.toFixed(4)}, {info.lng.toFixed(4)}</span>
         <label className="hsearchwrap"><Search size={15} aria-hidden="true" />
-          <input className="hsearch" placeholder="Find an issue, mission or resource" aria-label="Find an issue, mission or resource" value={q} onChange={e => setQ(e.target.value)}
+          <input className="hsearch" placeholder="Find an issue" aria-label="Find an issue" value={q} onChange={e => setQ(e.target.value)}
             onKeyDown={e => {
               if (e.key !== "Enter") return;
               const s = q.trim().toLowerCase(), h = st.issues.find(i => i.title.toLowerCase().includes(s)), rs = st.resources.find(r => r.name.toLowerCase().includes(s));
@@ -433,12 +433,9 @@ export default function IsoMap({ st, name, center, map, note, sos, official, sel
             <ul>
               <li><i className="lg-dot red" />Open: reported or under review</li>
               <li><i className="lg-dot amber" />In progress: assigned, being fixed or awaiting approval</li>
-              <li><i className="lg-dot green" />Fixed and approved by a moderator</li>
-              <li><i className="lg-dot teal round" />Resource such as a shelter or water point (amber when low)</li>
-              <li><Siren size={14} color={pal.red} />SOS request (location shown only to helpers)</li>
+              <li><i className="lg-dot green" />Fixed and approved by a coordinator</li>
               {canSeeVol && <li><i className="lg-dot vol round" />Volunteer's approximate area</li>}
               <li><i className="lg-ring" />Crisis zone: many reports close together</li>
-              <li><i className="lg-line" />Route from the nearest resource</li>
               <li><i className="lg-prog" />Ring around a pin: AI agent progress</li>
               <li><b className="lg-num">3</b>Neighbors who reported the same problem</li>
             </ul>

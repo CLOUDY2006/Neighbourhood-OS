@@ -6,7 +6,7 @@ import express from "express";
 import compression from "compression";
 import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
-import { can, dueEscalations, reportersOf, emptyDoc, publicSummary, purgeSos, reduce, sosActiveCount, STATUS_LABEL, visibleSos, weeklyDigest, type Action, type Cat, type Doc, type Role } from "../src/logic";
+import { asRole, can, dueEscalations, reportersOf, emptyDoc, reduce, STATUS_LABEL, weeklyDigest, type Action, type Cat, type Doc, type Role } from "../src/logic";
 
 import { alertsFor, SEV_RANK, type Alert } from "../src/world";
 import { canModerateChat, chatAccess, chatText, CHAT_DAYS, CHAT_HIDE_AT, CHAT_PAGE, ROOMS, roomsFor, type ChatMsg, type Room } from "../src/chat";
@@ -63,22 +63,16 @@ type Q = { query: (sql: string, p?: unknown[]) => Promise<{ rows: any[] }> };
 async function memberRole(c: Q, nid: string, u: User): Promise<Role> {
   const r = await c.query("select role from members where neighbourhood_id = $1 and user_id = $2", [nid, u.id]);
   if (!r.rows[0]) { if (u.platformAdmin) return "admin"; throw new HttpError(403, "Join this neighbourhood first"); }
-  return u.platformAdmin ? "admin" : (r.rows[0].role as Role);
+  return u.platformAdmin ? "admin" : asRole(r.rows[0].role);
 }
 const info = (n: any, role: Role, members?: number) => ({ id: n.id, kind: n.kind, name: n.name, lat: n.center_lat, lng: n.center_lng, r: n.radius_m, role, ...(members == null ? {} : { members }) });
 const viewDoc = (d: Doc, role: Role, handle: string, memberCount = 0): Doc => {
-  const mod = role === "admin" || role === "moderator";
-  const base: Doc = {
-    ...d, memberCount, sos: visibleSos(d, role, handle), sosActive: sosActiveCount(d),
-    events: d.events.filter(e => !e.to || e.to === handle),
-    volunteers: d.volunteers.map(v => (mod || v.name === handle ? v : { ...v, lat: undefined, lng: undefined })),
-  };
+  // Older neighbourhoods may still hold volunteer, mission, resource or SOS data. It is never sent to anyone.
+  const base: Doc = { ...d, memberCount, missions: [], resources: [], volunteers: [], sos: [], events: d.events.filter(e => !e.to || e.to === handle) };
   if (role === "admin") return base;
   return {
     ...base, authorities: undefined,
-    issues: (mod ? d.issues : d.issues.filter(i => !i.hidden)).map(i => ({ ...i, flags: mod ? i.flags : [], handoff: i.handoff ? { ...i.handoff, email: undefined } : undefined })),
-    care: (d.care ?? []).filter(c => c.name === handle),
-    checkin: d.checkin ? { ...d.checkin, replies: Object.fromEntries(Object.entries(d.checkin.replies).filter(([n]) => n === handle)) } : undefined,
+    issues: d.issues.filter(i => !i.hidden).map(i => ({ ...i, flags: [], handoff: i.handoff ? { ...i.handoff, email: undefined } : undefined })),
   };
 };
 const countMembers = async (c: Q, id: string) => (await c.query("select count(*)::int as n from members where neighbourhood_id = $1", [id])).rows[0].n as number;
@@ -95,7 +89,7 @@ async function ensureMember(nid: string, u: User, role: Role = "resident"): Prom
     // One join at a time per neighbourhood, so two people joining together cannot both take the same founding slot.
     await c.query("select pg_advisory_xact_lock(hashtext($1))", [nid]);
     const ex = await c.query("select role from members where neighbourhood_id = $1 and user_id = $2", [nid, u.id]);
-    if (ex.rows[0]) return ex.rows[0].role as Role;
+    if (ex.rows[0]) return asRole(ex.rows[0].role);
     const cnt = await c.query("select count(*)::int as n from members where user_id = $1", [u.id]);
     if (cnt.rows[0].n >= 5) throw new HttpError(400, "You can belong to up to 5 neighbourhoods. Leave one first");
     const size = (await c.query("select count(*)::int as n from members where neighbourhood_id = $1", [nid])).rows[0].n as number;
@@ -221,10 +215,10 @@ app.get("/api/n/:id/state", ah(async (req, res) => {
 }));
 
 const LIMITS: Partial<Record<Action["t"], [number, number]>> = {
-  report: [10, 86400000], proof: [30, 86400000], spam: [20, 86400000], merge: [40, 86400000], flag: [20, 86400000], mission: [20, 86400000], addResource: [20, 86400000], sos: [3, 86400000],
-  update: [40, 86400000], feedback: [30, 86400000], reporterConfirm: [30, 86400000], agentStart: [20, 86400000], agentDraft: [60, 86400000], agentSend: [30, 86400000], shareAdd: [10, 86400000], shareMsg: [40, 86400000], careSet: [10, 86400000], noticeAdd: [20, 86400000], checkinStart: [10, 86400000],
+  report: [10, 86400000], proof: [30, 86400000], spam: [20, 86400000], merge: [40, 86400000], flag: [20, 86400000],
+  update: [40, 86400000], feedback: [30, 86400000], reporterConfirm: [30, 86400000], agentStart: [20, 86400000], agentDraft: [60, 86400000], agentSend: [30, 86400000], noticeAdd: [20, 86400000],
 };
-const ADMIN_ACTIONS = new Set(["verify", "advance", "mission", "assign", "delivery", "shortage", "addResource", "hide", "restore", "sosAck", "sosAssign", "handoff", "handoffStatus", "planSet", "noticeAdd", "noticeRemove", "checkinStart", "checkinClose", "authoritySet", "authorityRemove", "agentEscalate", "approveResolution", "rejectResolution", "closeUnconfirmed", "actionPlanApprove"]);
+const ADMIN_ACTIONS = new Set(["verify", "advance", "hide", "restore", "handoff", "handoffStatus", "noticeAdd", "noticeRemove", "authoritySet", "authorityRemove", "agentEscalate", "approveResolution", "rejectResolution", "closeUnconfirmed"]);
 
 interface Actor { id: string; handle: string; platformAdmin: boolean }
 async function runAction(id: string, u: Actor, a: Action) {
@@ -256,23 +250,19 @@ async function runAction(id: string, u: Actor, a: Action) {
 
 async function afterAction(id: string, a: Action, raw: Doc, actor: string) {
   try {
-    if (a.t === "sos") await notify(id, "admins", { title: "New SOS request", body: "A neighbor asked for help. Open the SOS tab.", urgent: true });
-    else if (a.t === "sosAssign") await notify(id, { name: a.name }, { title: "You were assigned to an SOS request", body: "Open the SOS tab for details.", urgent: true });
-    else if (a.t === "assign") await notify(id, { name: a.name }, { title: "You were assigned to a mission", body: "Open the Missions tab." });
-    else if (a.t === "checkinStart") await notify(id, "all", { title: "Safety check-in", body: `${a.title}. Please reply whether you are safe.`, urgent: true });
-    else if (a.t === "noticeAdd" && a.urgent) await notify(id, "all", { title: a.title, body: a.body.slice(0, 140), urgent: true });
+    if (a.t === "noticeAdd" && a.urgent) await notify(id, "all", { title: a.title, body: a.body.slice(0, 140), urgent: true });
     else if (a.t === "advance" || a.t === "approveResolution" || a.t === "rejectResolution" || a.t === "reporterConfirm" || a.t === "closeUnconfirmed") {
       const i = raw.issues.find(x => x.id === a.id);
       if (i) {
         const others = reportersOf(i).filter(n => n !== actor);
         if (a.t === "advance" && i.status === "pending") {
           for (const n of others) await notify(id, { name: n }, { title: "Is the problem fixed?", body: `"${i.title}": the team says it is done. Open the app and answer Yes or Not fully, or reply FIXED or NOT FIXED by text.`, urgent: true });
-          await notify(id, "reviewers", { title: "A fix is waiting for review", body: i.title, urgent: true });
+          await notify(id, "admins", { title: "A fix is waiting for review", body: i.title, urgent: true });
         } else if (a.t === "advance") {
           await notify(id, { name: i.author }, { title: "Update on your report", body: `"${i.title}" is now: ${STATUS_LABEL[i.status]}` });
         } else if (a.t === "reporterConfirm") {
           const fixed = i.status === "resolved";
-          await notify(id, "reviewers", { title: fixed ? "A reporter confirmed the fix" : "A reporter says it is not fully fixed", body: i.title, urgent: !fixed });
+          await notify(id, "admins", { title: fixed ? "A reporter confirmed the fix" : "A reporter says it is not fully fixed", body: i.title, urgent: !fixed });
           for (const n of others) await notify(id, { name: n }, { title: "Update on your report", body: `"${i.title}" is now: ${STATUS_LABEL[i.status]}` });
         } else if (a.t === "closeUnconfirmed") {
           for (const n of others) await notify(id, { name: n }, { title: "Report closed without confirmation", body: `"${i.title}" was closed because nobody answered. If it is still broken, open the app and reopen it.` });
@@ -295,7 +285,6 @@ app.post("/api/n/:id/action", ah(async (req, res) => {
   const u = await authenticate(req); const id = String(req.params.id);
   if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
   const a = req.body as Action;
-  if (a && a.t === "sos") delete (a as { contact?: string }).contact;
   const out = await runAction(id, u, a);
   res.json({ doc: out.doc, result: out.result, version: out.version, role: out.role });
 }));
@@ -390,17 +379,17 @@ app.get("/api/n/:id/coordinators", ah(async (req, res) => {
   const u = await authenticate(req); const id = String(req.params.id);
   if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
   await memberRole(pool, id, u);
-  const r = await pool.query("select display_name, role from members where neighbourhood_id = $1 and role in ('admin', 'moderator') order by joined_at limit 100", [id]);
-  res.json(r.rows.map(m => ({ name: m.display_name, role: m.role })));
+  const r = await pool.query("select display_name, role from members where neighbourhood_id = $1 and role = 'admin' order by joined_at limit 100", [id]);
+  res.json(r.rows.map(m => ({ name: m.display_name, role: "admin" })));
 }));
 app.get("/api/n/:id/members", ah(async (req, res) => {
   const { id } = await needAdmin(req);
   const r = await pool.query("select user_id, display_name, role, coordinator_requested_at, joined_at from members where neighbourhood_id = $1 order by joined_at limit 500", [id]);
-  res.json(r.rows.map(m => ({ userId: m.user_id, name: m.display_name, role: m.role, requested: !!m.coordinator_requested_at, joined: m.joined_at })));
+  res.json(r.rows.map(m => ({ userId: m.user_id, name: m.display_name, role: asRole(m.role), requested: !!m.coordinator_requested_at, joined: m.joined_at })));
 }));
 app.post("/api/n/:id/members/:uid/role", ah(async (req, res) => {
   const { u, id } = await needAdmin(req); const uid = String(req.params.uid), role = String(req.body?.role);
-  if (!["resident", "volunteer", "moderator", "admin"].includes(role)) throw new HttpError(400, "Invalid role");
+  if (!["resident", "admin"].includes(role)) throw new HttpError(400, "Invalid role");
   if (!/^[0-9a-f-]{36}$/.test(uid)) throw new HttpError(400, "Invalid member");
   await tx(async c => {
     const t = (await c.query("select role from members where neighbourhood_id = $1 and user_id = $2 for update", [id, uid])).rows[0];
@@ -418,15 +407,6 @@ app.get("/api/n/:id/audit", ah(async (req, res) => {
   const { id } = await needAdmin(req);
   const r = await pool.query("select at, who, action, detail from audit_log where neighbourhood_id = $1 order by at desc limit 30", [id]);
   res.json(r.rows.map(a => ({ at: a.at, who: a.who, action: a.action, detail: a.detail ? Object.values(a.detail).filter(Boolean).join(" ") : "" })));
-}));
-app.post("/api/n/:id/me/role", ah(async (req, res) => {
-  const u = await authenticate(req); const id = String(req.params.id), role = String(req.body?.role);
-  if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
-  if (!["resident", "volunteer"].includes(role)) throw new HttpError(400, "Invalid role");
-  const cur = await memberRole(pool, id, u);
-  if (cur === "admin" || cur === "moderator") throw new HttpError(400, "Ask a coordinator to change your role");
-  await pool.query("update members set role = $3 where neighbourhood_id = $1 and user_id = $2", [id, u.id, role]);
-  res.json({ role });
 }));
 app.post("/api/n/:id/coordinator-request", ah(async (req, res) => {
   const u = await authenticate(req); const id = String(req.params.id); rl(`coord:${u.id}`, 5, 86400000);
@@ -453,8 +433,8 @@ app.post("/api/n/:id/leave", ah(async (req, res) => {
 
 // ---- Neighbourhood chat
 // Rooms are scoped to one neighbourhood. Access comes only from the person's own membership row in it,
-// so a coordinator or volunteer elsewhere never reaches this area's rooms. Platform admins get no pass here.
-const ownRole = async (c: Q, nid: string, u: User) => ((await c.query("select role from members where neighbourhood_id = $1 and user_id = $2", [nid, u.id])).rows[0]?.role ?? null) as Role | null;
+// so a coordinator elsewhere never reaches this area's rooms. Platform admins get no pass here.
+const ownRole = async (c: Q, nid: string, u: User): Promise<Role | null> => { const r = (await c.query("select role from members where neighbourhood_id = $1 and user_id = $2", [nid, u.id])).rows[0]; return r ? asRole(r.role) : null; };
 async function chatLatest(nid: string, u: User): Promise<Partial<Record<Room, number>>> {
   const role = await ownRole(pool, nid, u);
   if (!role) return {};
@@ -476,7 +456,7 @@ const CHAT_SEL = "select m.id, m.rev, m.room, m.user_id, m.display_name, m.body,
 const chatView = (r: any, u: User, mod: boolean): ChatMsg => {
   const reports: string[] = r.reports ?? [];
   return {
-    id: Number(r.id), rev: Number(r.rev), room: r.room, by: r.display_name, role: r.role ?? undefined, t: new Date(r.created_at).getTime(), state: r.state,
+    id: Number(r.id), rev: Number(r.rev), room: r.room, by: r.display_name, role: r.role ? asRole(r.role) : undefined, t: new Date(r.created_at).getTime(), state: r.state,
     text: r.state === "ok" || (r.state === "hidden" && mod) ? r.body : "", mine: r.user_id === u.id, reported: reports.includes(u.id), ...(mod ? { reports: reports.length } : {}),
   };
 };
@@ -513,16 +493,16 @@ app.post("/api/n/:id/chat/:room/:mid/report", ah(async (req, res) => {
     await c.query("update chat_messages set reports = array_append(reports, $2::uuid), state = case when $3 then 'hidden' else state end, rev = nextval('chat_rev_seq') where id = $1", [mid, u.id, hide]);
     return hide;
   });
-  if (hidden) void notify(id, room === "volunteers" ? "admins" : "reviewers", { title: "A chat message was hidden", body: `Neighbours reported a message in the ${ROOMS.find(r => r.id === room)!.name} room, so it was hidden. Open Chat to review it.` });
+  if (hidden) void notify(id, "admins", { title: "A chat message was hidden", body: `Neighbours reported a message in the ${ROOMS.find(r => r.id === room)!.name} room, so it was hidden. Open Chat to review it.` });
   res.json({ ok: true, hidden });
 }));
 app.post("/api/n/:id/chat/:room/:mid/hide", ah(async (req, res) => {
   const { u, id, room, role } = await chatRoom(req); const mid = chatId(req.params.mid), hide = req.body?.hidden !== false;
-  if (!canModerateChat(role, room)) throw new HttpError(403, "Only coordinators and moderators can hide messages");
+  if (!canModerateChat(role, room)) throw new HttpError(403, "Only coordinators can hide messages");
   await chatWrite(id, room, async c => {
     const r = (await c.query("select display_name, state from chat_messages where id = $1 and neighbourhood_id = $2 and room = $3 for update", [mid, id, room])).rows[0];
     if (!r || r.state === "deleted") throw new HttpError(404, "Message not found");
-    // Restoring clears the reports, so the moderator's decision is not undone by the same reports.
+    // Restoring clears the reports, so the coordinator's decision is not undone by the same reports.
     await c.query(`update chat_messages set state = $2, ${hide ? "" : "reports = '{}', "}rev = nextval('chat_rev_seq') where id = $1`, [mid, hide ? "hidden" : "ok"]);
     await c.query("insert into audit_log (neighbourhood_id, user_id, who, action, detail) values ($1, $2, $3, $4, $5)", [id, u.id, u.handle, hide ? "chatHide" : "chatRestore", JSON.stringify({ room, author: r.display_name })]);
   });
@@ -609,8 +589,6 @@ app.post("/api/sms", ah(async (req, res) => {
   if (!ch) return reply("This number is not linked. Link it in NEIGHBOURHOOD OS under Account, Notifications.");
   const actor: Actor = { id: ch.user_id, handle: ch.display_name, platformAdmin: false }, cmd = (words[0] || "").toUpperCase();
   try {
-    if (cmd === "SAFE") { await runAction(ch.neighbourhood_id, actor, { t: "checkinReply", ok: true }); return reply("Thanks. You are marked safe."); }
-    if (cmd === "NEED" || cmd === "HELP" && (words[1] || "").toUpperCase() === "ME") { await runAction(ch.neighbourhood_id, actor, { t: "checkinReply", ok: false }); return reply("Noted. Coordinators can see that you need help. If in danger call your local emergency number."); }
     if (cmd === "FIXED" || cmd === "NOTFIXED" || (cmd === "NOT" && (words[1] || "").toUpperCase() === "FIXED")) {
       const ok = cmd === "FIXED", n = (await pool.query("select doc from neighbourhoods where id = $1", [ch.neighbourhood_id])).rows[0];
       const mine = ((n?.doc?.issues ?? []) as Doc["issues"]).filter(i => i.status === "pending" && !i.hidden && i.pendingBy !== actor.handle && reportersOf(i).includes(actor.handle));
@@ -620,23 +598,8 @@ app.post("/api/sms", ah(async (req, res) => {
       return reply(ok ? `Thanks. "${mine[0].title}" is marked as fixed.` : `Thanks. "${mine[0].title}" is back in progress.`);
     }
     if (cmd === "STATUS") { const n = (await pool.query("select doc, center_lat, center_lng, radius_m from neighbourhoods where id = $1", [ch.neighbourhood_id])).rows[0]; const al = alertsOf(n).filter(a => SEV_RANK[a.sev] >= 2); return reply(`${n.doc.issues.filter((i: any) => i.status !== "resolved" && !i.hidden).length} open issues. ${al.length ? `ALERT: ${al[0].title}` : "No official alerts."}`); }
-    if (cmd === "SOS") {
-      const need = ({ MEDICAL: "medical", RESCUE: "rescue", SHELTER: "shelter", FOOD: "food_water", WATER: "food_water" } as Record<string, string>)[(words[1] || "").toUpperCase()] ?? "other";
-      const people = /^\d+$/.test(words[2] || "") ? Number(words[2]) : 1, note = words.slice(/^\d+$/.test(words[2] || "") ? 3 : 2).join(" ");
-      await runAction(ch.neighbourhood_id, actor, { t: "sos", need: need as any, people, note: `[via text message] ${note}`.slice(0, 300), lat: ch.center_lat, lng: ch.center_lng, consent: true, contact: from } as any);
-      return reply("SOS received. A coordinator will review it. It is unverified. If anyone is in danger call your local emergency number now.");
-    }
-    return reply("Commands: SAFE, NEED HELP, FIXED, NOT FIXED, STATUS, SOS <medical|rescue|shelter|food> <people> <where you are and what you need>. Call your local emergency number first in danger.");
+    return reply("Commands: FIXED, NOT FIXED, STATUS. Call your local emergency number first in danger.");
   } catch (e) { return reply(e instanceof HttpError ? e.message : "Something went wrong. Try again."); }
-}));
-
-app.get("/api/public/:id/summary", ah(async (req, res) => {
-  rl(`pub:${req.ip}`, 30, 60000);
-  const id = String(req.params.id);
-  if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
-  const n = (await pool.query("select name, doc from neighbourhoods where id = $1", [id])).rows[0];
-  if (!n) throw new HttpError(404, "Neighbourhood not found");
-  res.json({ name: n.name, summary: publicSummary(n.doc) });
 }));
 
 app.post("/api/n/:id/agent/analyze", ah(async (req, res) => {
@@ -789,14 +752,13 @@ app.delete("/api/me", ah(async (req, res) => {
 async function purgeAll() {
   try { await pool.query(`delete from chat_messages where created_at < now() - interval '${CHAT_DAYS} days'`); } catch (e) { console.error("Chat purge failed:", e); }
   try {
-    const r = await pool.query("select id from neighbourhoods where jsonb_array_length(coalesce(doc->'sos', '[]'::jsonb)) > 0");
-    for (const { id } of r.rows) {
-      await tx(async c => {
-        const n = (await c.query("select doc from neighbourhoods where id = $1 for update", [id])).rows[0];
-        if (n && purgeSos(n.doc)) await c.query("update neighbourhoods set doc = $2, version = version + 1 where id = $1", [id, JSON.stringify(n.doc)]);
-      });
-    }
-  } catch (e) { console.error("SOS purge failed:", e); }
+    // Missions, volunteers, SOS requests, check-ins, the care register, emergency plans and exchange posts no longer exist.
+    // Older neighbourhoods may still hold them (including locations and phone numbers), so they are wiped here once.
+    await pool.query(`update neighbourhoods set doc = (doc - 'checkin' - 'care' - 'plan' - 'shares' - 'sosActive') || '{"sos":[],"volunteers":[],"missions":[],"resources":[]}'::jsonb, version = version + 1
+      where doc ?| array['checkin', 'care', 'plan', 'shares', 'sosActive']
+        or jsonb_array_length(coalesce(doc->'sos', '[]'::jsonb)) > 0 or jsonb_array_length(coalesce(doc->'volunteers', '[]'::jsonb)) > 0
+        or jsonb_array_length(coalesce(doc->'missions', '[]'::jsonb)) > 0 or jsonb_array_length(coalesce(doc->'resources', '[]'::jsonb)) > 0`);
+  } catch (e) { console.error("Legacy data cleanup failed:", e); }
 }
 async function escalationJob() {
   try {
@@ -866,4 +828,31 @@ if (existsSync(dist)) {
 
 app.use((e: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => fail(res, e?.status && e.status < 500 ? new HttpError(e.status, "Invalid request") : e));
 
+// Chat needs its table and the two-role fix. Older installs may never have re-run database/schema.sql, so this makes sure both exist.
+async function ensureSchema() {
+  try {
+    await pool.query(`
+      create sequence if not exists chat_rev_seq;
+      create table if not exists chat_messages (
+        id bigserial primary key,
+        neighbourhood_id text not null references neighbourhoods(id) on delete cascade,
+        room text not null check (room in ('all', 'volunteers', 'coordinators')),
+        user_id uuid not null,
+        display_name text not null,
+        body text not null check (char_length(body) <= 500),
+        state text not null default 'ok' check (state in ('ok', 'hidden', 'deleted')),
+        reports uuid[] not null default '{}',
+        rev bigint not null default nextval('chat_rev_seq'),
+        created_at timestamptz not null default now()
+      );
+      create index if not exists chat_room_idx on chat_messages (neighbourhood_id, room, id desc);
+      create index if not exists chat_rev_idx on chat_messages (neighbourhood_id, room, rev);
+      create index if not exists chat_user_idx on chat_messages (user_id);
+      create index if not exists chat_created_idx on chat_messages (created_at);
+      alter table chat_messages enable row level security;
+      update members set role = 'resident' where role in ('volunteer', 'moderator');
+    `);
+  } catch (e) { console.error("Schema check failed. Run database/schema.sql in the Supabase SQL editor:", (e as Error).message); }
+}
+void ensureSchema();
 app.listen(PORT, () => console.log(`API on http://localhost:${PORT} · AI: ${aiLabel()} · TinyFish: ${tfLabel()}${existsSync(dist) ? " · serving built app" : ""}`));
