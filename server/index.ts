@@ -740,10 +740,17 @@ async function inbound(m: Inbound, reply: (t: string) => unknown): Promise<unkno
       // The pin decides which of the person's neighbourhoods the report goes to (they can belong to several)
       const mine = (await pool.query("select m.neighbourhood_id, m.display_name, n.name, n.center_lat, n.center_lng, n.radius_m from members m join neighbourhoods n on n.id = m.neighbourhood_id where m.user_id = $1", [ch.user_id])).rows as { neighbourhood_id: string; display_name: string; name: string; center_lat: number; center_lng: number; radius_m: number }[];
       const ranked = mine.map(h => ({ h, d: metresBetween({ lat: h.center_lat, lng: h.center_lng }, { lat: draft.lat!, lng: draft.lng! }) })).sort((a, b) => a.d - b.d);
-      const hit = ranked.find(x => x.d <= x.h.radius_m * 1.15);
-      if (!hit) throw new HttpError(400, ranked.length ? `That spot is not inside any of your neighbourhoods. The nearest, "${ranked[0].h.name}", is about ${Math.round(ranked[0].d)} m from its centre (up to ${Math.round(ranked[0].h.radius_m * 1.15)} m is allowed)` : "You are not in a neighbourhood yet");
+      const list = ranked.map(x => `${x.h.name} ${Math.round(x.d)} m (limit ${Math.round(x.h.radius_m * 1.15)} m)`).join("; ");
+      let hit = ranked.find(x => x.d <= x.h.radius_m * 1.15), moved = 0, pt = { lat: draft.lat!, lng: draft.lng! };
+      if (!hit && ranked.length && ranked[0].d <= 3000) {
+        // A member's pin slightly outside their own neighbourhood: keep the report, move the pin to the nearest edge and say so
+        hit = ranked[0]; moved = Math.round(hit.d);
+        const k = (hit.h.radius_m * 0.98) / hit.d;
+        pt = { lat: hit.h.center_lat + (draft.lat! - hit.h.center_lat) * k, lng: hit.h.center_lng + (draft.lng! - hit.h.center_lng) * k };
+      }
+      if (!hit) throw new HttpError(400, ranked.length ? `That spot is not near any of your neighbourhoods. Distances from their centres: ${list}` : "You are not in a neighbourhood yet");
       const where: Actor = { id: ch.user_id, handle: hit.h.display_name, platformAdmin: false };
-      const out = await runAction(hit.h.neighbourhood_id, where, { t: "report", title, desc: descOf(draft, channel), cat: info.cat, priority: info.priority, lat: draft.lat!, lng: draft.lng!, photo: draft.photo, agent: { lang: info.lang, original: draft.text!, summaryEn: info.summaryEn, source: info.source } });
+      const out = await runAction(hit.h.neighbourhood_id, where, { t: "report", title, desc: (descOf(draft, channel) + (moved ? `\n[The shared pin was about ${moved} m from the centre of this neighbourhood, outside its area, so it was moved to the nearest edge. Please confirm the location.]` : "")).slice(0, 1000), cat: info.cat, priority: info.priority, lat: pt.lat, lng: pt.lng, photo: draft.photo, agent: { lang: info.lang, original: draft.text!, summaryEn: info.summaryEn, source: info.source } });
       await pool.query("delete from text_drafts where user_id = $1 and neighbourhood_id = $2", key);
       return reply(MSG.done(title, String(out.result), CAT_EN[info.cat as Cat]) + (mine.length > 1 ? ` Neighbourhood: ${hit.h.name}.` : "") + photoNote);
     } catch (e) {
