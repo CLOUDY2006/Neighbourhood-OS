@@ -11,6 +11,8 @@ const TW = { sid: process.env.TWILIO_ACCOUNT_SID, token: process.env.TWILIO_AUTH
 export const caps = () => ({ push: VAPID.pub && VAPID.priv ? VAPID.pub : null, email: !!mailer, sms: !!(TW.sid && TW.token && TW.from), whatsapp: !!(TW.sid && TW.token && TW.wa) });
 export const twilioReady = () => !!(TW.sid && TW.token);
 export const twilioToken = () => TW.token;
+/** Basic-auth header for downloading a photo a person sent to the Twilio number. */
+export const twilioAuth = () => (TW.sid && TW.token ? `Basic ${Buffer.from(`${TW.sid}:${TW.token}`).toString("base64")}` : "");
 export const sign = (url: string, params: Record<string, string>) => createHmac("sha1", TW.token ?? "").update(url + Object.keys(params).sort().map(k => k + params[k]).join("")).digest("base64");
 
 export async function sendText(to: string, body: string, whatsapp = false) {

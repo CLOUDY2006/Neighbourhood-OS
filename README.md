@@ -57,7 +57,7 @@ Alongside the loop, an **AI agent** turns each report into a complaint addressed
 | Notices                     | A notice board with pinned and urgent notices, and an automated weekly summary. |
 | Reporting to authorities    | Council reports with trends and hotspots, hand-offs to authorities with overdue flags, and CSV and PDF export. |
 | Analytics                   | Pulse charts tagged Actual or Estimate, and AI insights. Pulse and Reports share one Status tab. |
-| Notifications and offline   | In-app bell, web push, email, SMS and WhatsApp, with text commands FIXED, NOT FIXED and STATUS. The app can be installed, and actions taken offline are sent when the connection returns. |
+| Notifications and offline   | In-app bell, web push, email, SMS and WhatsApp, with text commands FIXED, NOT FIXED and STATUS, and reporting a problem by WhatsApp or SMS. The app can be installed, and actions taken offline are sent when the connection returns. |
 | Accessibility               | English and Hindi, voice input, a keyboard-accessible map, three text sizes, high contrast, reduced motion, and light and dark themes.                                                                                                                                                                                                                                                                                                                                     |
 
 ### Roles
@@ -266,6 +266,13 @@ CAP (Common Alerting Protocol) is the standard format national warning agencies 
 3. `TWILIO_WHATSAPP_FROM` (optional): your WhatsApp-enabled sender, written as `whatsapp:+15551234567`.
 4. `PUBLIC_URL`: the public address of this server with no trailing slash, for example `https://neighbourhood.example.com`. It must match exactly what Twilio calls, because incoming messages are signature-checked against it.
 5. In the Twilio console, set the incoming-message webhook (HTTP POST) of your number or WhatsApp sender to `PUBLIC_URL/api/sms`.
+
+**Reporting a problem by message.** A member who has linked their number (Account, Notifications) can report without opening the app:
+1. They send a short description, optionally with a photo. They can also paste a map link or type coordinates in the same message.
+2. They share their location. On WhatsApp: tap + then Location, then send the current location. On SMS (no pin possible): paste a map link, or send `CENTRE` to use the neighbourhood centre. A report placed this way says so in its description, so a coordinator can confirm the spot.
+3. The description and the place can arrive in either order, with the photo at any point. The server keeps a small draft in `text_drafts` for 30 minutes and creates the report once both are there. The reply gives the case id.
+
+Details: `CANCEL` drops a draft, `HELP` explains the steps. The category and priority come from the same AI or rule-based reading as reports made in the app, and the AI agent record is started too. A report from a message is unverified like any other and counts toward the same limits (4 reports per hour per person). A pin outside the neighbourhood is refused and the description is kept. A photo must be a JPEG or PNG under 1 MB. It is downloaded from Twilio, checked from its first bytes, and for JPEGs the EXIF, GPS and camera data are removed before it is stored. The number must be linked to one neighbourhood; if it is linked to several, the most recent link is used. Run `database/schema.sql` again to add the `text_drafts` table.
 6. Twilio cannot reach `localhost`. For testing, use a tunnel and set `PUBLIC_URL` to the tunnel address.
 
 ## Feature details

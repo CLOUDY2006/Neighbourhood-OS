@@ -86,6 +86,20 @@ create table if not exists channels (
 create index if not exists channels_target_idx on channels (target) where kind in ('sms', 'whatsapp');
 alter table channels enable row level security;
 
+-- A report started by WhatsApp or SMS waits here until it has both a description and a place (kept 30 minutes).
+create table if not exists text_drafts (
+  user_id uuid not null,
+  neighbourhood_id text not null references neighbourhoods(id) on delete cascade,
+  text text,
+  photo uuid,
+  lat double precision,
+  lng double precision,
+  approx boolean not null default false,
+  created_at timestamptz not null default now(),
+  primary key (user_id, neighbourhood_id)
+);
+alter table text_drafts enable row level security;
+
 -- Two roles only. Anyone saved as a volunteer or moderator becomes a resident.
 update members set role = 'resident' where role in ('volunteer', 'moderator');
 alter table members drop constraint if exists members_role_check;

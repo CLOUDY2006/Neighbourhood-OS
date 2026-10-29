@@ -55,7 +55,7 @@ export function NotifySettings({ act }: { act: Act }) {
               : <button disabled={!caps.email} onClick={() => act(async () => { await S.setChannel("email"); load(); }, "Turned on")}>{caps.email ? "Turn on" : "Not set up"}</button>}</div>
           {phoneRow("sms", "Text message (SMS)", caps.sms)}
           {phoneRow("whatsapp", "WhatsApp", caps.whatsapp)}
-          {(caps.sms || caps.whatsapp) && <small className="dim">Once linked you can text this service: STATUS to hear about your reports, or FIXED or NOT FIXED when you are asked whether a problem was fixed.</small>}
+          {(caps.sms || caps.whatsapp) && <small className="dim">Once linked you can report a problem by message: send a short description (and a photo if you can), then share your location. On WhatsApp tap + then Location. On SMS paste a map link or send CENTRE. You can also send STATUS to hear about your reports, or FIXED or NOT FIXED when you are asked whether a problem was fixed.</small>}
           {caps.cap > 0 ? <small className="dim">{caps.cap} official alert feed(s) are connected for this server.</small> : <small className="dim">No national alert feed is connected on this server yet.</small>}
         </>
       )}

@@ -19,7 +19,9 @@ import { getWorld, worldSnapshot } from "./world";
 import { capAlertsFor, capFeedCount, capSnapshot, getCap } from "./cap";
 import { buildComplaintEmail } from "../src/complaintMail";
 import { regionFor, suggestionsFor } from "../src/authorityDirectory";
-import { caps, notify, sendEmail, sendText, sign, twilioReady, twilioToken } from "./notify";
+import { caps, notify, sendEmail, sendText, sign, twilioAuth, twilioReady, twilioToken } from "./notify";
+import { DRAFT_MINUTES, MAX_PHOTO_BYTES, MSG, descOf, mergeDraft, missing, parseBody, sniff, stripJpegMetadata, titleOf, type Draft } from "./textReport";
+import { CAT_EN, understand } from "../src/agent";
 
 for (const k of ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "DATABASE_URL"]) {
   if (!process.env[k]) { console.error(`${k} is not set. See the README.`); process.exit(1); }
@@ -639,6 +641,23 @@ app.delete("/api/n/:id/channels/:kind", ah(async (req, res) => {
   res.json({ ok: true });
 }));
 
+/** Downloads a photo someone sent by WhatsApp/SMS, checks it really is a JPEG or PNG, strips its metadata (GPS, camera) and stores it. */
+async function photoFromMessage(url: string, uid: string, nid: string): Promise<string> {
+  const u = new URL(url);
+  if (u.protocol !== "https:" || !/(^|\.)twilio\.com$/.test(u.hostname)) throw new Error("Unexpected photo address");
+  rl(`photo:${uid}`, 30, 86400000);
+  const auth = twilioAuth();
+  const r = await fetch(url, { headers: auth ? { Authorization: auth } : {}, signal: AbortSignal.timeout(8000) });
+  if (!r.ok) throw new Error("Photo download failed");
+  if (Number(r.headers.get("content-length") || 0) > MAX_PHOTO_BYTES) throw new Error("Photo too large");
+  const raw = Buffer.from(await r.arrayBuffer());
+  if (raw.length > MAX_PHOTO_BYTES) throw new Error("Photo too large");
+  const kind = sniff(raw);
+  if (!kind) throw new Error("Not a JPEG or PNG");
+  const data = kind === "jpeg" ? stripJpegMetadata(raw) : raw;
+  return (await pool.query("insert into photos (neighbourhood_id, user_id, mime, data) values ($1, $2, $3, $4) returning id", [nid, uid, `image/${kind}`, data])).rows[0].id;
+}
+
 const esc = (t: string) => t.replace(/[<>&]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" })[c]!);
 app.post("/api/sms", ah(async (req, res) => {
   const reply = (t: string) => res.type("text/xml").send(`<Response><Message>${esc(t.slice(0, 450))}</Message></Response>`);
@@ -647,7 +666,7 @@ app.post("/api/sms", ah(async (req, res) => {
   const url = `${(process.env.PUBLIC_URL || "").replace(/\/$/, "")}/api/sms`, given = String(req.headers["x-twilio-signature"] || ""), want = sign(url, req.body as Record<string, string>);
   if (given.length !== want.length || !timingSafeEqual(Buffer.from(given), Buffer.from(want))) throw new HttpError(403, "Invalid signature");
   const from = String(req.body.From || "").replace(/^whatsapp:/, ""), words = String(req.body.Body || "").trim().split(/\s+/);
-  rl(`sms:${from}`, 10, 3600000);
+  rl(`sms:${from}`, 20, 3600000);
   const ch = (await pool.query("select c.user_id, c.neighbourhood_id, m.display_name, n.center_lat, n.center_lng from channels c join members m on m.user_id = c.user_id and m.neighbourhood_id = c.neighbourhood_id join neighbourhoods n on n.id = c.neighbourhood_id where c.kind in ('sms', 'whatsapp') and c.target = $1 and c.verified order by c.created_at desc limit 1", [from])).rows[0];
   if (!ch) return reply("This number is not linked. Link it in NEIGHBOURHOOD OS under Account, Notifications.");
   const actor: Actor = { id: ch.user_id, handle: ch.display_name, platformAdmin: false }, cmd = (words[0] || "").toUpperCase();
@@ -661,7 +680,39 @@ app.post("/api/sms", ah(async (req, res) => {
       return reply(ok ? `Thanks. "${mine[0].title}" is marked as fixed.` : `Thanks. "${mine[0].title}" is back in progress.`);
     }
     if (cmd === "STATUS") { const n = (await pool.query("select doc, center_lat, center_lng, radius_m from neighbourhoods where id = $1", [ch.neighbourhood_id])).rows[0]; const al = alertsOf(n).filter(a => SEV_RANK[a.sev] >= 2); return reply(`${n.doc.issues.filter((i: any) => i.status !== "resolved" && !i.hidden).length} open issues. ${al.length ? `ALERT: ${al[0].title}` : "No official alerts."}`); }
-    return reply("Commands: FIXED, NOT FIXED, STATUS. Call your local emergency number first in danger.");
+
+    // ---- Reporting a problem by message: a description, a place and an optional photo, in any order
+    const channel = String(req.body.From || "").startsWith("whatsapp:") ? "WhatsApp" : "SMS";
+    const pin = { lat: Number.parseFloat(String(req.body.Latitude ?? "")), lng: Number.parseFloat(String(req.body.Longitude ?? "")) };
+    const hasPin = Number.isFinite(pin.lat) && Number.isFinite(pin.lng);
+    const mediaUrl = (Number.parseInt(String(req.body.NumMedia ?? "0"), 10) || 0) > 0 ? String(req.body.MediaUrl0 ?? "") : "";
+    const parsed = parseBody(hasPin ? "" : String(req.body.Body || "")); // a shared pin's label is not a description
+    if (parsed.cmd === "help" && !hasPin && !mediaUrl) return reply(MSG.help);
+    const key = [ch.user_id, ch.neighbourhood_id];
+    if (parsed.cmd === "cancel") { await pool.query("delete from text_drafts where user_id = $1 and neighbourhood_id = $2", key); return reply(MSG.cancelled); }
+    const row = (await pool.query("select text, photo::text as photo, lat, lng, approx from text_drafts where user_id = $1 and neighbourhood_id = $2 and created_at > now() - make_interval(mins => $3)", [...key, DRAFT_MINUTES])).rows[0];
+    const prev: Draft | null = row ? { text: row.text ?? undefined, photo: row.photo ?? undefined, lat: row.lat ?? undefined, lng: row.lng ?? undefined, approx: !!row.approx } : null;
+    let photoNote = "", photo: string | undefined;
+    if (mediaUrl) { try { photo = await photoFromMessage(mediaUrl, ch.user_id, ch.neighbourhood_id); } catch (e) { console.warn("Photo from message skipped:", (e as Error).message); photoNote = MSG.photoSkipped; } }
+    const draft = mergeDraft(prev, { text: parsed.text, photo, lat: hasPin ? pin.lat : parsed.lat, lng: hasPin ? pin.lng : parsed.lng, centre: parsed.cmd === "centre" }, { lat: ch.center_lat, lng: ch.center_lng });
+    const save = (d: Draft) => pool.query("insert into text_drafts (user_id, neighbourhood_id, text, photo, lat, lng, approx, created_at) values ($1, $2, $3, $4, $5, $6, $7, now()) on conflict (user_id, neighbourhood_id) do update set text = $3, photo = $4, lat = $5, lng = $6, approx = $7, created_at = now()", [...key, d.text ?? null, d.photo ?? null, d.lat ?? null, d.lng ?? null, !!d.approx]);
+    const need = missing(draft);
+    if (need) {
+      if (!prev && !draft.text && draft.lat === undefined && !draft.photo) return reply(MSG.tooShort);
+      await save(draft); pool.query("delete from text_drafts where created_at < now() - interval '1 day'").catch(() => undefined);
+      return reply((draft.text ? MSG.askLocation(draft.text) : draft.lat !== undefined ? MSG.askText : MSG.askBoth) + photoNote);
+    }
+    let info; try { info = await aiAnalyze(draft.text!); } catch { info = understand(draft.text!); }
+    const title = titleOf(draft.text!);
+    try {
+      const out = await runAction(ch.neighbourhood_id, actor, { t: "report", title, desc: descOf(draft, channel), cat: info.cat, priority: info.priority, lat: draft.lat!, lng: draft.lng!, photo: draft.photo, agent: { lang: info.lang, original: draft.text!, summaryEn: info.summaryEn, source: info.source } });
+      await pool.query("delete from text_drafts where user_id = $1 and neighbourhood_id = $2", key);
+      return reply(MSG.done(title, String(out.result), CAT_EN[info.cat as Cat]) + photoNote);
+    } catch (e) {
+      if (e instanceof HttpError && e.status === 429) { await pool.query("delete from text_drafts where user_id = $1 and neighbourhood_id = $2", key); return reply("You have sent several reports this hour. Please try again a little later."); }
+      await save({ ...draft, lat: undefined, lng: undefined, approx: false }); // keep the description and photo, ask for the place again
+      return reply(`${e instanceof HttpError || e instanceof Error ? e.message : "Something went wrong"}. Send your location again, or CANCEL.`);
+    }
   } catch (e) { return reply(e instanceof HttpError ? e.message : "Something went wrong. Try again."); }
 }));
 
@@ -814,6 +865,7 @@ app.delete("/api/me", ah(async (req, res) => {
       const doc = JSON.stringify(n.doc).split(u.handle).join("Former member");
       await c.query("update neighbourhoods set doc = $2, version = version + 1 where id = $1", [neighbourhood_id, doc]);
     }
+    await c.query("delete from text_drafts where user_id = $1", [u.id]);
     await c.query("delete from photos where user_id = $1", [u.id]);
     await c.query("delete from chat_messages where user_id = $1", [u.id]);
     await c.query("update chat_messages set reports = array_remove(reports, $1::uuid) where $1::uuid = any(reports)", [u.id]);

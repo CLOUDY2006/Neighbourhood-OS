@@ -439,8 +439,8 @@ function Features() {
             <ul className="rpv"><li><Flag size={14} /> Pinned notice<b>1</b></li><li><BarChart3 size={14} /> Priority score<b className="warn">82 / 100</b></li></ul>
           </Spot>
           <Spot className="b-sms" d={0.05}>
-            <div className="ln-ct"><span className="ln-ic teal"><MessageSquare size={18} /></span><div><h3>Works offline, and over SMS</h3><p>Reports queue offline and send when you are back. Text STATUS, FIXED or NOT FIXED.</p></div></div>
-            <SmsViz msgs={[[true, "STATUS"], [false, "1 open report: Garbage on Park Road is in progress."], [true, "FIXED"], [false, "Thanks. The report is marked fixed."]]} />
+            <div className="ln-ct"><span className="ln-ic teal"><MessageSquare size={18} /></span><div><h3>Report by WhatsApp or SMS</h3><p>Send a short description, a photo and your location. The report appears in the app. Reports also queue offline, and you can text STATUS, FIXED or NOT FIXED.</p></div></div>
+            <SmsViz msgs={[[true, "Garbage piled up near the park gate"], [false, "Got it. Now share your location."], [true, "(shares location)"], [false, "Reported: Garbage piled up near the park gate. A coordinator will review it."]]} />
           </Spot>
           <Spot className="b-lang b-a11y" d={0.1}>
             <div className="ln-ct"><span className="ln-ic amber"><Languages size={18} /></span><div><h3>Hindi &amp; English, by voice</h3><p>Speak a report in either language. The agent writes the English summary.</p></div></div>
