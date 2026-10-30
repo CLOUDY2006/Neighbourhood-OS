@@ -9,6 +9,7 @@ import { osmLink } from "./geo";
 
 export function readPhoto(f: File): Promise<string> {
   return new Promise((res, rej) => {
+    if (f.type !== "image/jpeg") return rej(new Error("This looks like an image from the internet or a screenshot. Please upload a real photo you took yourself."));
     const r = new FileReader();
     r.onerror = () => rej(new Error("Could not read that image"));
     r.onload = () => {
@@ -90,8 +91,8 @@ function AiCompare({ issueId, hasPhoto, photo }: { issueId: string; hasPhoto: bo
 export function PhotoPicker({ onReady }: { onReady: (value: string, preview: string) => void }) {
   const live = S.useApp().mode === "live";
   return <input type="file" accept="image/*" aria-label="Attach a photo" onChange={async e => {
-    const f = e.target.files?.[0]; if (!f) return;
-    try { const d = await readPhoto(f); onReady(live ? await S.uploadPhoto(d) : d, d); } catch (err) { alert((err as Error).message); }
+    const input = e.currentTarget, f = input.files?.[0]; if (!f) return;
+    try { const d = await readPhoto(f); onReady(live ? await S.uploadPhoto(d) : d, d); } catch (err) { input.value = ""; alert((err as Error).message); }
   }} />;
 }
 

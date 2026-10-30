@@ -136,6 +136,17 @@ export async function aiImage(photo: string, mode: string, cat?: string) {
   return { label: String(out.label ?? "Unknown").slice(0, 60), note: String(out.note ?? "").slice(0, 240), source: "ai" };
 }
 
+/** Flags photos that look copied from the internet (stock photos, watermarks, screenshots, photos of a screen). Fails open: with no AI, or an unsure answer, the photo is accepted. */
+export async function aiOrigin(buf: Buffer, mime: string): Promise<{ internet: boolean; reason: string }> {
+  const out = await askAI([
+    { type: "image", source: { type: "base64", media_type: mime, data: buf.toString("base64") } },
+    { type: "text", text: "Decide whether this is a first-hand photo taken by a person with their own phone or camera at a real place, or an image copied from the internet. Signs of an internet image: stock-photo look, a visible watermark or logo, a screenshot of a website or social app, text overlays, a meme, an illustration or AI-generated look, a photo of another screen, professional studio lighting. Be careful: ordinary phone photos can be blurry, dark, low quality or oddly framed, and must not be flagged for that. Keys: internetImage (true/false), confidence (number from 0 to 1), reason (one short sentence)." },
+  ], 200);
+  if (!out) return { internet: false, reason: "" };
+  const yes = out.internetImage === true || out.internetImage === "true";
+  return { internet: yes && Number(out.confidence) >= 0.8, reason: String(out.reason ?? "").slice(0, 160) };
+}
+
 export async function aiInsights(doc: Doc): Promise<Insights> {
   const base = insights(doc);
   const out = await askAI([{ type: "text", text: JSON.stringify({

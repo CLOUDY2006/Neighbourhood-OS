@@ -13,7 +13,7 @@ import { canModerateChat, chatAccess, chatText, CHAT_DAYS, CHAT_HIDE_AT, CHAT_PA
 import { CELL_R, cellOf, parseCell } from "../src/geo";
 import { pool, tx } from "./db";
 import { areaOf, cityOf, fetchMap, geocode, NAMES_ON, placeName } from "./osm";
-import { aiAnalyze, aiCompare, aiEnabled, aiImage, aiInsights, aiLabel, aiSuggest } from "./ai";
+import { aiAnalyze, aiCompare, aiEnabled, aiImage, aiInsights, aiLabel, aiOrigin, aiSuggest } from "./ai";
 import { getStatusRun, getWardRun, runOwner, startStatusRun, startWardRun, tfEnabled, tfLabel, TinyFishError, trackRun, verifyRoute, wardPages } from "./tinyfish";
 import { getWorld, worldSnapshot } from "./world";
 import { capAlertsFor, capFeedCount, capSnapshot, getCap } from "./cap";
@@ -408,6 +408,10 @@ app.get("/api/n/:id/map", ah(async (req, res) => {
   noMap(res, got === null ? (recentMiss(id)?.reason ?? "unavailable") : "loading");
 }));
 
+/** Refuses photos that look copied from the internet. Accepts the photo when the AI check is unavailable. */
+async function assertOwnPhoto(buf: Buffer, mime: string) {
+  if ((await aiOrigin(buf, mime)).internet) throw new HttpError(422, "This looks like an image from the internet. Please upload a real photo you took yourself.");
+}
 const MAGIC = (b: Buffer) => (b[0] === 0xff && b[1] === 0xd8 ? "image/jpeg" : b.subarray(1, 4).toString() === "PNG" ? "image/png" : b.subarray(0, 4).toString() === "RIFF" && b.subarray(8, 12).toString() === "WEBP" ? "image/webp" : null);
 app.post("/api/n/:id/photos", ah(async (req, res) => {
   const u = await authenticate(req); const id = String(req.params.id);
@@ -420,6 +424,7 @@ app.post("/api/n/:id/photos", ah(async (req, res) => {
   if (buf.length > 300000) throw new HttpError(400, "That image is too large");
   const mime = MAGIC(buf);
   if (!mime) throw new HttpError(400, "That file is not a valid image");
+  await assertOwnPhoto(buf, mime);
   const r = await pool.query("insert into photos (neighbourhood_id, user_id, mime, data) values ($1, $2, $3, $4) returning id", [id, u.id, mime, buf]);
   res.json({ id: r.rows[0].id });
 }));
@@ -663,6 +668,7 @@ async function photoFromMessage(url: string, uid: string, nid: string): Promise<
   const kind = sniff(raw);
   if (!kind) throw new Error("Not a JPEG or PNG");
   const data = kind === "jpeg" ? stripJpegMetadata(raw) : raw;
+  await assertOwnPhoto(data, `image/${kind}`);
   return (await pool.query("insert into photos (neighbourhood_id, user_id, mime, data) values ($1, $2, $3, $4) returning id", [nid, uid, `image/${kind}`, data])).rows[0].id;
 }
 
@@ -677,6 +683,7 @@ async function photoFromTelegram(fileId: string, uid: string, nid: string): Prom
   const kind = sniff(raw);
   if (!kind) throw new Error("Not a JPEG or PNG");
   const data = kind === "jpeg" ? stripJpegMetadata(raw) : raw;
+  await assertOwnPhoto(data, `image/${kind}`);
   return (await pool.query("insert into photos (neighbourhood_id, user_id, mime, data) values ($1, $2, $3, $4) returning id", [nid, uid, `image/${kind}`, data])).rows[0].id;
 }
 
