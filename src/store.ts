@@ -382,7 +382,10 @@ export async function enablePush(key: string) {
   const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(key) });
   await setChannel("push", { subscription: sub.toJSON() });
 }
-export const aiCompare = (issueId: string, photo: string) => api<{ samePlace: string; fixed: string; note: string; source: string }>(`${aiBase()}/compare`, { issueId, photo });
+export interface CompareResult { samePlace: string; fixed: string; note: string; beforeDesc?: string; afterDesc?: string; source: string }
+export const aiCompare = (issueId: string, photo: string) => api<CompareResult>(`${aiBase()}/compare`, { issueId, photo });
+/** Compares the original photo with a proof photo that is already stored on the server. */
+export const aiCompareProof = (issueId: string, photoId: string) => api<CompareResult>(`${aiBase()}/compare`, { issueId, photoId });
 
 export interface TfRouteCheck {
   city: string; region?: string; cat: L.Cat; checkedAt: number; simulated?: boolean;

@@ -88,6 +88,50 @@ function AiCompare({ issueId, hasPhoto, photo }: { issueId: string; hasPhoto: bo
   );
 }
 
+const TRI: Record<string, string> = { true: "Yes", false: "No", unsure: "Not sure" };
+
+/** Everything a reviewer or the reporter needs to judge a fix in one place: before and after photos, the notes, and the AI comparison. */
+function ReviewPanel({ i, after }: { i: S.Issue; after?: string }) {
+  const t = useT(), live = S.useApp().mode === "live";
+  const [r, setR] = useState<S.CompareResult | null>(null), [busy, setBusy] = useState(false), [again, setAgain] = useState(0);
+  const canCompare = !!i.photo && !!after;
+  useEffect(() => {
+    setR(null);
+    if (!canCompare) return;
+    if (!live) { setR({ samePlace: "true", fixed: "true", beforeDesc: "The reported problem.", afterDesc: "The same spot after the work.", note: "Simulated AI result for the demo.", source: "demo" }); return; }
+    let on = true; setBusy(true);
+    S.aiCompareProof(i.id, after!).then(x => { if (on) setR(x); }).catch(e => { if (on) setR({ samePlace: "unsure", fixed: "unsure", note: (e as Error).message, source: "none" }); }).finally(() => { if (on) setBusy(false); });
+    return () => { on = false; };
+  }, [i.id, i.photo, after, live, canCompare, again]);
+  const verdict = (label: string, v: string) => <span className={v === "true" ? "oktext" : v === "false" ? "rv-bad" : "dim"}><b>{label}:</b> {t(TRI[v] ?? "Not sure")}</span>;
+  return (
+    <div className="card review">
+      <b>{t("Review the fix: before and after")}</b>
+      <div className="rv-grid">
+        <figure>{i.photo ? <Photo src={i.photo} alt="Before the fix" /> : <small className="dim">{t("No original photo")}</small>}<figcaption>{t("Before")} · {i.author}</figcaption></figure>
+        <figure>{after ? <Photo src={after} alt="After the fix" /> : <small className="dim">{t("No after photo was uploaded")}</small>}<figcaption>{t("After")} · {i.pendingBy}</figcaption></figure>
+      </div>
+      <p className="desc"><b>{t("What was reported")}:</b> {i.desc}</p>
+      {i.proof.length > 0 && <div><b>{t("Notes from the fix")}</b>{i.proof.map((p, n) => <p key={n} className="rv-note">{p.text || t("Photo evidence")} <em className="dim">· {p.by} · {ago(p.t)}</em></p>)}</div>}
+      <div className="rv-ai">
+        <b>{t("AI comparison")}</b>
+        {!canCompare && <small className="dim">{t("The AI needs both a before photo and an after photo.")}</small>}
+        {canCompare && busy && <small className="dim">{t("The AI is comparing the photos…")}</small>}
+        {canCompare && r && (
+          <>
+            <div className="row wrap">{verdict(t("Same place"), r.samePlace)}{verdict(t("Fixed"), r.fixed)}</div>
+            {r.beforeDesc && <small><b>{t("Before, as the AI sees it")}:</b> {r.beforeDesc}</small>}
+            {r.afterDesc && <small><b>{t("After, as the AI sees it")}:</b> {r.afterDesc}</small>}
+            {r.note && <small>{r.note}</small>}
+            <small className="dim">{r.source === "ai" ? t("AI suggestion, not a verdict. Look at the photos and decide for yourself.") : r.source === "demo" ? t("Simulated for the demo.") : t("AI unavailable. Compare the photos yourself.")}</small>
+            {r.source === "none" && live && <button disabled={busy} onClick={() => setAgain(x => x + 1)}>{t("Try the AI again")}</button>}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function PhotoPicker({ onReady }: { onReady: (value: string, preview: string) => void }) {
   const live = S.useApp().mode === "live";
   return <input type="file" accept="image/*" aria-label="Attach a photo" onChange={async e => {
@@ -254,6 +298,7 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
       </div>
 
       {i.status === "resolved" && i.closure === "reviewer" && i.reviewedBy === me && <div className="donebar"><span><Check size={14} aria-hidden="true" /> {t("You approved this fix")}</span></div>}
+      {i.status === "pending" && !i.hidden && (canAnswer || asker || S.can(r, "approveResolution")) && <ReviewPanel i={i} after={after} />}
       {canAnswer && (
         <div className="card alertcard">
           <b>{t("Is the problem fixed?")}</b>

@@ -810,17 +810,39 @@ app.post("/api/n/:id/agent/analyze", ah(async (req, res) => {
   res.json(await aiAnalyze(text));
 }));
 
+/** Finished AI comparisons, so every reviewer of the same fix sees one answer and the AI is called once. */
+const COMPARE_CACHE = new Map<string, unknown>();
 app.post("/api/n/:id/ai/compare", ah(async (req, res) => {
   const u = await authenticate(req); const id = String(req.params.id);
   if (!isId(id)) throw new HttpError(400, "Invalid neighbourhood");
-  rl(`ai:${u.id}`, 20, 3600000);
   await memberRole(pool, id, u);
   const n = (await pool.query("select doc from neighbourhoods where id = $1", [id])).rows[0];
   const i = n?.doc.issues.find((x: any) => x.id === req.body?.issueId && !x.hidden);
   if (!i?.photo || !/^[0-9a-f-]{36}$/.test(i.photo)) throw new HttpError(400, "This issue has no original photo to compare with");
+  const pid = typeof req.body?.photoId === "string" ? req.body.photoId : "";
+  if (pid && !(i.proof ?? []).some((p: any) => p.photo === pid)) throw new HttpError(400, "That photo is not proof for this issue");
+  const key = pid ? `${id}:${i.id}:${i.photo}:${pid}` : "";
+  const hit = key ? COMPARE_CACHE.get(key) : undefined;
+  if (hit) return res.json(hit);
+  rl(`ai:${u.id}`, 20, 3600000);
   const p = (await pool.query("select mime, data from photos where id = $1 and neighbourhood_id = $2", [i.photo, id])).rows[0];
   if (!p) throw new HttpError(404, "Original photo not found");
-  try { res.json(await aiCompare({ mime: p.mime, b64: p.data.toString("base64") }, String(req.body?.photo ?? ""), i.cat)); } catch (e) { throw new HttpError(400, (e as Error).message); }
+  let after: { mime: string; b64: string };
+  if (pid) {
+    const q = (await pool.query("select mime, data from photos where id = $1 and neighbourhood_id = $2", [pid, id])).rows[0];
+    if (!q) throw new HttpError(404, "Proof photo not found");
+    after = { mime: q.mime, b64: q.data.toString("base64") };
+  } else {
+    const photo = String(req.body?.photo ?? "");
+    const m = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(photo);
+    if (!m || photo.length > 300000) throw new HttpError(400, "Send a JPEG, PNG or WebP image under 300 KB");
+    after = { mime: m[1], b64: m[2] };
+  }
+  try {
+    const out = await aiCompare({ mime: p.mime, b64: p.data.toString("base64") }, after, i.cat);
+    if (key && out.source === "ai") { COMPARE_CACHE.set(key, out); if (COMPARE_CACHE.size > 500) COMPARE_CACHE.delete(COMPARE_CACHE.keys().next().value as string); }
+    res.json(out);
+  } catch (e) { throw new HttpError(400, (e as Error).message); }
 }));
 
 const aiRoute = (fn: (doc: Doc, body: any) => Promise<unknown>, max: number) => ah(async (req, res) => {

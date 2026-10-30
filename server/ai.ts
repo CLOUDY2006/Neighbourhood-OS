@@ -157,17 +157,16 @@ export async function aiInsights(doc: Doc): Promise<Insights> {
   return { source: "ai", summary: String(out.summary ?? base.summary).slice(0, 300), bullets: out.bullets.slice(0, 5).map((b: any) => ({ title: String(b.title ?? "").slice(0, 60), detail: String(b.detail ?? "").slice(0, 300) })) };
 }
 
-export async function aiCompare(before: { mime: string; b64: string }, after: string, cat?: string) {
-  const m = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(after || "");
-  if (!m || after.length > 300000) throw new Error("Send a JPEG, PNG or WebP image under 300 KB");
+export async function aiCompare(before: { mime: string; b64: string }, after: { mime: string; b64: string }, cat?: string) {
   const out = await askAI([
     { type: "text", text: "Image 1 is the original report photo. Image 2 is the claimed fix." },
     { type: "image", source: { type: "base64", media_type: before.mime, data: before.b64 } },
-    { type: "image", source: { type: "base64", media_type: m[1], data: m[2] } },
-    { type: "text", text: `Do the two photos plausibly show the same place, and does image 2 plausibly show the ${String(cat ?? "civic").slice(0, 20)} problem fixed? Keys: samePlace (true/false/unsure), fixed (true/false/unsure), note (one cautious sentence).` },
-  ], 300);
-  if (!out) return { samePlace: "unsure", fixed: "unsure", note: "AI comparison is unavailable. A coordinator should compare the photos.", source: "none" };
-  return { samePlace: String(out.samePlace ?? "unsure"), fixed: String(out.fixed ?? "unsure"), note: String(out.note ?? "").slice(0, 240), source: "ai" };
+    { type: "image", source: { type: "base64", media_type: after.mime, data: after.b64 } },
+    { type: "text", text: `Do the two photos plausibly show the same place, and does image 2 plausibly show the ${String(cat ?? "civic").slice(0, 20)} problem fixed? Keys: samePlace (true/false/unsure), fixed (true/false/unsure), beforeDesc (what image 1 shows, one short sentence), afterDesc (what image 2 shows, one short sentence), note (one cautious sentence).` },
+  ], 400);
+  if (!out) return { samePlace: "unsure", fixed: "unsure", beforeDesc: "", afterDesc: "", note: "AI comparison is unavailable. A coordinator should compare the photos.", source: "none" };
+  const tri = (v: unknown) => (v === true || v === "true" ? "true" : v === false || v === "false" ? "false" : "unsure");
+  return { samePlace: tri(out.samePlace), fixed: tri(out.fixed), beforeDesc: String(out.beforeDesc ?? "").slice(0, 160), afterDesc: String(out.afterDesc ?? "").slice(0, 160), note: String(out.note ?? "").slice(0, 240), source: "ai" };
 }
 
 export async function aiAnalyze(text: string) {
