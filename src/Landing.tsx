@@ -217,7 +217,7 @@ function HeroVisual() {
       </Float>
       <Float className="f4" d={1.65} mx={smx} my={smy} depth={44}>
         <span className="fi green"><CircleCheck size={15} /></span>
-        <div><small>Proof of fix</small><b>Approved by a coordinator</b><em>The pin turns green</em></div>
+        <div><small>Proof of fix</small><b>Approved by a different coordinator</b><em>The pin turns green</em></div>
       </Float>
       <span className="ln-viscap">Live preview · simulated neighbourhood</span>
     </motion.div>
@@ -323,7 +323,7 @@ function MockProve({ on }: { on: boolean }) {
         <div className="a"><Sparkles size={18} /><span>After</span></div>
         <i className="bar" />
       </div>
-      <div className="mk-note green"><CircleCheck size={11} /> Approved by a different coordinator</div>
+      <div className="mk-note green"><CircleCheck size={11} /> Approved by a coordinator</div>
     </div>
   );
 }
@@ -332,7 +332,7 @@ const LOOP: { k: string; who: string; Icon: LucideIcon; text: string; Mock: (p: 
   { k: "Confirm", who: "Neighbors", Icon: Users, text: "Neighbors press “I see this too”. Three flags from neighbors hide a report until a coordinator reviews it.", Mock: MockConfirm },
   { k: "Verify", who: "Coordinator", Icon: BadgeCheck, text: "Only a human can mark a report verified. The coordinator then takes it on and sends the complaint to the right office.", Mock: MockVerify },
   { k: "Fix", who: "Coordinator", Icon: Wrench, text: "The coordinator moves the report along, posts progress updates and uploads the after photo as evidence.", Mock: MockFix },
-  { k: "Prove", who: "Coordinator", Icon: CircleCheck, text: "A different coordinator approves the fix (the four-eyes rule). A before/after slider goes on the issue and the pin turns green.", Mock: MockProve },
+  { k: "Prove", who: "Coordinator", Icon: CircleCheck, text: "A different coordinator approves the fix (the four-eyes rule), or the person who reported it confirms it. A before/after slider goes on the issue and the pin turns green.", Mock: MockProve },
 ];
 function Loop() {
   const ref = useRef<HTMLDivElement>(null);

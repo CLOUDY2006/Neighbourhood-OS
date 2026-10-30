@@ -141,7 +141,7 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
   const checkLine = i.closure === "reporter" ? "The reporter confirmed the fix." : i.closure === "unconfirmed" ? "No reporter confirmed the fix." : i.verif === "review" && i.status !== "reported" && i.status !== "review" ? "A coordinator has not marked this as verified yet." : CHECK[i.verif];
   const canProof = S.can(r, "proof") && i.status !== "resolved" && i.status !== "pending";
   const proofInline = canProof && (i.status === "assigned" || i.status === "progress");
-  const checks = (i.verifiedBy ?? []).length, iChecked = (i.verifiedBy ?? []).includes(me);
+  const checks = (i.verifiedBy ?? []).length, iChecked = (i.verifiedBy ?? []).includes(me) && checks < S.COORDS_TO_VERIFY, manyChecks = S.COORDS_TO_VERIFY > 1;
   const canVerify = S.can(r, "verify") && i.status !== "resolved" && i.verif !== "verified";
   const showComplaint = admin || mine || !!i.agent;
   const flaggedByMe = i.log.some(l => l.by === me && l.text.startsWith("Flagged for coordinator attention"));
@@ -194,11 +194,11 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
           )}
           <div className="cbar-tools">
             {S.can(r, "verify") && i.status !== "resolved" && (i.verif === "verified"
-              ? <Tick title={t("Two different coordinators verified this report.")}>{t("Verified")} <span className="cnt">{Math.max(checks, S.COORDS_TO_VERIFY)}/{S.COORDS_TO_VERIFY}</span></Tick>
+              ? <Tick title={t("A coordinator verified this report.")}>{t("Verified")}</Tick>
               : iChecked
-                ? <Tick title={t("You checked this report. A different coordinator must verify it too.")}>{t("You verified")} <span className="cnt">{checks}/{S.COORDS_TO_VERIFY}</span></Tick>
-                : <button onClick={() => run(() => S.setVerif(i.id, "verified"), checks + 1 >= S.COORDS_TO_VERIFY ? "Verified by two coordinators" : "Checked. A different coordinator must verify it too")} title={t("Two different coordinators must verify a report.")}>
-                    <ShieldCheck size={15} aria-hidden="true" /> {checks ? t("Verify as 2nd coordinator") : t("Verify")} <span className="cnt">{checks}/{S.COORDS_TO_VERIFY}</span>
+                ? <Tick title={t("You checked this report. Another coordinator must verify it too.")}>{t("You verified")} <span className="cnt">{checks}/{S.COORDS_TO_VERIFY}</span></Tick>
+                : <button onClick={() => run(() => S.setVerif(i.id, "verified"), checks + 1 >= S.COORDS_TO_VERIFY ? "Report verified" : "Checked. Another coordinator must verify it too")} title={t("Confirm that this report is real. One coordinator is enough.")}>
+                    <ShieldCheck size={15} aria-hidden="true" /> {t("Verify")}{manyChecks && <> <span className="cnt">{checks}/{S.COORDS_TO_VERIFY}</span></>}
                   </button>)}
             {S.can(r, "hide") && (i.hidden
               ? <><Tick title={t("This report is hidden from residents.")}>{t("Hidden")}</Tick><button onClick={() => run(() => S.restore(i.id), "Report restored")}><Eye size={15} aria-hidden="true" /> {t("Restore")}</button></>
@@ -215,7 +215,7 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
               <MapPin size={15} aria-hidden="true" /> {t("Map")}
             </button>
           </div>
-          {canVerify && iChecked && <small className="dim">{t("You checked this report. Waiting for a different coordinator to verify it.")}</small>}
+          {canVerify && iChecked && <small className="dim">{t("You checked this report. Waiting for another coordinator to verify it.")}</small>}
           {S.can(r, "spam") && !mine && !i.hidden && i.flags.includes(me) && <small className="dim">{t("You flagged this one. One more coordinator must flag it to delete it.")}</small>}
           {askSpam && S.can(r, "spam") && !mine && !i.hidden && !i.flags.includes(me) && (
             <div className="card alertcard">
@@ -281,7 +281,7 @@ export function Detail({ i, st, act, close }: { i: S.Issue; st: S.State; act: Ac
             <>
               <input placeholder="Reason, needed if you request more work" maxLength={200} value={reason} onChange={e => setReason(e.target.value)} aria-label="Review note" />
               <div className="row wrap">
-                <button className="go" disabled={i.pendingBy === me} onClick={() => run(() => S.approveResolution(i.id, reason), "Resolution approved")}>Approve resolution</button>
+                <button className="go" disabled={i.pendingBy === me} title={i.pendingBy === me ? t("You submitted this fix, so a different coordinator must approve it.") : undefined} onClick={() => run(() => S.approveResolution(i.id, reason), "Resolution approved")}>Approve resolution</button>
                 <button className="warn" disabled={!reason.trim()} onClick={() => run(async () => { await S.rejectResolution(i.id, reason); setReason(""); }, "Sent back for more work")}>Request more work</button>
               </div>
               {asker && <small className="dim">{t("You submitted this fix, so you cannot approve it yourself. The reporters were asked. A different coordinator can approve it too.")}</small>}

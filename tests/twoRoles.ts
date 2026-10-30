@@ -18,16 +18,19 @@ check("only resident and admin appear in the permission table", [...used].every(
 for (const t of ["mission", "join", "assign", "availability", "skills", "shareAdd", "addResource", "delivery", "checkinStart", "careSet", "actionPlanApprove", "volunteerArea"] as const)
   check(`removed action is off for everyone: ${t}`, !can("resident", t) && !can("admin", t));
 
-// ---- the flow that is left: report -> confirm -> verify -> advance with proof -> second coordinator approves
+// ---- the flow that is left: report -> confirm -> one coordinator verifies -> advance with proof -> one different coordinator approves
 let d = step(emptyDoc(), R, { t: "report", title: "Pothole on Main Road", desc: "big hole", cat: "pothole", priority: "high", lat: 28.567, lng: 77.212 });
 const id = d.issues[0].id;
 d = step(d, R2, { t: "merge", id });
 check("resident cannot verify", !can("resident", "verify"));
 d = step(d, A, { t: "verify", id, v: "verified" });
-check("one coordinator is not enough to verify", get(d, id).verif !== "verified", get(d, id).verif);
-throws("the same coordinator cannot verify twice", () => step(d, A, { t: "verify", id, v: "verified" }), "different coordinator");
-d = step(d, A2, { t: "verify", id, v: "verified" });
-check("a second, different coordinator verifies", get(d, id).verif === "verified");
+check("one coordinator is enough to verify", get(d, id).verif === "verified", get(d, id).verif);
+check("the log says a coordinator verified it", get(d, id).log.some(l => l.text === "Verified by a coordinator"));
+throws("verifying again does nothing new", () => step(d, A2, { t: "verify", id, v: "verified" }), "already verified");
+// A report checked once under the older two-coordinator rule can be finished by the same coordinator
+const stale = structuredClone(d); get(stale, id).verif = "review"; get(stale, id).verifiedBy = ["Adm #1"];
+check("an old half-checked report is finished by one press", get(step(stale, A, { t: "verify", id, v: "verified" }), id).verif === "verified");
+check("residents still cannot verify", !can("resident", "verify"));
 
 // ---- fake reports: only coordinators flag, and two different coordinators delete it completely
 check("residents can no longer flag spam", !can("resident", "spam") && can("admin", "spam"));
@@ -47,7 +50,7 @@ for (let n = 0; n < 6 && get(d, id).status !== "pending"; n++) {
 check("coordinator alone can move a report to pending with proof, no mission needed", get(d, id).status === "pending" && d.missions.length === 0, get(d, id).status);
 throws("the coordinator who submitted cannot approve their own fix", () => step(d, A, { t: "approveResolution", id }), "different reviewer");
 const approved = step(d, A2, { t: "approveResolution", id });
-check("a different coordinator can approve", get(approved, id).status === "resolved");
+check("one different coordinator is enough to approve", get(approved, id).status === "resolved" && get(approved, id).closure === "reviewer");
 const confirmed = step(d, R, { t: "reporterConfirm", id, ok: true });
 check("or the reporter can confirm", get(confirmed, id).status === "resolved", get(confirmed, id).status);
 

@@ -28,10 +28,10 @@ It is built with India in mind (English and Hindi, Indian complaint routes and g
 ### The core loop
 
 1. **Report.** A resident clicks the map and types or speaks a short description in English or Hindi. They pick a category and can add a photo. Similar reports nearby are shown, so duplicates get merged instead of piling up.
-2. **Confirm.** Neighbors press "I see this too". Spam is handled by coordinators: once two different coordinators flag a report as spam, it is hidden.
-3. **Verify.** Only human coordinators verify, and two different coordinators are needed: one checks the report and a second confirms it. They take it on, send the complaint to the right office and move it through the steps.
+2. **Confirm.** Neighbors press "I see this too". Spam is handled by coordinators: once two different coordinators flag a report as spam, it is deleted for good.
+3. **Verify.** Only human coordinators verify, and one coordinator is enough: when a coordinator marks a report verified, it is verified. They take it on, send the complaint to the right office and move it through the steps.
 4. **Fix.** The coordinator posts proof of the fix, either a photo or a note.
-5. **Prove.** The person who reported the problem confirms the fix, or a second coordinator approves it. A before-and-after slider goes on the issue and the pin turns green.
+5. **Prove.** The person who reported the problem confirms the fix, or a different coordinator approves it. The coordinator who submitted the fix can never approve it. A before-and-after slider goes on the issue and the pin turns green.
 
 Alongside the loop, an **AI agent** turns each report into a complaint addressed to the right local authority. A **TinyFish web agent** checks that route against the city's official websites. Nothing is sent without a person approving it.
 
@@ -285,8 +285,8 @@ Details: `CANCEL` drops a draft, `HELP` explains the steps. The category and pri
 | Same neighbourhood, same view    | Members read the same server state and the same cached map. Only zoom and pan are personal.                                                                                                                                                                                                  |
 | Where do people belong?          | Automatic area cells of about 1 km, computed in the browser. Named neighbourhoods (200 m to 2 km) can be created and joined by search or invite link. People near a border can join the next area. Up to 5 neighbourhoods per person.                                                        |
 | Location privacy                 | Location is opt-in. Only the area cell is sent. Exact positions are never sent or stored, except a pin a person deliberately places on a report. "You are here" stays on the device.                                                                                                  |
-| Fake or spam reports             | Rate limits per user, a cap of 15 open reports each, the location must fall inside the neighbourhood, a person cannot confirm their own report or confirm twice, and two different coordinators flagging a report as spam hides it. Authors can withdraw.                                |
-| Fake "verified" claims           | A report is verified only when two different coordinators have confirmed it. AI output is always labelled a suggestion. |
+| Fake or spam reports             | Rate limits per user, a cap of 15 open reports each, the location must fall inside the neighbourhood, a person cannot confirm their own report or confirm twice, and two different coordinators flagging a report as spam deletes it. Authors can withdraw.                                |
+| Fake "verified" claims           | A report is verified only when a coordinator has marked it verified. AI output is always labelled a suggestion. |
 | Coordinator abuse                | Every coordinator action is written to an audit log shown to other coordinators. Platform admins can step in.                                                                                                                                                                                |
 | Who becomes a coordinator?       | The first 3 people to join any neighbourhood (named or automatic area), including the creator of a named one. After that, people ask to coordinate, and an existing coordinator (or platform admin) approves in the People tab.                                                              |
 | Is there a coordinator ranking?  | Yes, per neighbourhood (Coordinators tab, visible to every member, names shown). Fixed visible point rules, and it restarts on the 1st of every month (UTC). Only in-app activity counts. Neighbour feedback shows only after 5 ratings. The rules live in `COORD_POINTS` in `src/logic.ts`. |
@@ -299,7 +299,7 @@ Details: `CANCEL` drops a draft, `HELP` explains the steps. The category and pri
 
 The lifecycle is Reported, Under review, Assigned, In progress, Resolution pending review, Resolved. Once proof exists, a coordinator submits the fix for review. It is then resolved in one of three ways, and the issue records which one:
 
-- **By a reviewer.** A different coordinator approves it, or sends it back with a reason. The person who submitted the fix can never approve it, and approval is blocked while more neighbors say "not fully fixed" than "looks fixed".
+- **By a reviewer.** One different coordinator approves it, or sends it back with a reason. The person who submitted the fix can never approve it, and approval is blocked while more neighbors say "not fully fixed" than "looks fixed".
 - **By the reporter.** The person who reported the problem, and everyone who confirmed it, are asked "Is the problem fixed?" in the app and through their notification channels. By text they can reply `FIXED` or `NOT FIXED` when exactly one fix is waiting for them. "Yes" resolves it, labelled "Confirmed by the reporter". "No" sends it back to In progress with their note. This works with a single coordinator, but it is a weaker check than a second reviewer, because a person with a second account could fake it.
 - **Without confirmation.** If nobody answers within 7 days, the coordinator can close it as "Closed without confirmation". This is labelled, never counts as verified, earns no points, is written to the audit log, and a reporter can still reopen it.
 

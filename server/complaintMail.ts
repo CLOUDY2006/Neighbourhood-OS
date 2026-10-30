@@ -11,8 +11,7 @@ export const osmUrl = (lat: number, lng: number) => `https://www.openstreetmap.o
 export function buildComplaintEmail(i: Pick<Issue, "id" | "cat" | "priority" | "reports" | "lat" | "lng" | "verifiedBy" | "verif" | "agent">, nbhdName: string, ref: string) {
   const d = i.agent?.draft;
   if (!d) throw new Error("There is no complaint draft to send");
-  const checks = (i.verifiedBy ?? []).length;
-  const verification = i.verif === "verified" || i.verif === "resolved" ? `Verified by ${Math.max(checks, 2)} coordinators` : "Not yet verified by two coordinators";
+  const verification = i.verif === "verified" || i.verif === "resolved" ? "Verified by a coordinator" : "Not yet verified by a coordinator";
   const subject = `[NOS-${i.id}] ${d.subject}`.slice(0, 200);
   const text = [
     d.body.trim(),

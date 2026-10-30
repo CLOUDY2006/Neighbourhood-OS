@@ -47,10 +47,10 @@ check("subject carries the case id", mail.subject.startsWith(`[NOS-${id}]`), mai
 check("body has the complaint text", mail.text.includes(get().agent!.draft.body.trim().slice(0, 40)));
 check("body has the map link", mail.text.includes(osmUrl(28.567, 77.212)));
 check("body has the reference and case id", mail.text.includes("Reference: GR-9") && mail.text.includes(`NOS-${id}`));
-check("body says verification status honestly", mail.text.includes("Not yet verified"), "(this report was not verified)");
+check("body says verification status honestly", mail.text.includes("Not yet verified by a coordinator"), "(this report was not verified)");
 check("body never names the reporter", !mail.text.includes("Res #1"));
 const verified = buildComplaintEmail({ ...get(), verif: "verified", verifiedBy: ["Adm #1", "Adm #2"] }, "Test Nagar", "");
-check("verified report says verified by 2 coordinators", verified.text.includes("Verified by 2 coordinators"));
+check("verified report says verified by a coordinator", verified.text.includes("Verified by a coordinator"));
 check("no reference line when there is none", !verified.text.includes("Reference:"));
 throws("no draft, no email", () => buildComplaintEmail({ ...get(), agent: undefined }, "x", ""), "no complaint draft");
 

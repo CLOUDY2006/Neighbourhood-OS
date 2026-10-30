@@ -33,7 +33,7 @@ export interface Issue {
   log: { t: number; by: string; text: string }[]; missionId?: string; photo?: string; created: number; resolvedAt?: number; handoff?: Handoff; agent?: AgentRecord;
   pendingBy?: string; pendingAt?: number; closure?: Closure; reviewedBy?: string; rejections?: number; feedback?: Record<string, { ok: boolean; note: string; t: number }>; updates?: Proof[]; assignments?: { t: number; by: string; text: string }[]; actionPlan?: { approvedBy: string; approvedAt: number };
   author: string; confirmedBy: string[]; flags: string[]; hidden?: boolean;
-  /** Coordinators who have checked this report. Two different coordinators are needed before it counts as verified. */
+  /** Coordinators who have checked this report. One coordinator is enough for it to count as verified. */
   verifiedBy?: string[];
 }
 export interface AgentDraft { level: number; to: string; lang: "en" | "hi"; subject: string; body: string; edited?: boolean; approvedBy?: string; approvedAt?: number; sentAt?: number; via?: "copied" | "emailed" | "mailto" | "simulated"; emailedTo?: string }
@@ -129,8 +129,8 @@ export const CAN: Record<Action["t"], readonly Role[]> = {
   demo: ALL, reset: ALL,
 };
 export const can = (r: Role, t: Action["t"]) => !!CAN[t]?.includes(r);
-/** Different coordinators needed to verify a report, and to hide one as spam. */
-export const COORDS_TO_VERIFY = 2, SPAM_FLAGS_TO_HIDE = 2;
+/** Coordinators needed to verify a report (one), and different coordinators needed to delete one as spam (two). */
+export const COORDS_TO_VERIFY = 1, SPAM_FLAGS_TO_HIDE = 2;
 
 const ago = (m: number) => Date.now() - m * 60000;
 const svg = (body: string) => "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200"><rect width="320" height="200" fill="#10192e"/><rect y="120" width="320" height="80" fill="#1b2540"/><rect y="150" width="320" height="4" fill="#2a3658"/>${body}</svg>`);
@@ -366,10 +366,13 @@ export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; ln
       if (!["verified", "disputed", "review"].includes(a.v)) throw new Error("Invalid verification state");
       if (a.v !== "verified") { i.verifiedBy = []; i.verif = a.v; log(i, `Marked ${a.v} by a coordinator`, "info"); break; }
       const by = i.verifiedBy ?? [];
-      if (by.includes(who.name)) throw new Error("You already checked this report. A different coordinator must verify it too");
-      i.verifiedBy = [...by, who.name]; cred("verify", i.id);
-      if (i.verifiedBy.length >= COORDS_TO_VERIFY) { i.verif = "verified"; log(i, `Verified by two coordinators (${i.verifiedBy.length} of ${COORDS_TO_VERIFY})`, "ok"); }
-      else log(i, `Checked by a coordinator (${i.verifiedBy.length} of ${COORDS_TO_VERIFY}). A different coordinator must verify it too`, "info");
+      // A report checked once under an older, stricter rule can be finished by the same coordinator.
+      if (by.includes(who.name) && by.length < COORDS_TO_VERIFY) throw new Error("You already checked this report. Another coordinator must verify it too");
+      if (!by.includes(who.name)) { i.verifiedBy = [...by, who.name]; cred("verify", i.id); }
+      if ((i.verifiedBy ?? []).length >= COORDS_TO_VERIFY) {
+        if (i.verif === "verified") throw new Error("This report is already verified");
+        i.verif = "verified"; log(i, COORDS_TO_VERIFY > 1 ? `Verified by ${COORDS_TO_VERIFY} coordinators` : "Verified by a coordinator", "ok");
+      } else log(i, `Checked by a coordinator (${(i.verifiedBy ?? []).length} of ${COORDS_TO_VERIFY})`, "info");
       break;
     }
     case "advance": {
@@ -633,7 +636,7 @@ export function reduce(doc: Doc, who: Who, a: Action, bounds?: { lat: number; ln
         if (dup) as("resident", R, { t: "merge", id: dup.id });
         as("resident", R, { t: "agentStart", id: t, lang: "hi", original: DEMO_HINDI, summaryEn: "Garbage has piled up on the street, causing a bad smell, and children's health may be at risk.", source: "scripted" });
       }
-      if (step === 1) { as("admin", C, { t: "advance", id: t }); as("admin", C, { t: "verify", id: t, v: "verified" }); as("admin", "Coordinator B (demo)", { t: "verify", id: t, v: "verified" }); as("admin", C, { t: "agentDraft", id: t }); }
+      if (step === 1) { as("admin", C, { t: "advance", id: t }); as("admin", C, { t: "verify", id: t, v: "verified" }); as("admin", C, { t: "agentDraft", id: t }); }
       if (step === 2) { as("admin", C, { t: "agentApprove", id: t }); as("admin", C, { t: "agentSend", id: t, via: "simulated", ref: "DEMO-2043" }); }
       if (step === 3) { iss().agent!.escalateAt = Date.now() - 1000; dueEscalations(d, Date.now(), nbhd); }
       if (step === 4) as("admin", C, { t: "advance", id: t });
