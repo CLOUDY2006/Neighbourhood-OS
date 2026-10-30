@@ -1,6 +1,6 @@
 import { Component, useEffect, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Bell, Radar, PlusCircle, BarChart3, RotateCcw, Play, UserCog, User, Sun, Moon, LogOut, MessagesSquare, Siren, Globe, ShieldAlert, Ellipsis } from "lucide-react";
+import { Bell, Check, Radar, PlusCircle, BarChart3, RotateCcw, Play, UserCog, User, Sun, Moon, LogOut, MessagesSquare, Siren, Globe, ShieldAlert, Ellipsis } from "lucide-react";
 import * as S from "./store";
 import IsoMap, { ViewSwitch, type MapView } from "./IsoMap";
 import { toggleTheme, useTheme } from "./a11y";
@@ -139,7 +139,7 @@ function Report({ pick, act, done }: { pick: Pt; act: Act; done: (id: string) =>
   const [f, setF] = useState({ title: "", desc: "", cat: "garbage" as S.Cat, priority: "medium" as S.Priority });
   const [photo, setPhoto] = useState<string>(), [prev, setPrev] = useState<string>(), [ai, setAi] = useState<{ summary: string; needs: string[]; source: string } | null>(null);
   const live = S.useApp().mode === "live";
-  const [analysis, setAnalysis] = useState<S.Analysis | null>(null);
+  const [analysis, setAnalysis] = useState<S.Analysis | null>(null), [added, setAdded] = useState<string[]>([]);
   const sug = pick && (f.title || f.desc) ? S.quickSuggest({ ...f, lat: pick.lat, lng: pick.lng }) : null;
   const submit = () => act(async () => {
     if (!pick) throw new Error("Click the map to set the location");
@@ -169,7 +169,9 @@ function Report({ pick, act, done }: { pick: Pt; act: Act; done: (id: string) =>
           <p>Likely category: {sug.cat}.</p>
           {sug.candidates.map(c => (
             <div key={c.issue.id} className="row between"><span>{c.issue.title}<small className="dim"> {Math.round(c.score * 100)}% match · {LBL[c.issue.status]}</small></span>
-              <button onClick={() => act(() => S.merge(c.issue.id), "Added to the existing report")}>{t("Add to this report")}</button></div>
+              {c.issue.author === S.myName() || c.issue.confirmedBy.includes(S.myName()) || added.includes(c.issue.id)
+                ? <button className="ticked" disabled aria-pressed="true"><Check size={15} aria-hidden="true" /> {t("Added")}</button>
+                : <button onClick={() => act(async () => { await S.merge(c.issue.id); setAdded(x => [...x, c.issue.id]); }, "Added to the existing report")}>{t("Add to this report")}</button>}</div>
           ))}
           {!sug.candidates.length && <p>No similar nearby report found.</p>}
           {live && pick && <button onClick={() => act(async () => setAi(await S.aiSuggest({ ...f, lat: pick.lat, lng: pick.lng })))}>Get AI summary</button>}

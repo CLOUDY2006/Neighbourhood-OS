@@ -29,8 +29,40 @@ let bad = 0;
   // A report written by someone else must show the spam button near the top, before the collapsed "More options".
   const other = { ...st.issues.find(i => i.id === "i4")!, author: "Someone else", flags: [] as string[], hidden: false };
   const h = renderToString(<Detail i={other} st={{ ...st, role: "admin" }} act={act} close={() => undefined} />);
-  const a = h.indexOf("Report spam or wrong report"), f = h.indexOf("More options");
+  const a = h.indexOf("Report spam or wrong report"), f = h.indexOf('role="tablist"');
   const okTop = a > -1 && (f === -1 || a < f);
+  // Coordinators get one action bar above the tabs: next step, verify, hide, spam, map.
+  for (const label of ["Coordinator actions", "Hide report", "Verify", "Start review"]) {
+    const at = h.indexOf(label);
+    if (at === -1 || (f !== -1 && at > f)) { bad++; console.log(`FAIL coordinator bar is missing "${label}" or it is below the tabs`); } else console.log(`ok coordinator bar has "${label}" above the tabs`);
+  }
+  const resOut = renderToString(<Detail i={other} st={{ ...st, role: "resident" }} act={act} close={() => undefined} />);
+  for (const label of ["Coordinator actions", "Hide report", "Verify", "Start review"]) {
+    if (resOut.includes(label)) { bad++; console.log(`FAIL a resident sees "${label}"`); } else console.log(`ok a resident does not see "${label}"`);
+  }
+  if (!resOut.includes("I see this too")) { bad++; console.log("FAIL a resident cannot confirm a report"); } else console.log("ok a resident sees \"I see this too\"");
+  if (!h.includes("Overview") || !h.includes("Activity")) { bad++; console.log("FAIL tabs are missing"); } else console.log("ok the panel has Overview and Activity tabs");
+  // Pressed buttons stay visible with a tick (class "ticked") instead of vanishing.
+  const tickOf = (out: string, label: string) => { const m = new RegExp(`class="ticked"[^>]*>(?:(?!</button>).)*${label}`).exec(out); return !!m; };
+  const check = (name: string, ok: boolean) => { if (!ok) bad++; console.log(ok ? "ok" : "FAIL", name); };
+  const mineOut = renderToString(<Detail i={{ ...other, author: S.myName() }} st={{ ...st, role: "resident" }} act={act} close={() => undefined} />);
+  check("the author sees a tick \"You reported this\"", tickOf(mineOut, "You reported this"));
+  check("the author has no \"I see this too\" button", !mineOut.includes("I see this too"));
+  const confOut = renderToString(<Detail i={{ ...other, confirmedBy: [S.myName()] }} st={{ ...st, role: "resident" }} act={act} close={() => undefined} />);
+  check("someone who confirmed sees a tick \"You confirmed this\"", tickOf(confOut, "You confirmed this") && !confOut.includes("I see this too"));
+  check("others still get the \"I see this too\" button", resOut.includes("I see this too") && !tickOf(resOut, "You confirmed this"));
+  const flagOut = renderToString(<Detail i={{ ...other, log: [...other.log, { t: Date.now(), by: S.myName(), text: "Flagged for coordinator attention" }] }} st={{ ...st, role: "resident" }} act={act} close={() => undefined} />);
+  check("a flagged report shows a tick \"Flagged for attention\"", tickOf(flagOut, "Flagged for attention"));
+  const verOut = renderToString(<Detail i={{ ...other, verifiedBy: [S.myName()] }} st={{ ...st, role: "admin" }} act={act} close={() => undefined} />);
+  check("a coordinator who verified sees a tick \"You verified\"", tickOf(verOut, "You verified"));
+  const fullOut = renderToString(<Detail i={{ ...other, verif: "verified", verifiedBy: ["A", "B"] }} st={{ ...st, role: "admin" }} act={act} close={() => undefined} />);
+  check("a verified report shows a tick \"Verified\" instead of a missing button", tickOf(fullOut, "Verified"));
+  const spamOut = renderToString(<Detail i={{ ...other, flags: [S.myName()] }} st={{ ...st, role: "admin" }} act={act} close={() => undefined} />);
+  check("a coordinator who flagged spam sees a tick \"You flagged spam\"", tickOf(spamOut, "You flagged spam"));
+  const hidOut = renderToString(<Detail i={{ ...other, hidden: true }} st={{ ...st, role: "admin" }} act={act} close={() => undefined} />);
+  check("a hidden report shows a tick \"Hidden\" and a Restore button", tickOf(hidOut, "Hidden") && hidOut.includes("Restore"));
+  const disOut = renderToString(<Detail i={{ ...other, verif: "disputed" }} st={{ ...st, role: "admin" }} act={act} close={() => undefined} />);
+  check("a disputed report shows a tick \"Marked disputed\"", tickOf(disOut, "Marked disputed"));
   const resSpam = renderToString(<Detail i={other} st={{ ...st, role: "resident" }} act={act} close={() => undefined} />).includes("Report spam or wrong report");
   if (resSpam) { bad++; console.log("FAIL residents still see the spam button"); } else console.log("ok residents do not see the spam button");
   if (!okTop) { bad++; console.log("FAIL spam button is missing or buried"); } else console.log("ok spam button is near the top");

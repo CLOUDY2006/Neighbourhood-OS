@@ -205,7 +205,7 @@ export function AgentPanel({ i, st, act }: { i: S.Issue; st: S.State; act: Act }
         <small className="dim">Check this route against your city's official website before sending. Names and portals differ between cities.</small>
       </details>
 
-      <TinyFishCard i={i} admin={admin} owns={owns} sent={sent} act={act} />
+      {!canOwn && <TinyFishCard i={i} admin={admin} owns={owns} sent={sent} act={act} />}
 
       <b>{canOwn ? t("Send the complaint") : t("Complaint draft")}{d.level > 0 ? ` (${t("Escalation")} ${d.level})` : ""}</b>
       <small className="dim">To: {d.to}</small>
@@ -217,16 +217,6 @@ export function AgentPanel({ i, st, act }: { i: S.Issue; st: S.State; act: Act }
       )}
       {!sent && owns && !resolved ? (
         <div className="form">
-          <input value={ed?.subject ?? d.subject} onChange={e => setEd({ subject: e.target.value, body: ed?.body ?? d.body })} aria-label="Subject" />
-          <textarea rows={9} value={ed?.body ?? d.body} onChange={e => setEd({ subject: ed?.subject ?? d.subject, body: e.target.value })} aria-label="Complaint text" />
-          <div className="row wrap">
-            {ed && <button onClick={() => act(async () => { await S.agentDraft(i.id, ed); setEd(null); }, "Draft saved")}>{t("Save edits")}</button>}
-            {!approved && <button className="go" disabled={!!ed} onClick={() => act(() => S.agentApprove(i.id), "Approved")}>{t("Approve")}</button>}
-            {approved && !demo && <button onClick={() => act(async () => { await navigator.clipboard.writeText(text); }, "Copied. Paste it into the portal or email")}>{t("Copy complaint")}</button>}
-            {approved && !demo && <button className="go" onClick={() => act(() => S.agentSend(i.id, "copied", ref), "Marked as sent")}>{t("I sent it")}</button>}
-            {approved && demo && <button className="go" onClick={() => act(() => S.agentSend(i.id, "simulated", ref || "DEMO-2043"), "Sent (simulated)")}>{t("Send (simulated)")}</button>}
-          </div>
-          {approved && <input placeholder="Reference number, if you already have one (optional)" maxLength={60} value={ref} onChange={e => setRef(e.target.value)} />}
           {canOwn && (
             <div className="card mailbox">
               <div className="mhead">
@@ -281,6 +271,7 @@ export function AgentPanel({ i, st, act }: { i: S.Issue; st: S.State; act: Act }
               {!fb && <button type="button" className="linkbtn" onClick={() => setFb(true)}>{t("Gmail not opening? Show the written complaint")}</button>}
             </div>
           )}
+          {canOwn && <TinyFishCard i={i} admin={admin} owns={owns} sent={sent} act={act} />}
           {canOwn ? (
             <details className="fallback" open={fb} onToggle={e => setFb((e.currentTarget as HTMLDetailsElement).open)}>
               <summary><FileText size={14} /> {t("Written complaint: edit, copy, or file on a portal")}</summary>
