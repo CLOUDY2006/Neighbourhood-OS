@@ -9,7 +9,6 @@ import { osmLink } from "./geo";
 
 export function readPhoto(f: File): Promise<string> {
   return new Promise((res, rej) => {
-    if (f.type !== "image/jpeg") return rej(new Error("This looks like an image from the internet or a screenshot. Please upload a real photo you took yourself."));
     const r = new FileReader();
     r.onerror = () => rej(new Error("Could not read that image"));
     r.onload = () => {
